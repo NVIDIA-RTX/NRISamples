@@ -1,6 +1,6 @@
 // © 2021 NVIDIA Corporation
 
-#include "MathLib/ml.hlsli"
+#include "ml.hlsli"
 
 struct Attributes
 {

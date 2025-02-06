@@ -103,55 +103,33 @@ if(NOT DISABLE_SHADER_COMPILATION)
     file(GLOB_RECURSE SHADERS "Shaders/*.hlsl" "Shaders/*.hlsli")
     set_source_files_properties(${SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
 
+    get_target_property(ML_SOURCE_DIR MathLib SOURCE_DIR)
+    get_target_property(NRI_SOURCE_DIR NRI SOURCE_DIR)
+
+    set(SHADERMAKE_GENERAL_ARGS
+        --useAPI --binary --flatten --stripReflection --WX
+        --sRegShift 100 --tRegShift 200 --bRegShift 300 --uRegShift 400
+        --sourceDir "Shaders"
+        -c Shaders.cfg
+        -o "${SHADER_OUTPUT_PATH}"
+        -I "Shaders"
+        -I "${ML_SOURCE_DIR}"
+        -I "${NRI_SOURCE_DIR}/Include"
+    )
+
     if(WIN32)
-        add_custom_target(${PROJECT_NAME}_Shaders ALL
-            COMMAND ShaderMake --useAPI
-            --binary --flatten --stripReflection --compiler "${DXC_PATH}"
-            --sourceDir "Shaders"
-            -p DXIL
-            -c Shaders.cfg
-            -o "${SHADER_OUTPUT_PATH}"
-            -I "Shaders"
-            -I "External"
-            -I "External/NRIFramework/External"
-            -I "External/NRIFramework/External/NRI/Include"
-            COMMAND ShaderMake --useAPI
-            --binary --flatten --stripReflection --compiler "${DXC_SPIRV_PATH}"
-            --sourceDir "Shaders"
-            -p SPIRV
-            -c Shaders.cfg
-            -o "${SHADER_OUTPUT_PATH}"
-            -I "Shaders"
-            -I "External"
-            -I "External/NRIFramework/External"
-            -I "External/NRIFramework/External/NRI/Include"
-            COMMAND ShaderMake --useAPI
-            --binary --flatten --stripReflection --compiler "${FXC_PATH}"
-            --sourceDir "Shaders"
-            -p DXBC
-            -c Shaders.cfg
-            -o "${SHADER_OUTPUT_PATH}"
-            -I "Shaders"
-            -I "External"
-            -I "External/NRIFramework/External"
-            -I "External/NRIFramework/External/NRI/Include"
+        add_custom_target(${PROJECT_NAME}Shaders ALL
+            COMMAND ShaderMake ${SHADERMAKE_GENERAL_ARGS} -p DXBC --compiler "${FXC_PATH}"
+            COMMAND ShaderMake ${SHADERMAKE_GENERAL_ARGS} -p DXIL --compiler "${DXC_PATH}"
+            COMMAND ShaderMake ${SHADERMAKE_GENERAL_ARGS} -p SPIRV --compiler "${DXC_SPIRV_PATH}"
             DEPENDS ShaderMake
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
             VERBATIM
             SOURCES ${SHADERS}
         )
     else()
-        add_custom_target(${PROJECT_NAME}_Shaders ALL
-            COMMAND ShaderMake
-            --binary --flatten --stripReflection --compiler "${DXC_SPIRV_PATH}"
-            --sourceDir "Shaders"
-            -p SPIRV
-            -c Shaders.cfg
-            -o "${SHADER_OUTPUT_PATH}"
-            -I "Shaders"
-            -I "External"
-            -I "External/NRIFramework/External"
-            -I "External/NRIFramework/External/NRI/Include"
+        add_custom_target(${PROJECT_NAME}Shaders ALL
+            COMMAND ShaderMake ${SHADERMAKE_GENERAL_ARGS} -p SPIRV --compiler "${DXC_SPIRV_PATH}"
             DEPENDS ShaderMake
             WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
             VERBATIM
@@ -159,7 +137,7 @@ if(NOT DISABLE_SHADER_COMPILATION)
         )
     endif()
 
-    set_property(TARGET ${PROJECT_NAME}_Shaders PROPERTY FOLDER ${PROJECT_NAME})
+    set_property(TARGET ${PROJECT_NAME}Shaders PROPERTY FOLDER ${PROJECT_NAME})
 endif()
 
 # Samples
@@ -168,7 +146,7 @@ function(add_sample NAME EXT)
     source_group("" FILES "Source/${NAME}.${EXT}")
 
     if(NOT DISABLE_SHADER_COMPILATION)
-        add_dependencies(${NAME} ${PROJECT_NAME}_Shaders)
+        add_dependencies(${NAME} ${PROJECT_NAME}Shaders)
     endif()
 
     target_compile_definitions(${NAME} PRIVATE ${COMPILE_DEFINITIONS} PROJECT_NAME=${NAME})
