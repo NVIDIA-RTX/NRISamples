@@ -3,7 +3,6 @@ cmake_minimum_required(VERSION 3.15)
 # Options
 option(DISABLE_SHADER_COMPILATION "Disable shader compilation" OFF)
 option(USE_MINIMAL_DATA "Use minimal '_Data'(90MB)" OFF)
-option(USE_DXC_FROM_PACKMAN_ON_AARCH64 "Use DXC from Packman for `aarch64`" ON)
 set(SHADER_OUTPUT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/_Shaders")
 
 # Cached
@@ -59,13 +58,6 @@ execute_process(COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/External/Packman/packman${P
 
 if(NOT "${PACKMAN_RESULT}" STREQUAL "0")
     message(FATAL_ERROR "Packman failed(code = ${PACKMAN_RESULT})")
-endif()
-
-# Setup dependencies
-if((CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64") OR(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64"))
-    if(("${DXC_CUSTOM_PATH}" STREQUAL "") AND USE_DXC_FROM_PACKMAN_ON_AARCH64)
-        set(DXC_CUSTOM_PATH "${CMAKE_CURRENT_SOURCE_DIR}/External/DXC/bin/dxc" CACHE STRING "")
-    endif()
 endif()
 
 # Compile options
