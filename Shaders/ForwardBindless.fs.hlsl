@@ -1,6 +1,5 @@
 // © 2021 NVIDIA Corporation
 
-#define NRI_ENABLE_DRAW_PARAMETERS_EMULATION
 #define DONT_DECLARE_RESOURCES
 
 #include "NRICompatibility.hlsli"

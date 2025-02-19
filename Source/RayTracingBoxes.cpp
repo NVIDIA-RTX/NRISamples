@@ -337,6 +337,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         barrierGroupDesc.textures = textureTransitions;
         barrierGroupDesc.textureNum = 2;
 
+        nri::BufferBarrierDesc bufferBarrier = {};
+        if(frameIndex == 0)
+        {
+            bufferBarrier.buffer = m_ShaderTable;
+            bufferBarrier.after = {nri::AccessBits::SHADER_RESOURCE, nri::StageBits::RAYGEN_SHADER};
+
+            barrierGroupDesc.bufferNum = 1;
+            barrierGroupDesc.buffers = &bufferBarrier;
+        }
+
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
         NRI.CmdSetPipelineLayout(commandBuffer, *m_PipelineLayout);
         NRI.CmdSetPipeline(commandBuffer, *m_Pipeline);
@@ -742,7 +752,9 @@ void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& a
     queueSubmitDesc.commandBufferNum = 1;
 
     NRI.BeginCommandBuffer(*commandBuffer, nullptr);
-    NRI.CmdBuildBottomLevelAccelerationStructure(*commandBuffer, objectNum, objects, BUILD_FLAGS, accelerationStructure, *scratchBuffer, 0);
+    {
+        NRI.CmdBuildBottomLevelAccelerationStructure(*commandBuffer, objectNum, objects, BUILD_FLAGS, accelerationStructure, *scratchBuffer, 0);
+    }
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
     NRI.WaitForIdle(*m_GraphicsQueue);
@@ -769,7 +781,9 @@ void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& acce
     queueSubmitDesc.commandBufferNum = 1;
 
     NRI.BeginCommandBuffer(*commandBuffer, nullptr);
-    NRI.CmdBuildTopLevelAccelerationStructure(*commandBuffer, instanceNum, instanceBuffer, 0, BUILD_FLAGS, accelerationStructure, *scratchBuffer, 0);
+    {
+        NRI.CmdBuildTopLevelAccelerationStructure(*commandBuffer, instanceNum, instanceBuffer, 0, BUILD_FLAGS, accelerationStructure, *scratchBuffer, 0);
+    }
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
     NRI.WaitForIdle(*m_GraphicsQueue);

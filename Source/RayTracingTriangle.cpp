@@ -598,7 +598,9 @@ void Sample::CreateShaderTable() {
     queueSubmitDesc.commandBufferNum = 1;
 
     NRI.BeginCommandBuffer(*commandBuffer, nullptr);
-    NRI.CmdCopyBuffer(*commandBuffer, *m_ShaderTable, 0, *buffer, 0, shaderTableSize);
+    {
+        NRI.CmdCopyBuffer(*commandBuffer, *m_ShaderTable, 0, *buffer, 0, shaderTableSize);
+    }
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
     NRI.WaitForIdle(*m_GraphicsQueue);
