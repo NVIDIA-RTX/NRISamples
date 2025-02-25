@@ -6,6 +6,7 @@
 - Install **WindowsSDK** and **VulkanSDK**
 - Clone project and init submodules
 - Generate and build project using **cmake**
+  - To build the binary with static MSVC runtime, add `-DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>"` parameter
 
 Or by running scripts only:
 - Run ``1-Deploy.bat``
