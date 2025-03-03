@@ -52,7 +52,9 @@ public:
     ~Sample();
 
     inline uint32_t GetDrawIndexedCommandSize() {
-        return sizeof(nri::DrawIndexedBaseDesc); // sizeof(nri::DrawIndexedDesc) can be used if VS is compiled with SM 6.8
+
+        const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
+        return deviceDesc.graphicsAPI == nri::GraphicsAPI::VK ? sizeof(nri::DrawIndexedDesc) : sizeof(nri::DrawIndexedBaseDesc); // sizeof(nri::DrawIndexedDesc) can be used if VS is compiled with SM 6.8
     }
 
     bool Initialize(nri::GraphicsAPI graphicsAPI) override;

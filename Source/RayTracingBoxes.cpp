@@ -338,8 +338,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         barrierGroupDesc.textureNum = 2;
 
         nri::BufferBarrierDesc bufferBarrier = {};
-        if(frameIndex == 0)
-        {
+        if (frameIndex == 0) {
             bufferBarrier.buffer = m_ShaderTable;
             bufferBarrier.after = {nri::AccessBits::SHADER_RESOURCE, nri::StageBits::RAYGEN_SHADER};
 
@@ -557,7 +556,8 @@ void Sample::CreateShaderResources() {
 
     nri::BufferUploadDesc dataDescArray[] = {
         {texCoords, texCoordBufferDesc.size, m_TexCoordBuffer, 0, {nri::AccessBits::SHADER_RESOURCE}},
-        {paddedIndices.data(), indexBufferDesc.size, m_IndexBuffer, 0, {nri::AccessBits::SHADER_RESOURCE}}};
+        {paddedIndices.data(), indexBufferDesc.size, m_IndexBuffer, 0, {nri::AccessBits::SHADER_RESOURCE}},
+    };
     NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, nullptr, 0, dataDescArray, helper::GetCountOf(dataDescArray)));
 
     nri::BufferViewDesc texCoordBufferViewDesc = {};
