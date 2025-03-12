@@ -368,6 +368,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         barrierGroupDesc.textures = textureTransitions + 1;
         barrierGroupDesc.textureNum = 1;
+        barrierGroupDesc.bufferNum = 0;
 
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
         NRI.CmdCopyTexture(commandBuffer, *m_BackBuffer->texture, nullptr, *m_RayTracingOutput, nullptr);

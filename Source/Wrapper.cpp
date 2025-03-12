@@ -14,13 +14,13 @@
 #    include "Extensions/NRIWrapperD3D12.h"
 
 #    define VK_USE_PLATFORM_WIN32_KHR 1
-const char* VULKAN_LOADER_NAME = "vulkan-1.dll";
+const char* VULKAN_LIB = "vulkan-1.dll";
 #elif defined(__APPLE__)
 #    define VK_USE_PLATFORM_METAL_EXT
-const char* VULKAN_LOADER_NAME = "libvulkan.dynlib";
+const char* VULKAN_LIB = "libvulkan.dynlib";
 #else
 #    define VK_USE_PLATFORM_XLIB_KHR 1
-const char* VULKAN_LOADER_NAME = "libvulkan.so";
+const char* VULKAN_LIB = "libvulkan.so";
 #endif
 
 #define VK_NO_PROTOTYPES 1
@@ -29,9 +29,40 @@ const char* VULKAN_LOADER_NAME = "libvulkan.so";
 #include "Extensions/NRIWrapperVK.h"
 
 struct Library;
-Library* LoadSharedLibrary(const char* path);
-void* GetSharedLibraryFunction(Library& library, const char* name);
-void UnloadSharedLibrary(Library& library);
+
+#ifdef _WIN32
+#    include <windows.h>
+
+static Library* LoadSharedLibrary(const char* path) {
+    return (Library*)LoadLibraryA(path);
+}
+
+static void* GetSharedLibraryFunction(Library& library, const char* name) {
+    return (void*)GetProcAddress((HMODULE)&library, name);
+}
+
+static void UnloadSharedLibrary(Library& library) {
+    FreeLibrary((HMODULE)&library);
+}
+
+#elif defined(__linux__) || defined(__APPLE__)
+#    include <dlfcn.h>
+
+static Library* LoadSharedLibrary(const char* path) {
+    return (Library*)dlopen(path, RTLD_NOW);
+}
+
+static void* GetSharedLibraryFunction(Library& library, const char* name) {
+    return dlsym((void*)&library, name);
+}
+
+static void UnloadSharedLibrary(Library& library) {
+    dlclose((void*)&library);
+}
+
+#else
+#    error unknown platform
+#endif
 
 constexpr nri::Color32f COLOR_0 = {1.0f, 1.0f, 0.0f, 1.0f};
 constexpr nri::Color32f COLOR_1 = {0.46f, 0.72f, 0.0f, 1.0f};
@@ -211,7 +242,7 @@ void Sample::CreateD3D12Device() {
 }
 
 void Sample::CreateVulkanDevice() {
-    m_VulkanLoader = LoadSharedLibrary(VULKAN_LOADER_NAME);
+    m_VulkanLoader = LoadSharedLibrary(VULKAN_LIB);
 
     auto vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)GetSharedLibraryFunction(*m_VulkanLoader, "vkGetInstanceProcAddr");
     auto vkCreateInstance = (PFN_vkCreateInstance)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance");
@@ -777,42 +808,5 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
     }
 }
-
-#ifdef _WIN32
-
-#    include <windows.h>
-#    undef LoadLibrary
-
-Library* LoadSharedLibrary(const char* path) {
-    return (Library*)LoadLibraryA(path);
-}
-
-void* GetSharedLibraryFunction(Library& library, const char* name) {
-    return (void*)GetProcAddress((HMODULE)&library, name);
-}
-
-void UnloadSharedLibrary(Library& library) {
-    FreeLibrary((HMODULE)&library);
-}
-
-#elif defined(__linux__) || defined(__APPLE__)
-
-#    include <dlfcn.h>
-
-Library* LoadSharedLibrary(const char* path) {
-    return (Library*)dlopen(path, RTLD_NOW);
-}
-
-void* GetSharedLibraryFunction(Library& library, const char* name) {
-    return dlsym((void*)&library, name);
-}
-
-void UnloadSharedLibrary(Library& library) {
-    dlclose((void*)&library);
-}
-
-#else
-#    error unknown platform
-#endif
 
 SAMPLE_MAIN(Sample, 0);
