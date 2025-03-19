@@ -13,13 +13,13 @@
 #    include <d3d12.h>
 #    include "Extensions/NRIWrapperD3D12.h"
 
-#    define VK_USE_PLATFORM_WIN32_KHR 1
+#    define VK_USE_PLATFORM_WIN32_KHR
 const char* VULKAN_LIB = "vulkan-1.dll";
 #elif defined(__APPLE__)
 #    define VK_USE_PLATFORM_METAL_EXT
 const char* VULKAN_LIB = "libvulkan.dynlib";
 #else
-#    define VK_USE_PLATFORM_XLIB_KHR 1
+#    define VK_USE_PLATFORM_XLIB_KHR
 const char* VULKAN_LIB = "libvulkan.so";
 #endif
 
