@@ -4,7 +4,7 @@
 
 #include <array>
 
-constexpr auto BUILD_FLAGS = nri::AccelerationStructureBuildBits::PREFER_FAST_TRACE;
+constexpr auto BUILD_FLAGS = nri::AccelerationStructureBits::PREFER_FAST_TRACE;
 constexpr uint32_t BOX_NUM = 100000;
 constexpr float BOX_HALF_SIZE = 0.5f;
 
@@ -181,7 +181,7 @@ private:
     void CreateShaderTable();
     void CreateUploadBuffer(uint64_t size, nri::BufferUsageBits usage, nri::Buffer*& buffer, nri::Memory*& memory);
     void CreateScratchBuffer(nri::AccelerationStructure& accelerationStructure, nri::Buffer*& buffer, nri::Memory*& memory);
-    void BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, const nri::GeometryObject* objects, const uint32_t objectNum);
+    void BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, const nri::BottomLevelGeometry* objects, const uint32_t objectNum);
     void BuildTopLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, uint32_t instanceNum, nri::Buffer& instanceBuffer);
     void CreateShaderResources();
 
@@ -465,19 +465,19 @@ void Sample::CreateRayTracingPipeline() {
         utils::LoadShader(deviceDesc.graphicsAPI, "RayTracingBox.rchit", shaderCodeStorage, "closest_hit"),
     };
 
-    nri::ShaderLibrary shaderLibrary = {};
+    nri::ShaderLibraryDesc shaderLibrary = {};
     shaderLibrary.shaders = shaders;
     shaderLibrary.shaderNum = helper::GetCountOf(shaders);
 
     const nri::ShaderGroupDesc shaderGroupDescs[] = {{1}, {2}, {3}};
 
     nri::RayTracingPipelineDesc pipelineDesc = {};
-    pipelineDesc.recursionDepthMax = 1;
-    pipelineDesc.payloadAttributeSizeMax = 3 * sizeof(float);
-    pipelineDesc.intersectionAttributeSizeMax = 2 * sizeof(float);
+    pipelineDesc.recursionMaxDepth = 1;
+    pipelineDesc.rayPayloadMaxSize = 3 * sizeof(float);
+    pipelineDesc.rayHitAttributeMaxSize = 2 * sizeof(float);
     pipelineDesc.pipelineLayout = m_PipelineLayout;
-    pipelineDesc.shaderGroupDescs = shaderGroupDescs;
-    pipelineDesc.shaderGroupDescNum = helper::GetCountOf(shaderGroupDescs);
+    pipelineDesc.shaderGroups = shaderGroupDescs;
+    pipelineDesc.shaderGroupNum = helper::GetCountOf(shaderGroupDescs);
     pipelineDesc.shaderLibrary = &shaderLibrary;
 
     NRI_ABORT_ON_FAILURE(NRI.CreateRayTracingPipeline(*m_Device, pipelineDesc, m_Pipeline));
@@ -604,8 +604,8 @@ void Sample::CreateBottomLevelAccelerationStructure() {
     memcpy(data + sizeof(positions), indices, sizeof(indices));
     NRI.UnmapBuffer(*buffer);
 
-    nri::GeometryObject object = {};
-    object.type = nri::GeometryType::TRIANGLES;
+    nri::BottomLevelGeometry object = {};
+    object.type = nri::BottomLevelGeometryType::TRIANGLES;
     object.flags = nri::BottomLevelGeometryBits::OPAQUE_GEOMETRY;
     object.geometry.triangles.vertexBuffer = buffer;
     object.geometry.triangles.vertexFormat = nri::Format::RGB32_SFLOAT;
@@ -616,13 +616,13 @@ void Sample::CreateBottomLevelAccelerationStructure() {
     object.geometry.triangles.indexNum = helper::GetCountOf(indices);
     object.geometry.triangles.indexType = nri::IndexType::UINT16;
 
-    nri::AccelerationStructureDesc accelerationStructureBLASDesc = {};
-    accelerationStructureBLASDesc.type = nri::AccelerationStructureType::BOTTOM_LEVEL;
-    accelerationStructureBLASDesc.flags = BUILD_FLAGS;
-    accelerationStructureBLASDesc.instanceOrGeometryObjectNum = 1;
-    accelerationStructureBLASDesc.geometryObjects = &object;
+    nri::AccelerationStructureDesc accelerationStructureDesc = {};
+    accelerationStructureDesc.type = nri::AccelerationStructureType::BOTTOM_LEVEL;
+    accelerationStructureDesc.flags = BUILD_FLAGS;
+    accelerationStructureDesc.geometryOrInstanceNum = 1;
+    accelerationStructureDesc.geometries = &object;
 
-    NRI_ABORT_ON_FAILURE(NRI.CreateAccelerationStructure(*m_Device, accelerationStructureBLASDesc, m_BLAS));
+    NRI_ABORT_ON_FAILURE(NRI.CreateAccelerationStructure(*m_Device, accelerationStructureDesc, m_BLAS));
 
     nri::MemoryDesc memoryDesc = {};
     NRI.GetAccelerationStructureMemoryDesc(*m_BLAS, nri::MemoryLocation::DEVICE, memoryDesc);
@@ -645,12 +645,12 @@ void Sample::CreateBottomLevelAccelerationStructure() {
 }
 
 void Sample::CreateTopLevelAccelerationStructure() {
-    nri::AccelerationStructureDesc accelerationStructureTLASDesc = {};
-    accelerationStructureTLASDesc.type = nri::AccelerationStructureType::TOP_LEVEL;
-    accelerationStructureTLASDesc.flags = BUILD_FLAGS;
-    accelerationStructureTLASDesc.instanceOrGeometryObjectNum = BOX_NUM;
+    nri::AccelerationStructureDesc accelerationStructureDesc = {};
+    accelerationStructureDesc.type = nri::AccelerationStructureType::TOP_LEVEL;
+    accelerationStructureDesc.flags = BUILD_FLAGS;
+    accelerationStructureDesc.geometryOrInstanceNum = BOX_NUM;
 
-    NRI_ABORT_ON_FAILURE(NRI.CreateAccelerationStructure(*m_Device, accelerationStructureTLASDesc, m_TLAS));
+    NRI_ABORT_ON_FAILURE(NRI.CreateAccelerationStructure(*m_Device, accelerationStructureDesc, m_TLAS));
 
     nri::MemoryDesc memoryDesc = {};
     NRI.GetAccelerationStructureMemoryDesc(*m_TLAS, nri::MemoryLocation::DEVICE, memoryDesc);
@@ -666,14 +666,14 @@ void Sample::CreateTopLevelAccelerationStructure() {
     const nri::AccelerationStructureMemoryBindingDesc memoryBindingDesc = {ASMemory, m_TLAS};
     NRI_ABORT_ON_FAILURE(NRI.BindAccelerationStructureMemory(*m_Device, &memoryBindingDesc, 1));
 
-    std::vector<nri::GeometryObjectInstance> geometryObjectInstances(BOX_NUM, nri::GeometryObjectInstance{});
+    std::vector<nri::TopLevelInstance> geometryObjectInstances(BOX_NUM, nri::TopLevelInstance{});
 
     const float lineWidth = 120.0f;
     const uint32_t lineSize = 100;
     const float step = lineWidth / (lineSize - 1);
 
     for (uint32_t i = 0; i < geometryObjectInstances.size(); i++) {
-        nri::GeometryObjectInstance& instance = geometryObjectInstances[i];
+        nri::TopLevelInstance& instance = geometryObjectInstances[i];
         instance.accelerationStructureHandle = NRI.GetAccelerationStructureHandle(*m_BLAS);
         instance.instanceId = i;
         instance.transform[0][0] = 1.0f;
@@ -738,7 +738,7 @@ void Sample::CreateScratchBuffer(nri::AccelerationStructure& accelerationStructu
     NRI_ABORT_ON_FAILURE(NRI.BindBufferMemory(*m_Device, &bufferMemoryBindingDesc, 1));
 }
 
-void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, const nri::GeometryObject* objects, const uint32_t objectNum) {
+void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, const nri::BottomLevelGeometry* objects, const uint32_t objectNum) {
     nri::Buffer* scratchBuffer = nullptr;
     nri::Memory* scratchBufferMemory = nullptr;
     CreateScratchBuffer(accelerationStructure, scratchBuffer, scratchBufferMemory);
@@ -754,7 +754,13 @@ void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& a
 
     NRI.BeginCommandBuffer(*commandBuffer, nullptr);
     {
-        NRI.CmdBuildBottomLevelAccelerationStructure(*commandBuffer, objectNum, objects, BUILD_FLAGS, accelerationStructure, *scratchBuffer, 0);
+        nri::BuildBottomLevelAccelerationStructureDesc desc = {};
+        desc.dst = &accelerationStructure;
+        desc.geometries = objects;
+        desc.geometryNum = objectNum;
+        desc.scratchBuffer = scratchBuffer;
+
+        NRI.CmdBuildBottomLevelAccelerationStructures(*commandBuffer, &desc, 1);
     }
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
@@ -783,7 +789,13 @@ void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& acce
 
     NRI.BeginCommandBuffer(*commandBuffer, nullptr);
     {
-        NRI.CmdBuildTopLevelAccelerationStructure(*commandBuffer, instanceNum, instanceBuffer, 0, BUILD_FLAGS, accelerationStructure, *scratchBuffer, 0);
+        nri::BuildTopLevelAccelerationStructureDesc desc = {};
+        desc.dst = &accelerationStructure;
+        desc.instanceNum = instanceNum;
+        desc.instanceBuffer = &instanceBuffer;
+        desc.scratchBuffer = scratchBuffer;
+
+        NRI.CmdBuildTopLevelAccelerationStructures(*commandBuffer, &desc, 1);
     }
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
