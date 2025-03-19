@@ -6,7 +6,6 @@ option(USE_MINIMAL_DATA "Use minimal '_Data'(90MB)" OFF)
 set(SHADER_OUTPUT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/_Shaders")
 
 # Cached
-set(DXC_CUSTOM_PATH "custom/path/to/dxc" CACHE STRING "This DXC will be used if Vulkan SDK is not installed")
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_SOURCE_DIR}/_Bin" CACHE STRING "")
 set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "")
 
