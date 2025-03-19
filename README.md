@@ -27,13 +27,10 @@ Or by running scripts only:
 - Generate and build project using **cmake**
 
 ### CMake options
-`-DUSE_MINIMAL_DATA=ON` - download minimal resource package (90MB)
-
-`-DDISABLE_SHADER_COMPILATION=ON` - disable compilation of shaders (shaders can be built on other platform)
-
-`-DDXC_CUSTOM_PATH=my/path/to/dxc` - custom path to **dxc**
-
-`-DUSE_DXC_FROM_PACKMAN_ON_AARCH64=OFF` - use default path for **dxc**
+- `USE_MINIMAL_DATA=ON` - download minimal resource package (90MB)
+- `DISABLE_SHADER_COMPILATION=ON` - disable compilation of shaders (shaders can be built on other platform)
+- `DXC_CUSTOM_PATH=my/path/to/dxc` - custom path to **dxc**
+- `USE_DXC_FROM_PACKMAN_ON_AARCH64=OFF` - use default path for **dxc**
 
 ## How to run
 The executables load resources from `_Data`, therefore please run the samples with working directory set to
