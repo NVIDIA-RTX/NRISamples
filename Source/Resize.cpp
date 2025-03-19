@@ -169,7 +169,9 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
         uint32_t y = (h - m_WindowResolution.y) >> 1;
 
         glfwSetWindowAttrib(m_Window, GLFW_DECORATED, m_IsFullscreen ? 0 : 1);
+#if (NRIF_PLATFORM != NRIF_WAYLAND)
         glfwSetWindowPos(m_Window, x, y);
+#endif
         glfwSetWindowSize(m_Window, m_WindowResolution.x, m_WindowResolution.y);
 
         ResizeSwapChain();
