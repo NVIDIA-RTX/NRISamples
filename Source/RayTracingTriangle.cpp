@@ -39,7 +39,7 @@ private:
     void CreateShaderTable();
     void CreateUploadBuffer(uint64_t size, nri::BufferUsageBits usage, nri::Buffer*& buffer, nri::Memory*& memory);
     void CreateScratchBuffer(nri::AccelerationStructure& accelerationStructure, nri::Buffer*& buffer, nri::Memory*& memory);
-    void BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, const nri::BottomLevelGeometry* objects, const uint32_t objectNum);
+    void BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, const nri::BottomLevelGeometryDesc* objects, const uint32_t objectNum);
     void BuildTopLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, uint32_t instanceNum, nri::Buffer& instanceBuffer);
 
     NRIInterface NRI = {};
@@ -349,7 +349,7 @@ void Sample::CreateRayTracingOutput(nri::Format swapChainFormat) {
     NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, allocateMemoryDesc, memory));
     m_MemoryAllocations.push_back(memory);
 
-    const nri::TextureMemoryBindingDesc memoryBindingDesc = {memory, m_RayTracingOutput};
+    const nri::TextureMemoryBindingDesc memoryBindingDesc = {m_RayTracingOutput, memory};
     NRI_ABORT_ON_FAILURE(NRI.BindTextureMemory(*m_Device, &memoryBindingDesc, 1));
 
     nri::Texture2DViewDesc textureViewDesc = {m_RayTracingOutput, nri::Texture2DViewType::SHADER_RESOURCE_STORAGE_2D, swapChainFormat};
@@ -385,7 +385,7 @@ void Sample::CreateBottomLevelAccelerationStructure() {
     memcpy(data + vertexDataSize, indices, sizeof(indices));
     NRI.UnmapBuffer(*buffer);
 
-    nri::BottomLevelGeometry object = {};
+    nri::BottomLevelGeometryDesc object = {};
     object.type = nri::BottomLevelGeometryType::TRIANGLES;
     object.flags = nri::BottomLevelGeometryBits::OPAQUE_GEOMETRY;
     object.geometry.triangles.vertexBuffer = buffer;
@@ -413,7 +413,7 @@ void Sample::CreateBottomLevelAccelerationStructure() {
     allocateMemoryDesc.type = memoryDesc.type;
     NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, allocateMemoryDesc, m_BLASMemory));
 
-    const nri::AccelerationStructureMemoryBindingDesc memoryBindingDesc = {m_BLASMemory, m_BLAS};
+    const nri::AccelerationStructureMemoryBindingDesc memoryBindingDesc = {m_BLAS, m_BLASMemory};
     NRI_ABORT_ON_FAILURE(NRI.BindAccelerationStructureMemory(*m_Device, &memoryBindingDesc, 1));
 
     BuildBottomLevelAccelerationStructure(*m_BLAS, &object, 1);
@@ -437,7 +437,7 @@ void Sample::CreateTopLevelAccelerationStructure() {
     allocateMemoryDesc.type = memoryDesc.type;
     NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, allocateMemoryDesc, m_TLASMemory));
 
-    const nri::AccelerationStructureMemoryBindingDesc memoryBindingDesc = {m_TLASMemory, m_TLAS};
+    const nri::AccelerationStructureMemoryBindingDesc memoryBindingDesc = {m_TLAS, m_TLASMemory};
     NRI_ABORT_ON_FAILURE(NRI.BindAccelerationStructureMemory(*m_Device, &memoryBindingDesc, 1));
 
     nri::Buffer* buffer = nullptr;
@@ -479,7 +479,7 @@ void Sample::CreateUploadBuffer(uint64_t size, nri::BufferUsageBits usage, nri::
     allocateMemoryDesc.type = memoryDesc.type;
     NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, allocateMemoryDesc, memory));
 
-    nri::BufferMemoryBindingDesc bufferMemoryBindingDesc = {memory, buffer};
+    nri::BufferMemoryBindingDesc bufferMemoryBindingDesc = {buffer, memory};
     NRI_ABORT_ON_FAILURE(NRI.BindBufferMemory(*m_Device, &bufferMemoryBindingDesc, 1));
 }
 
@@ -497,11 +497,11 @@ void Sample::CreateScratchBuffer(nri::AccelerationStructure& accelerationStructu
     allocateMemoryDesc.type = memoryDesc.type;
     NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, allocateMemoryDesc, memory));
 
-    nri::BufferMemoryBindingDesc bufferMemoryBindingDesc = {memory, buffer};
+    nri::BufferMemoryBindingDesc bufferMemoryBindingDesc = {buffer, memory};
     NRI_ABORT_ON_FAILURE(NRI.BindBufferMemory(*m_Device, &bufferMemoryBindingDesc, 1));
 }
 
-void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, const nri::BottomLevelGeometry* objects, const uint32_t objectNum) {
+void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, const nri::BottomLevelGeometryDesc* objects, const uint32_t objectNum) {
     nri::Buffer* scratchBuffer = nullptr;
     nri::Memory* scratchBufferMemory = nullptr;
     CreateScratchBuffer(accelerationStructure, scratchBuffer, scratchBufferMemory);
@@ -594,7 +594,7 @@ void Sample::CreateShaderTable() {
     allocateMemoryDesc.type = memoryDesc.type;
     NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, allocateMemoryDesc, m_ShaderTableMemory));
 
-    const nri::BufferMemoryBindingDesc bufferMemoryBindingDesc = {m_ShaderTableMemory, m_ShaderTable};
+    const nri::BufferMemoryBindingDesc bufferMemoryBindingDesc = {m_ShaderTable, m_ShaderTableMemory};
     NRI_ABORT_ON_FAILURE(NRI.BindBufferMemory(*m_Device, &bufferMemoryBindingDesc, 1));
 
     nri::Buffer* buffer = nullptr;

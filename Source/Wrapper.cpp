@@ -64,8 +64,8 @@ static void UnloadSharedLibrary(Library& library) {
 #    error unknown platform
 #endif
 
-constexpr nri::Color32f COLOR_0 = {1.0f, 1.0f, 0.0f, 1.0f};
-constexpr nri::Color32f COLOR_1 = {0.46f, 0.72f, 0.0f, 1.0f};
+constexpr nri::Color32f COLOR_0 = {0.5f, 0.0f, 1.0f, 1.0f};
+constexpr nri::Color32f COLOR_1 = {0.72f, 0.46f, 0.0f, 1.0f};
 
 struct ConstantBufferLayout {
     float color[3];
