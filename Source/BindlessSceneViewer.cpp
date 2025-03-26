@@ -211,7 +211,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
             // Bindless descriptors
             nri::DescriptorRangeDesc textureDescriptorRange[1] = {};
-            textureDescriptorRange[0] = {0, 512, nri::DescriptorType::TEXTURE, nri::StageBits::FRAGMENT_SHADER, nri::DescriptorRangeBits::VARIABLE_SIZED_ARRAY | nri::DescriptorRangeBits::PARTIALLY_BOUND};
+            textureDescriptorRange[0] = {0, 128, nri::DescriptorType::TEXTURE, nri::StageBits::FRAGMENT_SHADER, nri::DescriptorRangeBits::VARIABLE_SIZED_ARRAY | nri::DescriptorRangeBits::PARTIALLY_BOUND};
 
             nri::DescriptorSetDesc descriptorSetDescs[] = {
                 {0, globalDescriptorRange, helper::GetCountOf(globalDescriptorRange)},
