@@ -311,7 +311,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         textureDesc.type = nri::TextureType::TEXTURE_2D;
         textureDesc.usage = nri::TextureUsageBits::SHADER_RESOURCE;
         textureDesc.format = textureData->GetFormat();
-        textureDesc.width =  textureData->GetWidth();
+        textureDesc.width = textureData->GetWidth();
         textureDesc.height = textureData->GetHeight();
         textureDesc.mipNum = textureData->GetMipNum();
         textureDesc.layerNum = textureData->GetArraySize();
@@ -328,7 +328,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         textureDesc.type = nri::TextureType::TEXTURE_2D;
         textureDesc.usage = nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT;
         textureDesc.format = m_DepthFormat;
-        textureDesc.width =  (uint16_t)GetWindowResolution().x;
+        textureDesc.width = (uint16_t)GetWindowResolution().x;
         textureDesc.height = (uint16_t)GetWindowResolution().y;
         textureDesc.mipNum = 1;
 
@@ -339,14 +339,17 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     // Shading rate attachment
     nri::Texture* shadingRateTexture = nullptr;
     uint8_t* shadingRateData = nullptr;
-    uint32_t shadingRateTexWidth = (GetWindowResolution().x + deviceDesc.shadingRateAttachmentTileSize - 1) / deviceDesc.shadingRateAttachmentTileSize;
-    uint32_t shadingRateTexHeight = (GetWindowResolution().y + deviceDesc.shadingRateAttachmentTileSize - 1) / deviceDesc.shadingRateAttachmentTileSize;
+    uint32_t shadingRateTexWidth = 0;
+    uint32_t shadingRateTexHeight = 0;
     if (deviceDesc.shadingRateTier >= 2) {
+        shadingRateTexWidth = (GetWindowResolution().x + deviceDesc.shadingRateAttachmentTileSize - 1) / deviceDesc.shadingRateAttachmentTileSize;
+        shadingRateTexHeight = (GetWindowResolution().y + deviceDesc.shadingRateAttachmentTileSize - 1) / deviceDesc.shadingRateAttachmentTileSize;
+
         nri::TextureDesc textureDesc = {};
         textureDesc.type = nri::TextureType::TEXTURE_2D;
         textureDesc.usage = nri::TextureUsageBits::SHADING_RATE_ATTACHMENT;
         textureDesc.format = nri::Format::R8_UINT;
-        textureDesc.width =  (uint16_t)shadingRateTexWidth;
+        textureDesc.width = (uint16_t)shadingRateTexWidth;
         textureDesc.height = (uint16_t)shadingRateTexHeight;
         textureDesc.mipNum = 1;
 
@@ -467,7 +470,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             m_Descriptors.push_back(m_DepthAttachment);
         }
 
-        { // Shading rate attachment
+        // Shading rate attachment
+        if (shadingRateTexture) {
             nri::Texture2DViewDesc texture2DViewDesc = {shadingRateTexture, nri::Texture2DViewType::SHADING_RATE_ATTACHMENT, nri::Format::R8_UINT};
 
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_ShadingRateAttachment));
@@ -576,11 +580,13 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         shadingRateSubresource.rowPitch = shadingRateTexWidth;
         shadingRateSubresource.slicePitch = shadingRateTexWidth * shadingRateTexHeight;
 
-        textureData[i] = {};
-        textureData[i].subresources = &shadingRateSubresource;
-        textureData[i].texture = shadingRateTexture;
-        textureData[i].after = {nri::AccessBits::SHADING_RATE_ATTACHMENT, nri::Layout::SHADING_RATE_ATTACHMENT};
-        i++;
+        if (shadingRateTexture) {
+            textureData[i] = {};
+            textureData[i].subresources = &shadingRateSubresource;
+            textureData[i].texture = shadingRateTexture;
+            textureData[i].after = {nri::AccessBits::SHADING_RATE_ATTACHMENT, nri::Layout::SHADING_RATE_ATTACHMENT};
+            i++;
+        }
 
         // Buffers
         nri::BufferUploadDesc bufferData[] = {
