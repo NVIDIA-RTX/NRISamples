@@ -2,7 +2,6 @@ cmake_minimum_required(VERSION 3.15)
 
 # Options
 option(DISABLE_SHADER_COMPILATION "Disable shader compilation" OFF)
-option(USE_MINIMAL_DATA "Use minimal '_Data'(90MB)" ON)
 set(SHADER_OUTPUT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/_Shaders")
 
 # Cached
@@ -40,14 +39,7 @@ endif()
 
 message("Packman platform: ${PACKMAN_PLATFORM}")
 
-if(USE_MINIMAL_DATA)
-    set(NRI_DATA_VERSION 2.3_minimal)
-    message("Using minimal _Data.")
-else()
-    set(NRI_DATA_VERSION 2.3)
-endif()
-
-execute_process(COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/External/Packman/packman${PACKMAN_EXT}" pull "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies.xml" -p ${PACKMAN_PLATFORM} -t nri_data_version=${NRI_DATA_VERSION}
+execute_process(COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/External/Packman/packman${PACKMAN_EXT}" pull "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies.xml" -p ${PACKMAN_PLATFORM} -t nri_data_version=2.3_minimal
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     RESULT_VARIABLE PACKMAN_RESULT)
 

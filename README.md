@@ -29,7 +29,6 @@ Or by running scripts only:
 
 ### CMake options
 
-- `USE_MINIMAL_DATA` - download minimal resource package (90MB)
 - `DISABLE_SHADER_COMPILATION` - disable compilation of shaders (shaders can be built on other platform)
 - `NRIF_USE_WAYLAND` - use Wayland instead of X11 on Linux
 
