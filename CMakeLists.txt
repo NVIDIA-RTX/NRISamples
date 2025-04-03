@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.15)
 
 # Options
 option(DISABLE_SHADER_COMPILATION "Disable shader compilation" OFF)
-option(USE_MINIMAL_DATA "Use minimal '_Data'(90MB)" OFF)
+option(USE_MINIMAL_DATA "Use minimal '_Data'(90MB)" ON)
 set(SHADER_OUTPUT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/_Shaders")
 
 # Cached
