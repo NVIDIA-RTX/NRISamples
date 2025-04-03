@@ -607,14 +607,14 @@ void Sample::CreateBottomLevelAccelerationStructure() {
     nri::BottomLevelGeometryDesc object = {};
     object.type = nri::BottomLevelGeometryType::TRIANGLES;
     object.flags = nri::BottomLevelGeometryBits::OPAQUE_GEOMETRY;
-    object.geometry.triangles.vertexBuffer = buffer;
-    object.geometry.triangles.vertexFormat = nri::Format::RGB32_SFLOAT;
-    object.geometry.triangles.vertexNum = helper::GetCountOf(positions) / 3;
-    object.geometry.triangles.vertexStride = 3 * sizeof(float);
-    object.geometry.triangles.indexBuffer = buffer;
-    object.geometry.triangles.indexOffset = sizeof(positions);
-    object.geometry.triangles.indexNum = helper::GetCountOf(indices);
-    object.geometry.triangles.indexType = nri::IndexType::UINT16;
+    object.triangles.vertexBuffer = buffer;
+    object.triangles.vertexFormat = nri::Format::RGB32_SFLOAT;
+    object.triangles.vertexNum = helper::GetCountOf(positions) / 3;
+    object.triangles.vertexStride = 3 * sizeof(float);
+    object.triangles.indexBuffer = buffer;
+    object.triangles.indexOffset = sizeof(positions);
+    object.triangles.indexNum = helper::GetCountOf(indices);
+    object.triangles.indexType = nri::IndexType::UINT16;
 
     nri::AccelerationStructureDesc accelerationStructureDesc = {};
     accelerationStructureDesc.type = nri::AccelerationStructureType::BOTTOM_LEVEL;
