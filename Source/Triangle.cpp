@@ -265,7 +265,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         NRI_ABORT_ON_FAILURE(NRI.CreateGraphicsPipeline(*m_Device, graphicsPipelineDesc, m_Pipeline));
 
         // Multiview
-        if (deviceDesc.isFlexibleMultiviewSupported) {
+        if (deviceDesc.features.flexibleMultiview) {
             graphicsPipelineDesc.outputMerger.viewMask = VIEW_MASK;
             graphicsPipelineDesc.outputMerger.multiview = nri::Multiview::FLEXIBLE;
 
@@ -290,7 +290,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         return false;
 
     // Resources
-    const uint32_t constantBufferSize = helper::Align((uint32_t)sizeof(ConstantBufferLayout), deviceDesc.constantBufferOffsetAlignment);
+    const uint32_t constantBufferSize = helper::Align((uint32_t)sizeof(ConstantBufferLayout), deviceDesc.memoryAlignment.constantBufferOffset);
     const uint64_t indexDataSize = sizeof(g_IndexData);
     const uint64_t indexDataAlignedSize = helper::Align(indexDataSize, 16);
     const uint64_t vertexDataSize = sizeof(g_VertexData);
@@ -429,7 +429,7 @@ void Sample::PrepareFrame(uint32_t) {
         ImGui::SliderFloat("Scale", &m_Scale, 0.75f, 1.25f);
 
         const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-        ImGui::BeginDisabled(!deviceDesc.isFlexibleMultiviewSupported);
+        ImGui::BeginDisabled(!deviceDesc.features.flexibleMultiview);
         ImGui::Checkbox("Multiview", &m_Multiview);
         ImGui::EndDisabled();
     }

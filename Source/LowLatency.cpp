@@ -124,7 +124,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
     // Low latency
-    m_AllowLowLatency = ALLOW_LOW_LATENCY && deviceDesc.isLowLatencySupported;
+    m_AllowLowLatency = ALLOW_LOW_LATENCY && deviceDesc.features.lowLatency;
 
     if (m_AllowLowLatency)
         NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::LowLatencyInterface), (nri::LowLatencyInterface*)&NRI));

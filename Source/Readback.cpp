@@ -138,7 +138,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
     { // Readback buffer
         nri::BufferDesc bufferDesc = {};
-        bufferDesc.size = helper::Align(4, deviceDesc.uploadBufferTextureRowAlignment);
+        bufferDesc.size = helper::Align(4, deviceDesc.memoryAlignment.uploadBufferTextureRow);
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_ReadbackBuffer));
 
         nri::ResourceGroupDesc resourceGroupDesc = {};
@@ -217,7 +217,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
 
         nri::TextureDataLayoutDesc dstDataLayoutDesc = {};
-        dstDataLayoutDesc.rowPitch = helper::Align(4, NRI.GetDeviceDesc(*m_Device).uploadBufferTextureRowAlignment);
+        dstDataLayoutDesc.rowPitch = helper::Align(4, NRI.GetDeviceDesc(*m_Device).memoryAlignment.uploadBufferTextureRow);
 
         nri::TextureRegionDesc srcRegionDesc = {};
         srcRegionDesc.x = (uint16_t)clamp(ImGui::GetMousePos().x, 0.0f, float(windowWidth - 1));

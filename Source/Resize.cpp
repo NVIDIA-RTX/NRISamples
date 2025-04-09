@@ -262,7 +262,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
 
         nri::TextureDataLayoutDesc dstDataLayoutDesc = {};
-        dstDataLayoutDesc.rowPitch = NRI.GetDeviceDesc(*m_Device).uploadBufferTextureRowAlignment;
+        dstDataLayoutDesc.rowPitch = NRI.GetDeviceDesc(*m_Device).memoryAlignment.uploadBufferTextureRow;
 
         textureBarrierDescs.before = textureBarrierDescs.after;
         textureBarrierDescs.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};

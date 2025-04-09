@@ -810,8 +810,8 @@ void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& acce
 
 void Sample::CreateShaderTable() {
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-    const uint64_t identifierSize = deviceDesc.rayTracingShaderGroupIdentifierSize;
-    const uint64_t tableAlignment = deviceDesc.shaderBindingTableAlignment;
+    const uint64_t identifierSize = deviceDesc.shaderStage.rayTracing.shaderGroupIdentifierSize;
+    const uint64_t tableAlignment = deviceDesc.memoryAlignment.shaderBindingTable;
 
     m_ShaderGroupIdentifierSize = identifierSize;
     m_MissShaderOffset = helper::Align(identifierSize, tableAlignment);

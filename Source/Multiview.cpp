@@ -133,9 +133,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI));
 
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-    if (!deviceDesc.isLayerBasedMultiviewSupported)
+    if (!deviceDesc.features.layerBasedMultiview)
         printf("Multiview is not supported!\n");
-    NRI_ABORT_ON_FALSE(deviceDesc.isLayerBasedMultiviewSupported);
+    NRI_ABORT_ON_FALSE(deviceDesc.features.layerBasedMultiview);
 
     // Create streamer
     nri::StreamerDesc streamerDesc = {};
@@ -289,7 +289,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         return false;
 
     // Resources
-    const uint32_t constantBufferSize = helper::Align((uint32_t)sizeof(ConstantBufferLayout), deviceDesc.constantBufferOffsetAlignment);
+    const uint32_t constantBufferSize = helper::Align((uint32_t)sizeof(ConstantBufferLayout), deviceDesc.memoryAlignment.constantBufferOffset);
     const uint64_t indexDataSize = sizeof(g_IndexData);
     const uint64_t indexDataAlignedSize = helper::Align(indexDataSize, 16);
     const uint64_t vertexDataSize = sizeof(g_VertexData);

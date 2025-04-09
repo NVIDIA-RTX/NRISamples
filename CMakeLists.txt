@@ -95,7 +95,7 @@ if(NOT DISABLE_SHADER_COMPILATION)
 
     set(SHADERMAKE_GENERAL_ARGS
         --useAPI --binary --flatten --stripReflection --WX
-        --sRegShift 100 --tRegShift 200 --bRegShift 300 --uRegShift 400
+        --sRegShift 0 --bRegShift 32 --uRegShift 64 --tRegShift 128 # TODO: must be in sync with "VK_BINDING_OFFSETS"
         --sourceDir "Shaders"
         -c Shaders.cfg
         -o "${SHADER_OUTPUT_PATH}"

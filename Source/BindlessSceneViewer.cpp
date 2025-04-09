@@ -222,7 +222,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             pipelineLayoutDesc.descriptorSetNum = helper::GetCountOf(descriptorSetDescs);
             pipelineLayoutDesc.descriptorSets = descriptorSetDescs;
             pipelineLayoutDesc.shaderStages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER;
-            pipelineLayoutDesc.enableD3D12DrawParametersEmulation = true;
+            pipelineLayoutDesc.flags = nri::PipelineLayoutBits::ENABLE_D3D12_DRAW_PARAMETERS_EMULATION;
 
             NRI_ABORT_ON_FAILURE(NRI.CreatePipelineLayout(*m_Device, pipelineLayoutDesc, m_PipelineLayout));
         }
@@ -372,7 +372,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         m_Textures.push_back(depthTexture);
     }
 
-    const uint32_t constantBufferSize = helper::Align((uint32_t)sizeof(GlobalConstants), deviceDesc.constantBufferOffsetAlignment);
+    const uint32_t constantBufferSize = helper::Align((uint32_t)sizeof(GlobalConstants), deviceDesc.memoryAlignment.constantBufferOffset);
 
     { // Buffers
         // CONSTANT_BUFFER
