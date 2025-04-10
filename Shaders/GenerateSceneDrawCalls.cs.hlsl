@@ -1,14 +1,14 @@
 #define NRI_ENABLE_DRAW_PARAMETERS_EMULATION
 
-#include "NRICompatibility.hlsli"
+#include "NRI.hlsl"
 #include "SceneViewerBindlessStructs.h"
 
 NRI_ROOT_CONSTANTS(CullingConstants, Constants, 0, 0);
 NRI_RESOURCE(StructuredBuffer<MaterialData>, Materials, t, 0, 0);
 NRI_RESOURCE(StructuredBuffer<MeshData>, Meshes, t, 1, 0);
 NRI_RESOURCE(StructuredBuffer<InstanceData>, Instances, t, 2, 0);
-NRI_RESOURCE(RWBuffer<uint>, DrawCount, u, 0, 0);
-NRI_RESOURCE(RWBuffer<uint>, Commands, u, 1, 0);
+NRI_FORMAT("r32ui") NRI_RESOURCE(RWBuffer<uint>, DrawCount, u, 0, 0);
+NRI_FORMAT("r32ui") NRI_RESOURCE(RWBuffer<uint>, Commands, u, 1, 0);
 
 groupshared uint s_DrawCount;
 

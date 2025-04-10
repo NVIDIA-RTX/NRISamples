@@ -2,7 +2,7 @@
 
 #define DONT_DECLARE_RESOURCES
 
-#include "NRICompatibility.hlsli"
+#include "NRI.hlsl"
 
 #ifndef NRI_DXBC
 

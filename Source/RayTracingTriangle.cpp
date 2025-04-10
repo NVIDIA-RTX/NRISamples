@@ -617,7 +617,21 @@ void Sample::CreateShaderTable() {
 
     NRI.BeginCommandBuffer(*commandBuffer, nullptr);
     {
+        nri::BufferBarrierDesc bufferBarrierDesc = {};
+        bufferBarrierDesc.buffer = m_ShaderTable;
+        
+        nri::BarrierGroupDesc barrierGroupDesc = {};
+        barrierGroupDesc.bufferNum = 1;
+        barrierGroupDesc.buffers = &bufferBarrierDesc;
+
+        bufferBarrierDesc.after = {nri::AccessBits::COPY_DESTINATION};
+        NRI.CmdBarrier(*commandBuffer, barrierGroupDesc);
+
         NRI.CmdCopyBuffer(*commandBuffer, *m_ShaderTable, 0, *buffer, 0, shaderTableSize);
+
+        bufferBarrierDesc.before = bufferBarrierDesc.after;
+        bufferBarrierDesc.after = {nri::AccessBits::SHADER_BINDING_TABLE};
+        NRI.CmdBarrier(*commandBuffer, barrierGroupDesc);
     }
     NRI.EndCommandBuffer(*commandBuffer);
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);

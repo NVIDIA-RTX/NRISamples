@@ -1,6 +1,6 @@
 // © 2021 NVIDIA Corporation
 
-#include "NRICompatibility.hlsli"
+#include "NRI.hlsl"
 
 NRI_RESOURCE(Buffer<float2>, vertexBuffers[], t, 0, 1);
 NRI_RESOURCE(Buffer<uint4>, indexBuffers[], t, 0, 2);

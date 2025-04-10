@@ -2,7 +2,7 @@
 
 #define NRI_ENABLE_DRAW_PARAMETERS_EMULATION
 
-#include "NRICompatibility.hlsli"
+#include "NRI.hlsl"
 #include "SceneViewerBindlessStructs.h"
 
 NRI_ENABLE_DRAW_PARAMETERS;

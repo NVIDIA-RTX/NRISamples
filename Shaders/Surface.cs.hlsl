@@ -1,8 +1,8 @@
 // © 2021 NVIDIA Corporation
 
-#include "NRICompatibility.hlsli"
+#include "NRI.hlsl"
 
-NRI_RESOURCE( RWTexture2D<unorm float4>, g_Result, u, 0, 0 );
+NRI_RESOURCE(RWTexture2D<float4>, g_Result, u, 0, 0);
 
 [numthreads( 16, 16, 1 )]
 void main( uint2 pixelID : SV_DispatchThreadId )

@@ -1,8 +1,8 @@
 // © 2021 NVIDIA Corporation
 
-#include "NRICompatibility.hlsli"
+#include "NRI.hlsl"
 
-NRI_RESOURCE(RWTexture2D<float4>, outputImage, u, 0, 0);
+NRI_FORMAT("rgba8") NRI_RESOURCE(RWTexture2D<float4>, outputImage, u, 0, 0);
 NRI_RESOURCE(RaytracingAccelerationStructure, topLevelAS, t, 1, 0);
 
 struct Payload

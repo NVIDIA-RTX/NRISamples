@@ -1,8 +1,8 @@
 // © 2021 NVIDIA Corporation
 
-#include "NRICompatibility.hlsli"
+#include "NRI.hlsl"
 
-NRI_RESOURCE(RWBuffer<float>, buffer, u, 0, 0);
+NRI_FORMAT("r16f") NRI_RESOURCE(RWBuffer<float>, buffer, u, 0, 0);
 
 uint3 pcg3d(uint3 v)
 {

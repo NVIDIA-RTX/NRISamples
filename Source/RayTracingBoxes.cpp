@@ -340,7 +340,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         nri::BufferBarrierDesc bufferBarrier = {};
         if (frameIndex == 0) {
             bufferBarrier.buffer = m_ShaderTable;
-            bufferBarrier.after = {nri::AccessBits::SHADER_RESOURCE, nri::StageBits::RAYGEN_SHADER};
+            bufferBarrier.after = {nri::AccessBits::SHADER_BINDING_TABLE, nri::StageBits::RAYGEN_SHADER};
 
             barrierGroupDesc.bufferNum = 1;
             barrierGroupDesc.buffers = &bufferBarrier;

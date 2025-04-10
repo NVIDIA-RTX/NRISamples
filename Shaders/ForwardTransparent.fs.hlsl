@@ -1,6 +1,6 @@
 // © 2021 NVIDIA Corporation
 
-#include "NRICompatibility.hlsli"
+#include "NRI.hlsl"
 #include "ForwardResources.hlsli"
 
 float4 main( in Attributes input, bool isFrontFace : SV_IsFrontFace ) : SV_Target
