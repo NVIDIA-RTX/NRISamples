@@ -31,6 +31,7 @@ call :TestSample Clear 1000
 call :TestSample LowLatency 100
 call :TestSample MultiThreading 50
 call :TestSample Multiview 1000
+call :TestSample Multisample 1000
 call :TestSample RayTracingBoxes 1000
 call :TestSample RayTracingTriangle 1000
 call :TestSample Readback 1000
