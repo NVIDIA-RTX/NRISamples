@@ -324,7 +324,6 @@ void Sample::PrepareFrame(uint32_t) {
     ImGui::End();
 
     EndUI(NRI, *m_Streamer);
-    NRI.CopyStreamerUpdateRequests(*m_Streamer);
 
     if (enableLowLatencyPrev != m_EnableLowLatency) {
         nri::LatencySleepMode sleepMode = {};
@@ -358,6 +357,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.ResetCommandAllocator(*frame.commandAllocator);
         }
     }
+
+    NRI.CopyStreamerUpdateRequests(*m_Streamer); // TODO: UI flickers once, if placed like in other samples
 
     // Record
     nri::CommandBuffer& commandBuffer = *frame.commandBuffer;
