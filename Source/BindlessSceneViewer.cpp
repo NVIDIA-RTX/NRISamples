@@ -52,7 +52,6 @@ public:
     ~Sample();
 
     inline uint32_t GetDrawIndexedCommandSize() {
-
         const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
         return deviceDesc.graphicsAPI == nri::GraphicsAPI::VK ? sizeof(nri::DrawIndexedDesc) : sizeof(nri::DrawIndexedBaseDesc); // sizeof(nri::DrawIndexedDesc) can be used if VS is compiled with SM 6.8
     }
@@ -253,7 +252,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
         nri::VertexStreamDesc vertexStreamDesc = {};
         vertexStreamDesc.bindingSlot = 0;
-        vertexStreamDesc.stride = sizeof(utils::Vertex);
 
         nri::VertexAttributeDesc vertexAttributeDesc[4] = {};
         {
@@ -347,7 +345,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         textureDesc.type = nri::TextureType::TEXTURE_2D;
         textureDesc.usage = nri::TextureUsageBits::SHADER_RESOURCE;
         textureDesc.format = textureData->GetFormat();
-        textureDesc.width =  textureData->GetWidth();
+        textureDesc.width = textureData->GetWidth();
         textureDesc.height = textureData->GetHeight();
         textureDesc.mipNum = textureData->GetMipNum();
         textureDesc.layerNum = textureData->GetArraySize();
@@ -364,7 +362,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         textureDesc.type = nri::TextureType::TEXTURE_2D;
         textureDesc.usage = nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT;
         textureDesc.format = m_DepthFormat;
-        textureDesc.width =  (uint16_t)GetWindowResolution().x;
+        textureDesc.width = (uint16_t)GetWindowResolution().x;
         textureDesc.height = (uint16_t)GetWindowResolution().y;
         textureDesc.mipNum = 1;
 
@@ -840,15 +838,17 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 const nri::Rect scissor = {0, 0, (nri::Dim_t)windowWidth, (nri::Dim_t)windowHeight};
                 NRI.CmdSetScissors(commandBuffer, &scissor, 1);
 
-                NRI.CmdSetIndexBuffer(commandBuffer, *m_Buffers[INDEX_BUFFER], 0, sizeof(utils::Index) == 2 ? nri::IndexType::UINT16 : nri::IndexType::UINT32);
-
                 NRI.CmdSetPipelineLayout(commandBuffer, *m_PipelineLayout);
                 NRI.CmdSetDescriptorSet(commandBuffer, GLOBAL_DESCRIPTOR_SET, *m_DescriptorSets[bufferedFrameIndex], nullptr);
                 NRI.CmdSetDescriptorSet(commandBuffer, MATERIAL_DESCRIPTOR_SET, *m_DescriptorSets[BUFFERED_FRAME_MAX_NUM], nullptr);
                 NRI.CmdSetPipeline(commandBuffer, *m_Pipeline);
+                NRI.CmdSetIndexBuffer(commandBuffer, *m_Buffers[INDEX_BUFFER], 0, sizeof(utils::Index) == 2 ? nri::IndexType::UINT16 : nri::IndexType::UINT32);
 
-                constexpr uint64_t offset = 0;
-                NRI.CmdSetVertexBuffers(commandBuffer, 0, 1, &m_Buffers[VERTEX_BUFFER], &offset);
+                nri::VertexBufferDesc vertexBufferDesc = {};
+                vertexBufferDesc.buffer = m_Buffers[VERTEX_BUFFER];
+                vertexBufferDesc.offset = 0;
+                vertexBufferDesc.stride = sizeof(utils::Vertex);
+                NRI.CmdSetVertexBuffers(commandBuffer, 0, &vertexBufferDesc, 1);
 
                 if (m_UseGPUDrawGeneration) {
                     NRI.CmdDrawIndexedIndirect(commandBuffer, *m_Buffers[INDIRECT_BUFFER], 0, (uint32_t)m_Scene.instances.size(), GetDrawIndexedCommandSize(), m_Buffers[INDIRECT_COUNT_BUFFER], 0);

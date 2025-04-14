@@ -200,7 +200,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
         nri::VertexStreamDesc vertexStreamDesc = {};
         vertexStreamDesc.bindingSlot = 0;
-        vertexStreamDesc.stride = sizeof(Vertex);
 
         nri::VertexAttributeDesc vertexAttributeDesc[1] = {};
         {
@@ -450,11 +449,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             clearDesc.planes = nri::PlaneBits::COLOR;
             NRI.CmdClearAttachments(commandBuffer1, &clearDesc, 1, nullptr, 0);
 
-            const uint64_t offset = 0;
             NRI.CmdSetPipelineLayout(commandBuffer1, *m_GraphicsPipelineLayout);
             NRI.CmdSetPipeline(commandBuffer1, *m_GraphicsPipeline);
             NRI.CmdSetIndexBuffer(commandBuffer1, *m_GeometryBuffer, 0, nri::IndexType::UINT16);
-            NRI.CmdSetVertexBuffers(commandBuffer1, 0, 1, &m_GeometryBuffer, &offset);
+
+            nri::VertexBufferDesc vertexBufferDesc = {};
+            vertexBufferDesc.buffer = m_GeometryBuffer;
+            vertexBufferDesc.offset = 0;
+            vertexBufferDesc.stride = sizeof(Vertex);
+            NRI.CmdSetVertexBuffers(commandBuffer1, 0, &vertexBufferDesc, 1);
+
             NRI.CmdDraw(commandBuffer1, {VERTEX_NUM, 1, 0, 0});
 
             RenderUI(NRI, NRI, *m_Streamer, commandBuffer1, 1.0f, true);

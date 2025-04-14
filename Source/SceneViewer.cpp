@@ -195,7 +195,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     {
         nri::VertexStreamDesc vertexStreamDesc = {};
         vertexStreamDesc.bindingSlot = 0;
-        vertexStreamDesc.stride = sizeof(utils::Vertex);
 
         nri::VertexAttributeDesc vertexAttributeDesc[4] = {};
         {
@@ -753,8 +752,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                     uint32_t pipelineIndex = material.IsAlphaOpaque() ? 1 : (material.IsTransparent() ? 2 : 0);
                     NRI.CmdSetPipeline(commandBuffer, *m_Pipelines[pipelineIndex]);
 
-                    constexpr uint64_t offset = 0;
-                    NRI.CmdSetVertexBuffers(commandBuffer, 0, 1, &m_Buffers[VERTEX_BUFFER], &offset);
+                    nri::VertexBufferDesc vertexBufferDesc = {};
+                    vertexBufferDesc.buffer = m_Buffers[VERTEX_BUFFER];
+                    vertexBufferDesc.offset = 0;
+                    vertexBufferDesc.stride = sizeof(utils::Vertex);
+                    NRI.CmdSetVertexBuffers(commandBuffer, 0, &vertexBufferDesc, 1);
 
                     nri::DescriptorSet* descriptorSet = m_DescriptorSets[BUFFERED_FRAME_MAX_NUM + instance.materialIndex];
                     NRI.CmdSetDescriptorSet(commandBuffer, MATERIAL_DESCRIPTOR_SET, *descriptorSet, nullptr);

@@ -424,7 +424,10 @@ void Sample::RenderBoxes(nri::CommandBuffer& commandBuffer, uint32_t offset, uin
     NRI.CmdSetScissors(commandBuffer, &scissorRect, 1);
     NRI.CmdSetPipelineLayout(commandBuffer, *m_PipelineLayout);
 
-    const uint64_t nullOffset = 0;
+    nri::VertexBufferDesc vertexBufferDesc = {};
+    vertexBufferDesc.buffer = m_VertexBuffer;
+    vertexBufferDesc.offset = 0;
+    vertexBufferDesc.stride = sizeof(Vertex);
 
     for (uint32_t i = 0; i < number; i++) {
         const Box& box = m_Boxes[offset + i];
@@ -433,7 +436,8 @@ void Sample::RenderBoxes(nri::CommandBuffer& commandBuffer, uint32_t offset, uin
         NRI.CmdSetDescriptorSet(commandBuffer, 0, *box.descriptorSet, &box.dynamicConstantBufferOffset);
         NRI.CmdSetDescriptorSet(commandBuffer, 1, *m_DescriptorSetWithSharedSampler, nullptr);
         NRI.CmdSetIndexBuffer(commandBuffer, *m_IndexBuffer, 0, nri::IndexType::UINT16);
-        NRI.CmdSetVertexBuffers(commandBuffer, 0, 1, &m_VertexBuffer, &nullOffset);
+        NRI.CmdSetVertexBuffers(commandBuffer, 0, &vertexBufferDesc, 1);
+
         NRI.CmdDrawIndexed(commandBuffer, {m_IndexNum, 1, 0, 0, 0});
     }
 }
@@ -579,7 +583,6 @@ bool Sample::CreatePipeline(nri::Format swapChainFormat) {
 
     nri::VertexStreamDesc vertexStreamDesc = {};
     vertexStreamDesc.bindingSlot = 0;
-    vertexStreamDesc.stride = sizeof(Vertex);
 
     nri::VertexAttributeDesc vertexAttributeDesc[2] = {
         {

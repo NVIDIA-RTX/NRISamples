@@ -213,7 +213,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
         nri::VertexStreamDesc vertexStreamDesc = {};
         vertexStreamDesc.bindingSlot = 0;
-        vertexStreamDesc.stride = sizeof(Vertex);
 
         nri::VertexAttributeDesc vertexAttributeDesc[2] = {};
         {
@@ -536,7 +535,13 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 NRI.CmdSetPipeline(*commandBuffer, *m_Pipeline);
                 NRI.CmdSetRootConstants(*commandBuffer, 0, &m_Transparency, 4);
                 NRI.CmdSetIndexBuffer(*commandBuffer, *m_GeometryBuffer, 0, nri::IndexType::UINT16);
-                NRI.CmdSetVertexBuffers(*commandBuffer, 0, 1, &m_GeometryBuffer, &m_GeometryOffset);
+
+                nri::VertexBufferDesc vertexBufferDesc = {};
+                vertexBufferDesc.buffer = m_GeometryBuffer;
+                vertexBufferDesc.offset = m_GeometryOffset;
+                vertexBufferDesc.stride = sizeof(Vertex);
+                NRI.CmdSetVertexBuffers(*commandBuffer, 0, &vertexBufferDesc, 1);
+
                 NRI.CmdSetDescriptorSet(*commandBuffer, 0, *frame.constantBufferDescriptorSet, nullptr);
                 NRI.CmdSetDescriptorSet(*commandBuffer, 1, *m_TextureDescriptorSet, nullptr);
 
