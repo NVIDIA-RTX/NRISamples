@@ -484,20 +484,20 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.BeginCommandBuffer(*commandBuffer, m_DescriptorPool);
     {
         // Barriers
-        nri::TextureBarrierDesc textureBarrierDescs[2] = {};
+        nri::TextureBarrierDesc textureBarriers[2] = {};
 
-        textureBarrierDescs[0].texture = currentBackBuffer.texture;
-        textureBarrierDescs[0].after = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION};
+        textureBarriers[0].texture = currentBackBuffer.texture;
+        textureBarriers[0].after = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION};
 
-        textureBarrierDescs[1].texture = m_MultiviewTexture;
-        textureBarrierDescs[1].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+        textureBarriers[1].texture = m_MultiviewTexture;
+        textureBarriers[1].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
         if (frameIndex != 0)
-            textureBarrierDescs[1].before = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE};
+            textureBarriers[1].before = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE};
 
         {
             nri::BarrierGroupDesc barrierGroupDesc = {};
             barrierGroupDesc.textureNum = 2;
-            barrierGroupDesc.textures = textureBarrierDescs;
+            barrierGroupDesc.textures = textureBarriers;
 
             NRI.CmdBarrier(*commandBuffer, barrierGroupDesc);
         }
@@ -566,12 +566,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdEndRendering(*commandBuffer);
 
         { // Barriers
-            textureBarrierDescs[1].before = textureBarrierDescs[1].after;
-            textureBarrierDescs[1].after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE};
+            textureBarriers[1].before = textureBarriers[1].after;
+            textureBarriers[1].after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE};
 
             nri::BarrierGroupDesc barrierGroupDesc = {};
             barrierGroupDesc.textureNum = 1;
-            barrierGroupDesc.textures = textureBarrierDescs + 1;
+            barrierGroupDesc.textures = textureBarriers + 1;
 
             NRI.CmdBarrier(*commandBuffer, barrierGroupDesc);
         }
@@ -599,12 +599,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         { // Barriers
-            textureBarrierDescs[0].before = textureBarrierDescs[0].after;
-            textureBarrierDescs[0].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+            textureBarriers[0].before = textureBarriers[0].after;
+            textureBarriers[0].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
 
             nri::BarrierGroupDesc barrierGroupDesc = {};
             barrierGroupDesc.textureNum = 1;
-            barrierGroupDesc.textures = textureBarrierDescs;
+            barrierGroupDesc.textures = textureBarriers;
 
             NRI.CmdBarrier(*commandBuffer, barrierGroupDesc);
         }
@@ -622,12 +622,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdEndRendering(*commandBuffer);
 
         { // Barriers
-            textureBarrierDescs[0].before = textureBarrierDescs[0].after;
-            textureBarrierDescs[0].after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+            textureBarriers[0].before = textureBarriers[0].after;
+            textureBarriers[0].after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
 
             nri::BarrierGroupDesc barrierGroupDesc = {};
             barrierGroupDesc.textureNum = 1;
-            barrierGroupDesc.textures = textureBarrierDescs;
+            barrierGroupDesc.textures = textureBarriers;
 
             NRI.CmdBarrier(*commandBuffer, barrierGroupDesc);
         }

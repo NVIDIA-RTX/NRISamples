@@ -678,15 +678,15 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     {
         helper::Annotation annotation(NRI, commandBuffer, "Scene");
 
-        nri::TextureBarrierDesc textureBarrierDescs = {};
-        textureBarrierDescs.texture = currentBackBuffer.texture;
-        textureBarrierDescs.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-        textureBarrierDescs.layerNum = 1;
-        textureBarrierDescs.mipNum = 1;
+        nri::TextureBarrierDesc textureBarriers = {};
+        textureBarriers.texture = currentBackBuffer.texture;
+        textureBarriers.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+        textureBarriers.layerNum = 1;
+        textureBarriers.mipNum = 1;
 
         nri::BarrierGroupDesc barrierGroupDesc = {};
         barrierGroupDesc.textureNum = 1;
-        barrierGroupDesc.textures = &textureBarrierDescs;
+        barrierGroupDesc.textures = &textureBarriers;
 
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
 
@@ -794,8 +794,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.CmdEndRendering(commandBuffer);
         }
 
-        textureBarrierDescs.before = textureBarrierDescs.after;
-        textureBarrierDescs.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+        textureBarriers.before = textureBarriers.after;
+        textureBarriers.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
 
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
     }

@@ -394,19 +394,19 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     const uint32_t backBufferIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
     const BackBuffer& backBuffer = m_SwapChainBuffers[backBufferIndex];
 
-    nri::TextureBarrierDesc textureBarrierDescs[2] = {};
+    nri::TextureBarrierDesc textureBarriers[2] = {};
 
-    textureBarrierDescs[0].texture = backBuffer.texture;
-    textureBarrierDescs[0].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-    textureBarrierDescs[0].layerNum = 1;
-    textureBarrierDescs[0].mipNum = 1;
+    textureBarriers[0].texture = backBuffer.texture;
+    textureBarriers[0].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+    textureBarriers[0].layerNum = 1;
+    textureBarriers[0].mipNum = 1;
 
-    textureBarrierDescs[1].texture = m_Texture;
-    textureBarrierDescs[1].layerNum = 1;
-    textureBarrierDescs[1].mipNum = 1;
+    textureBarriers[1].texture = m_Texture;
+    textureBarriers[1].layerNum = 1;
+    textureBarriers[1].mipNum = 1;
 
     nri::BarrierGroupDesc barrierGroupDesc = {};
-    barrierGroupDesc.textures = textureBarrierDescs;
+    barrierGroupDesc.textures = textureBarriers;
 
     // Fill command buffer #0 (graphics or compute)
     nri::CommandBuffer& commandBuffer0 = m_IsAsyncMode ? *frame.commandBufferCompute : *frame.commandBufferGraphics[0];
@@ -474,11 +474,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         helper::Annotation annotation(NRI, commandBuffer2, "Composition");
 
         // Resource transitions
-        textureBarrierDescs[0].before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT, nri::StageBits::COLOR_ATTACHMENT};
-        textureBarrierDescs[0].after = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
+        textureBarriers[0].before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT, nri::StageBits::COLOR_ATTACHMENT};
+        textureBarriers[0].after = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
 
-        textureBarrierDescs[1].before = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::Layout::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
-        textureBarrierDescs[1].after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
+        textureBarriers[1].before = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::Layout::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
+        textureBarriers[1].after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
 
         barrierGroupDesc.textureNum = 2;
         NRI.CmdBarrier(commandBuffer2, barrierGroupDesc);
@@ -495,11 +495,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdCopyTexture(commandBuffer2, *backBuffer.texture, &dstRegion, *m_Texture, &srcRegion);
 
         // Resource transitions
-        textureBarrierDescs[0].before = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
-        textureBarrierDescs[0].after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+        textureBarriers[0].before = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
+        textureBarriers[0].after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
 
-        textureBarrierDescs[1].before = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
-        textureBarrierDescs[1].after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::Layout::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
+        textureBarriers[1].before = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
+        textureBarriers[1].after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::Layout::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
 
         barrierGroupDesc.textureNum = 2;
         NRI.CmdBarrier(commandBuffer2, barrierGroupDesc);

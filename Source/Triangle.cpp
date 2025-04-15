@@ -470,13 +470,13 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     nri::CommandBuffer* commandBuffer = frame.commandBuffer;
     NRI.BeginCommandBuffer(*commandBuffer, m_DescriptorPool);
     {
-        nri::TextureBarrierDesc textureBarrierDescs = {};
-        textureBarrierDescs.texture = currentBackBuffer.texture;
-        textureBarrierDescs.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+        nri::TextureBarrierDesc textureBarriers = {};
+        textureBarriers.texture = currentBackBuffer.texture;
+        textureBarriers.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
 
         nri::BarrierGroupDesc barrierGroupDesc = {};
         barrierGroupDesc.textureNum = 1;
-        barrierGroupDesc.textures = &textureBarrierDescs;
+        barrierGroupDesc.textures = &textureBarriers;
 
         NRI.CmdBarrier(*commandBuffer, barrierGroupDesc);
 
@@ -572,8 +572,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
         NRI.CmdEndRendering(*commandBuffer);
 
-        textureBarrierDescs.before = textureBarrierDescs.after;
-        textureBarrierDescs.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+        textureBarriers.before = textureBarriers.after;
+        textureBarriers.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
 
         NRI.CmdBarrier(*commandBuffer, barrierGroupDesc);
     }
