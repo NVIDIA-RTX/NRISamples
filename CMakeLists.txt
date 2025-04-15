@@ -151,7 +151,7 @@ endfunction()
 
 add_sample(AsyncCompute cpp)
 add_sample(Clear cpp)
-add_sample(CTest c)
+add_sample(Buffers c)
 add_sample(DeviceInfo cpp)
 add_sample(LowLatency cpp)
 add_sample(Multisample cpp)

@@ -27,7 +27,7 @@ echo.
 :: API dependent samples
 call :TestSample AsyncCompute 100
 call :TestSample BindlessSceneViewer 1000
-call :TestSample Clear 1000
+call :TestSample Buffers 1000
 call :TestSample LowLatency 100
 call :TestSample MultiThreading 50
 call :TestSample Multiview 1000
