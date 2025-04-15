@@ -777,26 +777,31 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         attachmentsDesc.colors = &currentBackBuffer.colorAttachment;
         attachmentsDesc.depthStencil = m_DepthAttachment;
 
-        nri::TextureBarrierDesc textureBarrierDescs = {};
-        textureBarrierDescs.texture = currentBackBuffer.texture;
-        textureBarrierDescs.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-        textureBarrierDescs.layerNum = 1;
-        textureBarrierDescs.mipNum = 1;
+        nri::TextureBarrierDesc textureBarrier = {};
+        textureBarrier.texture = currentBackBuffer.texture;
+        textureBarrier.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+
+        nri::BufferBarrierDesc bufferBarriers[2] = {};
+
+        bufferBarriers[0].buffer = m_Buffers[INDIRECT_BUFFER];
+        bufferBarriers[0].before = {nri::AccessBits::ARGUMENT_BUFFER, nri::StageBits::INDIRECT};
+        bufferBarriers[0].after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
+
+        bufferBarriers[1].buffer = m_Buffers[INDIRECT_COUNT_BUFFER];
+        bufferBarriers[1].before = {nri::AccessBits::ARGUMENT_BUFFER, nri::StageBits::INDIRECT};
+        bufferBarriers[1].after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
 
         nri::BarrierGroupDesc computeBarrierGroupDesc = {};
-        nri::BufferBarrierDesc bufferBarrierDesc = {};
-        bufferBarrierDesc.buffer = m_Buffers[INDIRECT_BUFFER];
-        bufferBarrierDesc.before = {nri::AccessBits::ARGUMENT_BUFFER, nri::StageBits::INDIRECT};
-        bufferBarrierDesc.after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
-        computeBarrierGroupDesc.bufferNum = 1;
-        computeBarrierGroupDesc.buffers = &bufferBarrierDesc;
+        computeBarrierGroupDesc.bufferNum = helper::GetCountOf(bufferBarriers);
+        computeBarrierGroupDesc.buffers = bufferBarriers;
 
         nri::BarrierGroupDesc barrierGroupDesc = {};
         barrierGroupDesc.textureNum = 1;
-        barrierGroupDesc.textures = &textureBarrierDescs;
+        barrierGroupDesc.textures = &textureBarrier;
+
         if (m_UseGPUDrawGeneration) {
-            barrierGroupDesc.bufferNum = 1;
-            barrierGroupDesc.buffers = &bufferBarrierDesc;
+            barrierGroupDesc.bufferNum = helper::GetCountOf(bufferBarriers);;
+            barrierGroupDesc.buffers = bufferBarriers;
         }
 
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
@@ -814,8 +819,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.CmdDispatch(commandBuffer, {1, 1, 1});
 
             // Transition from UAV to indirect argument
-            bufferBarrierDesc.after = {nri::AccessBits::ARGUMENT_BUFFER, nri::StageBits::INDIRECT};
-            bufferBarrierDesc.before = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
+            bufferBarriers[0].before = bufferBarriers[0].after;
+            bufferBarriers[0].after = {nri::AccessBits::ARGUMENT_BUFFER, nri::StageBits::INDIRECT};
+
+            bufferBarriers[1].before = bufferBarriers[1].after;
+            bufferBarriers[1].after = {nri::AccessBits::ARGUMENT_BUFFER, nri::StageBits::INDIRECT};
+
             NRI.CmdBarrier(commandBuffer, computeBarrierGroupDesc);
         }
 
@@ -873,8 +882,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
         NRI.CmdEndRendering(commandBuffer);
 
-        textureBarrierDescs.before = textureBarrierDescs.after;
-        textureBarrierDescs.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+        textureBarrier.before = textureBarrier.after;
+        textureBarrier.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
 
         barrierGroupDesc.bufferNum = 0;
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
