@@ -2,7 +2,7 @@
 
 #include "NRIFramework.h"
 
-constexpr uint32_t SAMPLE_NUM = 8;
+constexpr uint32_t SAMPLE_NUM = 4; // some HW doesn't support 8
 
 struct ConstantBufferLayout {
     float color[3];
