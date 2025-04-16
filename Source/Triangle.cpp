@@ -545,16 +545,39 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
                 NRI.CmdDrawIndexed(*commandBuffer, {3, 1, 0, 0, 0});
 
-                if (m_Multiview) {
-                    nri::Rect scissor[2] = {
-                        {(int16_t)0 + w4, (int16_t)h2, w4, h2},
-                        {(int16_t)w2 + w4, (int16_t)h2, w4, h2},
+                if (m_Multiview)
+                {
+                    nri::Rect scissor[2] =
+                    {
+                        {
+                            static_cast<int16_t>(0 + w4),
+                            static_cast<int16_t>(h2),
+                            static_cast<Nri(nri::Dim_t)>(w4),
+                            static_cast<Nri(nri::Dim_t)>(h2)
+                        },
+                        {
+                            static_cast<int16_t>(w2 + w4),
+                            static_cast<int16_t>(h2),
+                            static_cast<Nri(nri::Dim_t)>(w4),
+                            static_cast<Nri(nri::Dim_t)>(h2)
+                        },
                     };
+                
                     NRI.CmdSetScissors(*commandBuffer, scissor, helper::GetCountOf(scissor));
-                } else {
-                    nri::Rect scissor = {(int16_t)w2, (int16_t)h2, w2, h2};
+                }
+                else
+                {
+                    nri::Rect scissor =
+                    {
+                        static_cast<int16_t>(w2),
+                        static_cast<int16_t>(h2),
+                        static_cast<Nri(nri::Dim_t)>(w2),
+                        static_cast<Nri(nri::Dim_t)>(h2)
+                    };
+                
                     NRI.CmdSetScissors(*commandBuffer, &scissor, 1);
                 }
+                
 
                 NRI.CmdDraw(*commandBuffer, {3, 1, 0, 0});
             }
