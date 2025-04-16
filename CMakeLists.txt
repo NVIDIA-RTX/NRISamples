@@ -11,6 +11,10 @@ set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "")
 # Create project
 project(NRISamples LANGUAGES C CXX)
 
+if(APPLE)
+    enable_language(OBJC)
+endif()
+
 # Globals?
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 
@@ -48,10 +52,15 @@ if(NOT "${PACKMAN_RESULT}" STREQUAL "0")
 endif()
 
 # Compile options
+if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
+    set(SSE_FLAG -msse4.1)
+endif()
+
+
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(COMPILE_OPTIONS -msse4.1 -Wextra)
+    set(COMPILE_OPTIONS ${SSE_FLAG} -Wextra)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    set(COMPILE_OPTIONS -msse4.1 -Wextra)
+    set(COMPILE_OPTIONS ${SSE_FLAG} -Wextra)
 elseif(MSVC)
     set(COMPILE_OPTIONS /W4 /WX /wd4324)
 else()
