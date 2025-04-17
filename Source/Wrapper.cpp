@@ -17,7 +17,7 @@
 const char* VULKAN_LIB = "vulkan-1.dll";
 #elif defined(__APPLE__)
 #    define VK_USE_PLATFORM_METAL_EXT
-const char* VULKAN_LIB = "libvulkan.dynlib";
+const char* VULKAN_LIB = "/usr/local/lib/libvulkan.dylib";
 #else
 #    define VK_USE_PLATFORM_XLIB_KHR
 const char* VULKAN_LIB = "libvulkan.so";
@@ -256,6 +256,8 @@ void Sample::CreateVulkanDevice() {
         VK_KHR_WIN32_SURFACE_EXTENSION_NAME,
 #elif defined(__APPLE__)
         VK_EXT_METAL_SURFACE_EXTENSION_NAME,
+        VK_KHR_PORTABILITY_ENUMERATION_EXTENSION_NAME,
+        VK_KHR_GET_PHYSICAL_DEVICE_PROPERTIES_2_EXTENSION_NAME,
 #else
         VK_KHR_XLIB_SURFACE_EXTENSION_NAME,
 #endif
@@ -280,6 +282,7 @@ void Sample::CreateVulkanDevice() {
     instanceCreateInfo.enabledExtensionCount = helper::GetCountOf(instanceExtensions);
     instanceCreateInfo.ppEnabledLayerNames = layers;
     instanceCreateInfo.enabledLayerCount = m_DebugAPI ? 1 : 0;
+    instanceCreateInfo.flags |= VK_INSTANCE_CREATE_ENUMERATE_PORTABILITY_BIT_KHR;
 
     VkResult result = vkCreateInstance(&instanceCreateInfo, nullptr, &m_VKInstance);
     NRI_ABORT_ON_FALSE(result == VK_SUCCESS);
