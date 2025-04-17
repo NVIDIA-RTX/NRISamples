@@ -4,7 +4,7 @@
 
 #include <array>
 
-constexpr uint32_t VERTEX_NUM = 1000000 * 3;
+constexpr uint32_t VERTEX_NUM = 100000 * 3;
 
 struct NRIInterface
     : public nri::CoreInterface,
@@ -355,7 +355,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 void Sample::PrepareFrame(uint32_t) {
     BeginUI();
 
-    ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Always);
+    ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
     ImGui::SetNextWindowSize(ImVec2(0, 0));
     ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
     {
