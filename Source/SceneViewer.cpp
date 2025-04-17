@@ -589,8 +589,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
         // Buffers
         nri::BufferUploadDesc bufferData[] = {
-            {m_Scene.vertices.data(), helper::GetByteSizeOf(m_Scene.vertices), m_Buffers[VERTEX_BUFFER], 0, {nri::AccessBits::VERTEX_BUFFER}},
-            {m_Scene.indices.data(), helper::GetByteSizeOf(m_Scene.indices), m_Buffers[INDEX_BUFFER], 0, {nri::AccessBits::INDEX_BUFFER}},
+            {m_Scene.vertices.data(), m_Buffers[VERTEX_BUFFER], {nri::AccessBits::VERTEX_BUFFER}},
+            {m_Scene.indices.data(), m_Buffers[INDEX_BUFFER], {nri::AccessBits::INDEX_BUFFER}},
         };
 
         NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, textureData.data(), i, bufferData, helper::GetCountOf(bufferData)));

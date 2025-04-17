@@ -135,7 +135,7 @@ Sample::~Sample() {
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     if (graphicsAPI == nri::GraphicsAPI::D3D11) {
-        printf("This sample supports only D3D12 and Vulkan");
+        printf("This sample supports only D3D12 and Vulkan\n");
         return false;
     }
 
@@ -682,12 +682,36 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         }
 
         nri::BufferUploadDesc bufferData[] = {
-            {nullptr, 0, m_Buffers[INDIRECT_BUFFER], 0, {nri::AccessBits::ARGUMENT_BUFFER, nri::StageBits::INDIRECT}},
-            {meshData.data(), meshData.size() * sizeof(MeshData), m_Buffers[MESH_BUFFER], 0, {nri::AccessBits::SHADER_RESOURCE, nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER}},
-            {materialData.data(), materialData.size() * sizeof(MaterialData), m_Buffers[MATERIAL_BUFFER], 0, {nri::AccessBits::SHADER_RESOURCE, nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER}},
-            {instanceData.data(), instanceData.size() * sizeof(InstanceData), m_Buffers[INSTANCE_BUFFER], 0, {nri::AccessBits::SHADER_RESOURCE, nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER}},
-            {m_Scene.vertices.data(), helper::GetByteSizeOf(m_Scene.vertices), m_Buffers[VERTEX_BUFFER], 0, {nri::AccessBits::VERTEX_BUFFER}},
-            {m_Scene.indices.data(), helper::GetByteSizeOf(m_Scene.indices), m_Buffers[INDEX_BUFFER], 0, {nri::AccessBits::INDEX_BUFFER}},
+            {
+                nullptr,
+                m_Buffers[INDIRECT_BUFFER],
+                {nri::AccessBits::ARGUMENT_BUFFER, nri::StageBits::INDIRECT},
+            },
+            {
+                meshData.data(),
+                m_Buffers[MESH_BUFFER],
+                {nri::AccessBits::SHADER_RESOURCE, nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER},
+            },
+            {
+                materialData.data(),
+                m_Buffers[MATERIAL_BUFFER],
+                {nri::AccessBits::SHADER_RESOURCE, nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER},
+            },
+            {
+                instanceData.data(),
+                m_Buffers[INSTANCE_BUFFER],
+                {nri::AccessBits::SHADER_RESOURCE, nri::StageBits::FRAGMENT_SHADER | nri::StageBits::COMPUTE_SHADER},
+            },
+            {
+                m_Scene.vertices.data(),
+                m_Buffers[VERTEX_BUFFER],
+                {nri::AccessBits::VERTEX_BUFFER},
+            },
+            {
+                m_Scene.indices.data(),
+                m_Buffers[INDEX_BUFFER],
+                {nri::AccessBits::INDEX_BUFFER},
+            },
         };
 
         NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, textureData.data(), (uint32_t)textureData.size(), bufferData, helper::GetCountOf(bufferData)));
@@ -800,7 +824,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         barrierGroupDesc.textures = &textureBarrier;
 
         if (m_UseGPUDrawGeneration) {
-            barrierGroupDesc.bufferNum = helper::GetCountOf(bufferBarriers);;
+            barrierGroupDesc.bufferNum = helper::GetCountOf(bufferBarriers);
+            ;
             barrierGroupDesc.buffers = bufferBarriers;
         }
 

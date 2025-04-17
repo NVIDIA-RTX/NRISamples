@@ -124,7 +124,6 @@ int main(int argc, char** argv) {
             (NriBufferUploadDesc){
                 // fill "bufferZero" with "0"
                 .data = zeroData,
-                .dataSize = bufferZeroSize,
                 .buffer = bufferZero,
                 .after = (NriAccessStage){
                     .access = NriAccessBits_COPY_SOURCE,
@@ -133,7 +132,6 @@ int main(int argc, char** argv) {
             (NriBufferUploadDesc){
                 // fill "bufferOne" with "1"
                 .data = garbageData,
-                .dataSize = bufferOneSize,
                 .buffer = bufferOne,
                 .after = (NriAccessStage){
                     .access = NriAccessBits_COPY_DESTINATION,

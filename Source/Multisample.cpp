@@ -2,8 +2,6 @@
 
 #include "NRIFramework.h"
 
-constexpr uint32_t SAMPLE_NUM = 4; // some HW doesn't support 8
-
 struct ConstantBufferLayout {
     float color[3];
     float scale;
@@ -171,6 +169,21 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         }
     }
 
+    // Multisampling support
+    nri::FormatSupportBits formatSupportBits = NRI.GetFormatSupport(*m_Device, swapChainFormat);
+    nri::Sample_t sampleNum = 1;
+    if (formatSupportBits & nri::FormatSupportBits::MULTISAMPLE_8X)
+        sampleNum = 8;
+    else if (formatSupportBits & nri::FormatSupportBits::MULTISAMPLE_4X)
+        sampleNum = 4;
+    else if (formatSupportBits & nri::FormatSupportBits::MULTISAMPLE_2X)
+        sampleNum = 2;
+
+    if (sampleNum == 1) {
+        printf("Multisampling is not supported\n");
+        return false;
+    }
+
     // Buffered resources
     for (Frame& frame : m_Frames) {
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, frame.commandAllocator));
@@ -252,7 +265,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
         nri::MultisampleDesc multisampleDesc = {};
         multisampleDesc.sampleMask = nri::ALL_SAMPLES;
-        multisampleDesc.sampleNum = SAMPLE_NUM;
+        multisampleDesc.sampleNum = sampleNum;
         multisampleDesc.alphaToCoverage = false;
 
         nri::GraphicsPipelineDesc graphicsPipelineDesc = {};
@@ -297,7 +310,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             textureDesc.format = swapChainFormat;
             textureDesc.width = (nri::Dim_t)GetWindowResolution().x;
             textureDesc.height = (nri::Dim_t)GetWindowResolution().y;
-            textureDesc.sampleNum = SAMPLE_NUM;
+            textureDesc.sampleNum = sampleNum;
             textureDesc.mipNum = 1;
 
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture(*m_Device, textureDesc, m_TextureMsaa));
@@ -429,8 +442,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
         nri::BufferUploadDesc bufferData = {};
         bufferData.buffer = m_GeometryBuffer;
-        bufferData.data = &geometryBufferData[0];
-        bufferData.dataSize = geometryBufferData.size();
+        bufferData.data = geometryBufferData.data();
         bufferData.after = {nri::AccessBits::INDEX_BUFFER | nri::AccessBits::VERTEX_BUFFER};
 
         NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, &textureData, 1, &bufferData, 1));

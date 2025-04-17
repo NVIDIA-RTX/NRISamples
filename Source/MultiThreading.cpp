@@ -739,13 +739,11 @@ void Sample::CreateVertexBuffer() {
     nri::BufferUploadDesc vertexBufferUpdate = {};
     vertexBufferUpdate.buffer = m_VertexBuffer;
     vertexBufferUpdate.data = vertices.data();
-    vertexBufferUpdate.dataSize = helper::GetByteSizeOf(vertices);
     vertexBufferUpdate.after = {nri::AccessBits::VERTEX_BUFFER};
 
     nri::BufferUploadDesc indexBufferUpdate = {};
     indexBufferUpdate.buffer = m_IndexBuffer;
     indexBufferUpdate.data = indices.data();
-    indexBufferUpdate.dataSize = helper::GetByteSizeOf(indices);
     indexBufferUpdate.after = {nri::AccessBits::INDEX_BUFFER};
 
     const nri::BufferUploadDesc bufferUpdates[] = {vertexBufferUpdate, indexBufferUpdate};
@@ -803,7 +801,6 @@ void Sample::CreateTransformConstantBuffer() {
     nri::BufferUploadDesc bufferUpdate = {};
     bufferUpdate.buffer = m_TransformConstantBuffer;
     bufferUpdate.data = bufferContent.data();
-    bufferUpdate.dataSize = bufferContent.size();
     bufferUpdate.after = {nri::AccessBits::CONSTANT_BUFFER};
     NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, nullptr, 0, &bufferUpdate, 1));
 }
@@ -960,7 +957,6 @@ void Sample::CreateFakeConstantBuffers() {
     nri::BufferUploadDesc bufferUpdate = {};
     bufferUpdate.buffer = m_FakeConstantBuffer;
     bufferUpdate.data = bufferContent.data();
-    bufferUpdate.dataSize = bufferContent.size();
     bufferUpdate.after = {nri::AccessBits::CONSTANT_BUFFER};
     NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, nullptr, 0, &bufferUpdate, 1));
 }
@@ -996,7 +992,6 @@ void Sample::CreateViewConstantBuffer() {
     nri::BufferUploadDesc bufferUpdate = {};
     bufferUpdate.buffer = m_ViewConstantBuffer;
     bufferUpdate.data = bufferContent.data();
-    bufferUpdate.dataSize = bufferContent.size();
     bufferUpdate.after = {nri::AccessBits::CONSTANT_BUFFER};
     NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, nullptr, 0, &bufferUpdate, 1));
 }

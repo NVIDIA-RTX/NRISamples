@@ -404,8 +404,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
         nri::BufferUploadDesc bufferData = {};
         bufferData.buffer = m_GeometryBuffer;
-        bufferData.data = &geometryBufferData[0];
-        bufferData.dataSize = geometryBufferData.size();
+        bufferData.data = geometryBufferData.data();
         bufferData.after = {nri::AccessBits::INDEX_BUFFER | nri::AccessBits::VERTEX_BUFFER};
 
         NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, &textureData, 1, &bufferData, 1));
