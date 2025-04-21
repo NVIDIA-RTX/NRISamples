@@ -717,7 +717,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, textureData.data(), (uint32_t)textureData.size(), bufferData, helper::GetCountOf(bufferData)));
     }
 
-    { // Pipeline statistics
+    // Pipeline statistics
+    if (deviceDesc.features.pipelineStatistics) {
         nri::QueryPoolDesc queryPoolDesc = {};
         queryPoolDesc.queryType = nri::QueryType::PIPELINE_STATISTICS;
         queryPoolDesc.capacity = 1;
@@ -801,6 +802,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         attachmentsDesc.colors = &currentBackBuffer.colorAttachment;
         attachmentsDesc.depthStencil = m_DepthAttachment;
 
+        // Barriers
         nri::TextureBarrierDesc textureBarrier = {};
         textureBarrier.texture = currentBackBuffer.texture;
         textureBarrier.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
@@ -831,11 +833,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
 
+        // Simple culling (actually no culling)
         if (m_UseGPUDrawGeneration) {
             NRI.CmdSetPipelineLayout(commandBuffer, *m_ComputePipelineLayout);
             NRI.CmdSetDescriptorSet(commandBuffer, 0, *m_DescriptorSets[BUFFERED_FRAME_MAX_NUM + 1], nullptr);
 
-            // Culling
             CullingConstants cullingConstants = {};
             cullingConstants.DrawCount = (uint32_t)m_Scene.instances.size();
             NRI.CmdSetRootConstants(commandBuffer, 0, &cullingConstants, sizeof(cullingConstants));
@@ -853,9 +855,13 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.CmdBarrier(commandBuffer, computeBarrierGroupDesc);
         }
 
-        NRI.CmdResetQueries(commandBuffer, *m_QueryPool, 0, 1);
-        NRI.CmdBeginQuery(commandBuffer, *m_QueryPool, 0);
-        {
+        // Test pipeline stats query
+        if (m_QueryPool) {
+            NRI.CmdResetQueries(commandBuffer, *m_QueryPool, 0, 1);
+            NRI.CmdBeginQuery(commandBuffer, *m_QueryPool, 0);
+        }
+
+        { // Rendering
             NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
             {
                 nri::ClearDesc clearDescs[2] = {};
@@ -896,9 +902,14 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             }
             NRI.CmdEndRendering(commandBuffer);
         }
-        NRI.CmdEndQuery(commandBuffer, *m_QueryPool, 0);
-        NRI.CmdCopyQueries(commandBuffer, *m_QueryPool, 0, 1, *m_Buffers[READBACK_BUFFER], 0);
 
+        // End query
+        if (m_QueryPool) {
+            NRI.CmdEndQuery(commandBuffer, *m_QueryPool, 0);
+            NRI.CmdCopyQueries(commandBuffer, *m_QueryPool, 0, 1, *m_Buffers[READBACK_BUFFER], 0);
+        }
+
+        // UI
         attachmentsDesc.depthStencil = nullptr;
 
         NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
@@ -907,6 +918,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
         NRI.CmdEndRendering(commandBuffer);
 
+        // Barriers
         textureBarrier.before = textureBarrier.after;
         textureBarrier.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
 

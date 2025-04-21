@@ -596,7 +596,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, textureData.data(), i, bufferData, helper::GetCountOf(bufferData)));
     }
 
-    { // Pipeline statistics
+    // Pipeline statistics
+    if (deviceDesc.features.pipelineStatistics) {
         nri::QueryPoolDesc queryPoolDesc = {};
         queryPoolDesc.queryType = nri::QueryType::PIPELINE_STATISTICS;
         queryPoolDesc.capacity = 1;
@@ -713,8 +714,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         // Test pipeline stats query
-        NRI.CmdResetQueries(commandBuffer, *m_QueryPool, 0, 1);
-        NRI.CmdBeginQuery(commandBuffer, *m_QueryPool, 0);
+        if (m_QueryPool) {
+            NRI.CmdResetQueries(commandBuffer, *m_QueryPool, 0, 1);
+            NRI.CmdBeginQuery(commandBuffer, *m_QueryPool, 0);
+        }
 
         { // Rendering
             nri::AttachmentsDesc attachmentsDesc = {};
@@ -769,8 +772,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         // End query
-        NRI.CmdEndQuery(commandBuffer, *m_QueryPool, 0);
-        NRI.CmdCopyQueries(commandBuffer, *m_QueryPool, 0, 1, *m_Buffers[READBACK_BUFFER], 0);
+        if (m_QueryPool) {
+            NRI.CmdEndQuery(commandBuffer, *m_QueryPool, 0);
+            NRI.CmdCopyQueries(commandBuffer, *m_QueryPool, 0, 1, *m_Buffers[READBACK_BUFFER], 0);
+        }
 
         // Reset VRS (per pipeline)
         if (deviceDesc.tiers.shadingRate) {
