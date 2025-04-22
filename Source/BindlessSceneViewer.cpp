@@ -827,7 +827,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         if (m_UseGPUDrawGeneration) {
             barrierGroupDesc.bufferNum = helper::GetCountOf(bufferBarriers);
-            ;
             barrierGroupDesc.buffers = bufferBarriers;
         }
 
@@ -835,13 +834,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         // Simple culling (actually no culling)
         if (m_UseGPUDrawGeneration) {
-            NRI.CmdSetPipelineLayout(commandBuffer, *m_ComputePipelineLayout);
-            NRI.CmdSetDescriptorSet(commandBuffer, 0, *m_DescriptorSets[BUFFERED_FRAME_MAX_NUM + 1], nullptr);
-
             CullingConstants cullingConstants = {};
             cullingConstants.DrawCount = (uint32_t)m_Scene.instances.size();
-            NRI.CmdSetRootConstants(commandBuffer, 0, &cullingConstants, sizeof(cullingConstants));
 
+            NRI.CmdSetPipelineLayout(commandBuffer, *m_ComputePipelineLayout);
+            NRI.CmdSetDescriptorSet(commandBuffer, 0, *m_DescriptorSets[BUFFERED_FRAME_MAX_NUM + 1], nullptr);
+            NRI.CmdSetRootConstants(commandBuffer, 0, &cullingConstants, sizeof(cullingConstants));
             NRI.CmdSetPipeline(commandBuffer, *m_ComputePipeline);
             NRI.CmdDispatch(commandBuffer, {1, 1, 1});
 
