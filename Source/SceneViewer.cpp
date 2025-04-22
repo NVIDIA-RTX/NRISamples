@@ -706,9 +706,13 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         // Test VRS (per pipeline)
         if (deviceDesc.tiers.shadingRate) {
             nri::ShadingRateDesc shadingRateDesc = {};
-            shadingRateDesc.shadingRate = nri::ShadingRate::FRAGMENT_SIZE_1X1;
-            shadingRateDesc.primitiveCombiner = nri::ShadingRateCombiner::REPLACE;
-            shadingRateDesc.attachmentCombiner = nri::ShadingRateCombiner::REPLACE;
+            if (deviceDesc.tiers.shadingRate >= 2) {
+                shadingRateDesc.shadingRate = nri::ShadingRate::FRAGMENT_SIZE_1X1;
+                shadingRateDesc.primitiveCombiner = nri::ShadingRateCombiner::REPLACE;
+                shadingRateDesc.attachmentCombiner = nri::ShadingRateCombiner::REPLACE;
+            }
+            else
+                shadingRateDesc.shadingRate = nri::ShadingRate::FRAGMENT_SIZE_2X2;
 
             NRI.CmdSetShadingRate(commandBuffer, shadingRateDesc);
         }
@@ -777,7 +781,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.CmdCopyQueries(commandBuffer, *m_QueryPool, 0, 1, *m_Buffers[READBACK_BUFFER], 0);
         }
 
-        // Reset VRS (per pipeline)
+        // Reset VRS
         if (deviceDesc.tiers.shadingRate) {
             nri::ShadingRateDesc shadingRateDesc = {};
             shadingRateDesc.shadingRate = nri::ShadingRate::FRAGMENT_SIZE_1X1;
