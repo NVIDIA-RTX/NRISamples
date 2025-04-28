@@ -105,7 +105,7 @@ Sample::~Sample() {
     for (nri::Memory* memory : m_MemoryAllocations)
         NRI.FreeMemory(*memory);
 
-    DestroyUI(NRI);
+    DestroyUI();
 
     nri::nriDestroyDevice(*m_Device);
 }
@@ -174,7 +174,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             nri::Descriptor* colorAttachment;
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
 
-            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i]};
+            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i], swapChainFormat};
             m_SwapChainBuffers.push_back(backBuffer);
         }
     }
@@ -429,7 +429,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     }
 
     // User interface
-    bool initialized = InitUI(NRI, NRI, *m_Device, swapChainFormat);
+    bool initialized = InitUI(*m_Device);
 
     return initialized;
 }
@@ -446,8 +446,7 @@ void Sample::PrepareFrame(uint32_t) {
     }
     ImGui::End();
 
-    EndUI(NRI, *m_Streamer);
-    NRI.CopyStreamerUpdateRequests(*m_Streamer);
+    EndUI();
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
@@ -466,7 +465,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     }
 
     const uint32_t currentTextureIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
-    BackBuffer& currentBackBuffer = m_SwapChainBuffers[currentTextureIndex];
+    BackBuffer& backBuffer = m_SwapChainBuffers[currentTextureIndex];
 
     ConstantBufferLayout* commonConstants = (ConstantBufferLayout*)NRI.MapBuffer(*m_ConstantBuffer, frame.constantBufferViewOffset, sizeof(ConstantBufferLayout));
     if (commonConstants) {
@@ -485,7 +484,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         // Barriers
         nri::TextureBarrierDesc textureBarriers[2] = {};
 
-        textureBarriers[0].texture = currentBackBuffer.texture;
+        textureBarriers[0].texture = backBuffer.texture;
         textureBarriers[0].after = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION};
 
         textureBarriers[1].texture = m_MultiviewTexture;
@@ -595,12 +594,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             srcRegionDesc.height = h;
             srcRegionDesc.layerOffset = 0;
 
-            NRI.CmdCopyTexture(*commandBuffer, *currentBackBuffer.texture, &dstRegionDesc, *m_MultiviewTexture, &srcRegionDesc);
+            NRI.CmdCopyTexture(*commandBuffer, *backBuffer.texture, &dstRegionDesc, *m_MultiviewTexture, &srcRegionDesc);
 
             dstRegionDesc.x = w2;
             srcRegionDesc.layerOffset = 1;
 
-            NRI.CmdCopyTexture(*commandBuffer, *currentBackBuffer.texture, &dstRegionDesc, *m_MultiviewTexture, &srcRegionDesc);
+            NRI.CmdCopyTexture(*commandBuffer, *backBuffer.texture, &dstRegionDesc, *m_MultiviewTexture, &srcRegionDesc);
         }
 
         { // Barriers
@@ -615,14 +614,14 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         // Singleview
-        attachmentsDesc.colors = &currentBackBuffer.colorAttachment;
+        attachmentsDesc.colors = &backBuffer.colorAttachment;
         attachmentsDesc.viewMask = 0;
 
         NRI.CmdBeginRendering(*commandBuffer, attachmentsDesc);
         {
             helper::Annotation annotation(NRI, *commandBuffer, "UI");
 
-            RenderUI(NRI, NRI, *m_Streamer, *commandBuffer, 1.0f, true);
+            RenderUI(*commandBuffer, *m_Streamer, backBuffer.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(*commandBuffer);
 
@@ -646,6 +645,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
     }
+
+    NRI.StreamerFinalize(*m_Streamer);
 
     // Present
     NRI.QueuePresent(*m_SwapChain);

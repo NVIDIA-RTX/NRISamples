@@ -128,7 +128,7 @@ Sample::~Sample() {
     NRI.DestroySwapChain(*m_SwapChain);
     NRI.DestroyStreamer(*m_Streamer);
 
-    DestroyUI(NRI);
+    DestroyUI();
 
     nri::nriDestroyDevice(*m_Device);
 }
@@ -550,7 +550,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             nri::Descriptor* colorAttachment;
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
 
-            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i]};
+            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i], swapChainFormat};
             m_SwapChainBuffers.push_back(backBuffer);
         }
     }
@@ -729,7 +729,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     m_Scene.UnloadGeometryData();
     m_Scene.UnloadTextureData();
 
-    return InitUI(NRI, NRI, *m_Device, swapChainFormat);
+    return InitUI(*m_Device);
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex) {
@@ -754,8 +754,7 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
     }
     NRI.UnmapBuffer(*m_Buffers[READBACK_BUFFER]);
 
-    EndUI(NRI, *m_Streamer);
-    NRI.CopyStreamerUpdateRequests(*m_Streamer);
+    EndUI();
 
     CameraDesc desc = {};
     desc.aspectRatio = float(GetWindowResolution().x) / float(GetWindowResolution().y);
@@ -779,7 +778,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     }
 
     const uint32_t currentTextureIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
-    BackBuffer& currentBackBuffer = m_SwapChainBuffers[currentTextureIndex];
+    BackBuffer& backBuffer = m_SwapChainBuffers[currentTextureIndex];
 
     // Update constants
     const uint64_t rangeOffset = m_Frames[bufferedFrameIndex].globalConstantBufferViewOffsets;
@@ -799,12 +798,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         nri::AttachmentsDesc attachmentsDesc = {};
         attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &currentBackBuffer.colorAttachment;
+        attachmentsDesc.colors = &backBuffer.colorAttachment;
         attachmentsDesc.depthStencil = m_DepthAttachment;
 
         // Barriers
         nri::TextureBarrierDesc textureBarrier = {};
-        textureBarrier.texture = currentBackBuffer.texture;
+        textureBarrier.texture = backBuffer.texture;
         textureBarrier.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
 
         nri::BufferBarrierDesc bufferBarriers[2] = {};
@@ -912,7 +911,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
         {
-            RenderUI(NRI, NRI, *m_Streamer, commandBuffer, 1.0f, true);
+            RenderUI(commandBuffer, *m_Streamer, backBuffer.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(commandBuffer);
 
@@ -932,6 +931,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
     }
+
+    NRI.StreamerFinalize(*m_Streamer);
 
     // Present
     NRI.QueuePresent(*m_SwapChain);

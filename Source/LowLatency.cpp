@@ -86,7 +86,7 @@ Sample::~Sample() {
 
     NRI.FreeMemory(*m_Memory);
 
-    DestroyUI(NRI);
+    DestroyUI();
 
     nri::nriDestroyDevice(*m_Device);
 }
@@ -136,7 +136,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_FrameFence));
 
     // Swap chain
-    nri::Format swapChainFormat;
     {
         nri::SwapChainDesc swapChainDesc = {};
         swapChainDesc.window = GetWindow();
@@ -154,7 +153,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
         uint32_t swapChainTextureNum;
         nri::Texture* const* swapChainTextures = NRI.GetSwapChainTextures(*m_SwapChain, swapChainTextureNum);
-        swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
+        nri::Format swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
 
         for (uint32_t i = 0; i < swapChainTextureNum; i++) {
             nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
@@ -162,7 +161,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             nri::Descriptor* colorAttachment;
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
 
-            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i]};
+            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i], swapChainFormat};
             m_SwapChainBuffers.push_back(backBuffer);
         }
     }
@@ -225,7 +224,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*frame.commandAllocator, frame.commandBuffer));
     }
 
-    return InitUI(NRI, NRI, *m_Device, swapChainFormat);
+    return InitUI(*m_Device);
 }
 
 void Sample::LatencySleep(uint32_t frameIndex) {
@@ -323,7 +322,7 @@ void Sample::PrepareFrame(uint32_t) {
     }
     ImGui::End();
 
-    EndUI(NRI, *m_Streamer);
+    EndUI();
 
     if (enableLowLatencyPrev != m_EnableLowLatency) {
         nri::LatencySleepMode sleepMode = {};
@@ -357,8 +356,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.ResetCommandAllocator(*frame.commandAllocator);
         }
     }
-
-    NRI.CopyStreamerUpdateRequests(*m_Streamer); // TODO: UI flickers once, if placed like in other samples
 
     // Record
     nri::CommandBuffer& commandBuffer = *frame.commandBuffer;
@@ -415,7 +412,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             NRI.CmdClearAttachments(commandBuffer, &clearDesc, 1, nullptr, 0);
 
-            RenderUI(NRI, NRI, *m_Streamer, commandBuffer, 1.0f, true);
+            RenderUI(commandBuffer, *m_Streamer, backBuffer.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(commandBuffer);
 
@@ -454,6 +451,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         } else
             NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
     }
+
+    NRI.StreamerFinalize(*m_Streamer);
 
     // Present
     NRI.QueuePresent(*m_SwapChain);

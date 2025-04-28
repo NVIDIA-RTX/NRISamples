@@ -175,7 +175,7 @@ Sample::~Sample() {
     for (nri::Memory* memory : m_MemoryAllocations)
         NRI.FreeMemory(*memory);
 
-    DestroyUI(NRI);
+    DestroyUI();
 
     nri::nriDestroyDevice(*m_Device);
 
@@ -433,7 +433,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             nri::Descriptor* colorAttachment;
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
 
-            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i]};
+            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i], swapChainFormat};
             m_SwapChainBuffers.push_back(backBuffer);
         }
     }
@@ -671,7 +671,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     }
 
     // User interface
-    bool initialized = InitUI(NRI, NRI, *m_Device, swapChainFormat);
+    bool initialized = InitUI(*m_Device);
 
     return initialized;
 }
@@ -688,8 +688,7 @@ void Sample::PrepareFrame(uint32_t) {
     }
     ImGui::End();
 
-    EndUI(NRI, *m_Streamer);
-    NRI.CopyStreamerUpdateRequests(*m_Streamer);
+    EndUI();
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
@@ -717,10 +716,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     }
 
     const uint32_t currentTextureIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
-    BackBuffer& currentBackBuffer = m_SwapChainBuffers[currentTextureIndex];
+    BackBuffer& backBuffer = m_SwapChainBuffers[currentTextureIndex];
 
     nri::TextureBarrierDesc textureBarriers = {};
-    textureBarriers.texture = currentBackBuffer.texture;
+    textureBarriers.texture = backBuffer.texture;
     textureBarriers.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
     textureBarriers.layerNum = 1;
     textureBarriers.mipNum = 1;
@@ -736,7 +735,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         nri::AttachmentsDesc attachmentsDesc = {};
         attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &currentBackBuffer.colorAttachment;
+        attachmentsDesc.colors = &backBuffer.colorAttachment;
 
         NRI.CmdBeginRendering(*commandBuffer, attachmentsDesc);
         {
@@ -790,7 +789,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             {
                 helper::Annotation annotation(NRI, *commandBuffer, "UI");
 
-                RenderUI(NRI, NRI, *m_Streamer, *commandBuffer, 1.0f, true);
+                RenderUI(*commandBuffer, *m_Streamer, backBuffer.attachmentFormat, 1.0f, true);
             }
         }
         NRI.CmdEndRendering(*commandBuffer);
@@ -809,6 +808,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
     }
+
+    NRI.StreamerFinalize(*m_Streamer);
 
     // Present
     NRI.QueuePresent(*m_SwapChain);

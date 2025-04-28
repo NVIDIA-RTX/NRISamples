@@ -165,7 +165,7 @@ Sample::~Sample() {
     for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
         NRI.FreeMemory(*m_MemoryAllocations[i]);
 
-    DestroyUI(NRI);
+    DestroyUI();
 
     nri::nriDestroyDevice(*m_Device);
 }
@@ -243,7 +243,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             m_ThreadContexts[i].thread = std::thread(&Sample::ThreadEntryPoint, this, i);
     }
 
-    return InitUI(NRI, NRI, *m_Device, swapChainFormat);
+    return InitUI(*m_Device);
 }
 
 void Sample::PrepareFrame(uint32_t) {
@@ -282,8 +282,7 @@ void Sample::PrepareFrame(uint32_t) {
     }
     ImGui::End();
 
-    EndUI(NRI, *m_Streamer);
-    NRI.CopyStreamerUpdateRequests(*m_Streamer);
+    EndUI();
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
@@ -362,7 +361,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
             {
-                RenderUI(NRI, NRI, *m_Streamer, commandBuffer, 1.0f, true);
+                RenderUI(commandBuffer, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
             }
             NRI.CmdEndRendering(commandBuffer);
 
@@ -398,6 +397,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         m_SubmitTime = m_Timer.GetTimeStamp() - m_SubmitTime;
     }
+
+    NRI.StreamerFinalize(*m_Streamer);
 
     // Present
     NRI.QueuePresent(*m_SwapChain);
@@ -478,7 +479,7 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex) {
 
                 NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
                 {
-                    RenderUI(NRI, NRI, *m_Streamer, commandBuffer, 1.0f, true);
+                    RenderUI(commandBuffer, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
                 }
                 NRI.CmdEndRendering(commandBuffer);
             }
@@ -520,14 +521,15 @@ void Sample::CreateSwapChain(nri::Format& swapChainFormat) {
     nri::Texture* const* swapChainTextures = NRI.GetSwapChainTextures(*m_SwapChain, swapChainTextureNum);
     swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
 
+    m_SwapChainBuffers.clear();
     for (uint32_t i = 0; i < swapChainTextureNum; i++) {
-        m_SwapChainBuffers.emplace_back();
-        BackBuffer& backBuffer = m_SwapChainBuffers.back();
+        nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
 
-        backBuffer.texture = swapChainTextures[i];
+        nri::Descriptor* colorAttachment;
+        NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
 
-        nri::Texture2DViewDesc textureViewDesc = {backBuffer.texture, nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
-        NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, backBuffer.colorAttachment));
+        const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i], swapChainFormat};
+        m_SwapChainBuffers.push_back(backBuffer);
     }
 }
 
@@ -652,7 +654,7 @@ void Sample::CreateDepthTexture() {
     textureDesc.type = nri::TextureType::TEXTURE_2D;
     textureDesc.usage = nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT;
     textureDesc.format = m_DepthFormat;
-    textureDesc.width =  (uint16_t)GetWindowResolution().x;
+    textureDesc.width = (uint16_t)GetWindowResolution().x;
     textureDesc.height = (uint16_t)GetWindowResolution().y;
     textureDesc.mipNum = 1;
 

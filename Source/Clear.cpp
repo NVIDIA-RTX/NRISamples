@@ -84,7 +84,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_FrameFence));
 
     // Swap chain
-    nri::Format swapChainFormat;
     {
         nri::SwapChainDesc swapChainDesc = {};
         swapChainDesc.window = GetWindow();
@@ -98,7 +97,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
         uint32_t swapChainTextureNum;
         nri::Texture* const* swapChainTextures = NRI.GetSwapChainTextures(*m_SwapChain, swapChainTextureNum);
-        swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
+        nri::Format swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
 
         for (uint32_t i = 0; i < swapChainTextureNum; i++) {
             nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
@@ -106,7 +105,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             nri::Descriptor* colorAttachment;
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
 
-            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i]};
+            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i], swapChainFormat};
             m_SwapChainBuffers.push_back(backBuffer);
         }
     }

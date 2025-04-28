@@ -52,12 +52,11 @@ private:
     nri::Texture* m_Texture = nullptr;
     nri::DescriptorSet* m_DescriptorSet = nullptr;
     nri::Descriptor* m_Descriptor = nullptr;
-
     std::array<Frame, BUFFERED_FRAME_MAX_NUM> m_Frames = {};
     std::vector<BackBuffer> m_SwapChainBuffers;
     std::vector<nri::Memory*> m_MemoryAllocations;
-
-    bool m_IsAsyncMode = true;
+    bool m_IsAsyncMode = false;
+    bool m_HasComputeQueue = false;
 };
 
 Sample::~Sample() {
@@ -91,7 +90,7 @@ Sample::~Sample() {
     for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
         NRI.FreeMemory(*m_MemoryAllocations[i]);
 
-    DestroyUI(NRI);
+    DestroyUI();
 
     nri::nriDestroyDevice(*m_Device);
 }
@@ -141,12 +140,16 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     streamerDesc.frameInFlightNum = BUFFERED_FRAME_MAX_NUM;
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
-    // Command queue
+    // Command queues
     NRI_ABORT_ON_FAILURE(NRI.GetQueue(*m_Device, nri::QueueType::GRAPHICS, 0, m_GraphicsQueue));
     NRI.SetDebugName(m_GraphicsQueue, "GraphicsQueue");
 
-    NRI_ABORT_ON_FAILURE(NRI.GetQueue(*m_Device, nri::QueueType::COMPUTE, 0, m_ComputeQueue));
-    NRI.SetDebugName(m_ComputeQueue, "ComputeQueue");
+    NRI.GetQueue(*m_Device, nri::QueueType::COMPUTE, 0, m_ComputeQueue);
+    if (m_ComputeQueue)
+        NRI.SetDebugName(m_ComputeQueue, "ComputeQueue");
+
+    m_HasComputeQueue = m_ComputeQueue && graphicsAPI != nri::GraphicsAPI::D3D11;
+    m_IsAsyncMode = m_HasComputeQueue;
 
     // Fences
     NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_ComputeFence));
@@ -175,7 +178,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             nri::Descriptor* colorAttachment;
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
 
-            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i]};
+            const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i], swapChainFormat};
             m_SwapChainBuffers.push_back(backBuffer);
         }
     }
@@ -349,7 +352,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, &textureData, 1, &bufferData, 1));
     }
 
-    return InitUI(NRI, NRI, *m_Device, swapChainFormat);
+    return InitUI(*m_Device);
 }
 
 void Sample::PrepareFrame(uint32_t) {
@@ -360,16 +363,13 @@ void Sample::PrepareFrame(uint32_t) {
     ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
     {
         ImGui::Text("Left - graphics, Right - compute");
+        ImGui::BeginDisabled(!m_HasComputeQueue);
         ImGui::Checkbox("Use ASYNC compute", &m_IsAsyncMode);
+        ImGui::EndDisabled();
     }
     ImGui::End();
 
-    EndUI(NRI, *m_Streamer);
-    NRI.CopyStreamerUpdateRequests(*m_Streamer);
-
-    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-    if (deviceDesc.graphicsAPI == nri::GraphicsAPI::D3D11)
-        m_IsAsyncMode = false;
+    EndUI();
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
@@ -460,7 +460,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             NRI.CmdDraw(commandBuffer1, {VERTEX_NUM, 1, 0, 0});
 
-            RenderUI(NRI, NRI, *m_Streamer, commandBuffer1, 1.0f, true);
+            RenderUI(commandBuffer1, *m_Streamer, backBuffer.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(commandBuffer1);
     }
@@ -554,6 +554,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         NRI.QueueSubmit(*m_GraphicsQueue, allTasks);
     }
+
+    NRI.StreamerFinalize(*m_Streamer);
 
     // Present
     NRI.QueuePresent(*m_SwapChain);
