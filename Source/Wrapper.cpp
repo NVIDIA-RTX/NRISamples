@@ -107,6 +107,7 @@ public:
     ~Sample();
 
     bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
 
@@ -676,18 +677,28 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     return initialized;
 }
 
+void Sample::LatencySleep(uint32_t frameIndex) {
+    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
+    const Frame& frame = m_Frames[bufferedFrameIndex];
+
+    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
+        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
+        NRI.ResetCommandAllocator(*frame.commandAllocator);
+    }
+}
+
 void Sample::PrepareFrame(uint32_t) {
     BeginUI();
-
-    ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
-    ImGui::SetNextWindowSize(ImVec2(0, 0));
-    ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
     {
-        ImGui::SliderFloat("Transparency", &m_Transparency, 0.0f, 1.0f);
-        ImGui::SliderFloat("Scale", &m_Scale, 0.75f, 1.25f);
+        ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
+        ImGui::SetNextWindowSize(ImVec2(0, 0));
+        ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
+        {
+            ImGui::SliderFloat("Transparency", &m_Transparency, 0.0f, 1.0f);
+            ImGui::SliderFloat("Scale", &m_Scale, 0.75f, 1.25f);
+        }
+        ImGui::End();
     }
-    ImGui::End();
-
     EndUI();
 }
 
@@ -700,10 +711,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
     const Frame& frame = m_Frames[bufferedFrameIndex];
 
-    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
-        NRI.ResetCommandAllocator(*frame.commandAllocator);
-    }
+    const uint32_t currentTextureIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
+    BackBuffer& backBuffer = m_SwapChainBuffers[currentTextureIndex];
 
     ConstantBufferLayout* commonConstants = (ConstantBufferLayout*)NRI.MapBuffer(*m_ConstantBuffer, frame.constantBufferViewOffset, sizeof(ConstantBufferLayout));
     if (commonConstants) {
@@ -714,9 +723,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         NRI.UnmapBuffer(*m_ConstantBuffer);
     }
-
-    const uint32_t currentTextureIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
-    BackBuffer& backBuffer = m_SwapChainBuffers[currentTextureIndex];
 
     nri::TextureBarrierDesc textureBarriers = {};
     textureBarriers.texture = backBuffer.texture;

@@ -25,6 +25,7 @@ int main(int argc, char** argv) {
     NriGraphicsAPI graphicsAPI = NriGraphicsAPI_D3D11;
     bool debugAPI = false;
     bool debugNRI = false;
+    uint32_t adapterIndex = 0;
     for (int i = 0; i < argc; i++) {
         if (!strcmp(argv[i], "--api=D3D12"))
             graphicsAPI = NriGraphicsAPI_D3D12;
@@ -34,6 +35,8 @@ int main(int argc, char** argv) {
             debugAPI = true;
         else if (!strcmp(argv[i], "--debugNRI"))
             debugNRI = true;
+        else if(!strcmp(argv[i], "--adapter=1"))
+            adapterIndex = 1;
     }
 
     // Create device
@@ -49,7 +52,7 @@ int main(int argc, char** argv) {
                 .graphicsAPI = graphicsAPI,
                 .enableGraphicsAPIValidation = debugAPI,
                 .enableNRIValidation = debugNRI,
-                .adapterDesc = &adapterDescs[0],
+                .adapterDesc = &adapterDescs[min(adapterIndex, adapterDescsNum - 1)],
             },
             &device));
     }

@@ -51,6 +51,7 @@ public:
 
 private:
     bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
 
@@ -188,9 +189,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     m_Boxes.resize(std::max(BOX_NUM, m_ThreadNum));
     m_BoxesPerThread = (uint32_t)m_Boxes.size() / m_ThreadNum;
 
-    nri::AdapterDesc bestAdapterDesc = {};
-    uint32_t adapterDescsNum = 1;
-    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(&bestAdapterDesc, adapterDescsNum));
+    // Adapters
+    nri::AdapterDesc adapterDesc[2] = {};
+    uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
+    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(adapterDesc, adapterDescsNum));
 
     // Device
     nri::DeviceCreationDesc deviceCreationDesc = {};
@@ -199,7 +201,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
     deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
-    deviceCreationDesc.adapterDesc = &bestAdapterDesc;
+    deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
@@ -246,42 +248,60 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     return InitUI(*m_Device);
 }
 
+void Sample::LatencySleep(uint32_t frameIndex) {
+    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
+    ThreadContext& context0 = m_ThreadContexts[0];
+
+    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
+        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
+        NRI.ResetCommandAllocator(*context0.commandAllocators[bufferedFrameIndex]);
+    }
+
+    if (m_IsMultithreadingEnabled) {
+        for (uint32_t i = 1; i < m_ThreadNum; i++) {
+            ThreadContext& context = m_ThreadContexts[i];
+            if (frameIndex >= BUFFERED_FRAME_MAX_NUM)
+                NRI.ResetCommandAllocator(*context.commandAllocators[bufferedFrameIndex]);
+        }
+    }
+}
+
 void Sample::PrepareFrame(uint32_t) {
     BeginUI();
-
-    ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Always);
-    ImGui::SetNextWindowSize(ImVec2(0, 0));
-    ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
     {
-        ImGui::Text("Box number: %u", (uint32_t)m_Boxes.size());
-        ImGui::Text("Draw calls per pipeline: %u", DRAW_CALLS_PER_PIPELINE);
+        ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Always);
+        ImGui::SetNextWindowSize(ImVec2(0, 0));
+        ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
+        {
+            ImGui::Text("Box number: %u", (uint32_t)m_Boxes.size());
+            ImGui::Text("Draw calls per pipeline: %u", DRAW_CALLS_PER_PIPELINE);
 
-        ImGui::Text("Command buffer recording: %.2f ms", m_RecordingTime);
-        ImGui::Text("Command buffer submit: %.2f ms", m_SubmitTime);
+            ImGui::Text("Command buffer recording: %.2f ms", m_RecordingTime);
+            ImGui::Text("Command buffer submit: %.2f ms", m_SubmitTime);
 
-        bool isMultithreadingEnabled = m_IsMultithreadingEnabled;
-        ImGui::Checkbox("Multithreading", &isMultithreadingEnabled);
+            bool isMultithreadingEnabled = m_IsMultithreadingEnabled;
+            ImGui::Checkbox("Multithreading", &isMultithreadingEnabled);
 
-        if (isMultithreadingEnabled != m_IsMultithreadingEnabled) {
-            m_IsMultithreadingEnabled = isMultithreadingEnabled;
+            if (isMultithreadingEnabled != m_IsMultithreadingEnabled) {
+                m_IsMultithreadingEnabled = isMultithreadingEnabled;
 
-            if (m_IsMultithreadingEnabled) {
-                for (uint32_t i = 1; i < m_ThreadNum; i++) {
-                    ThreadContext& context = m_ThreadContexts[i];
-                    context.control.store(HALT);
-                    context.thread = std::thread(&Sample::ThreadEntryPoint, this, i);
-                }
-            } else {
-                for (size_t i = 1; i < m_ThreadNum; i++) {
-                    ThreadContext& context = m_ThreadContexts[i];
-                    context.control.store(STOP);
-                    context.thread.join();
+                if (m_IsMultithreadingEnabled) {
+                    for (uint32_t i = 1; i < m_ThreadNum; i++) {
+                        ThreadContext& context = m_ThreadContexts[i];
+                        context.control.store(HALT);
+                        context.thread = std::thread(&Sample::ThreadEntryPoint, this, i);
+                    }
+                } else {
+                    for (size_t i = 1; i < m_ThreadNum; i++) {
+                        ThreadContext& context = m_ThreadContexts[i];
+                        context.control.store(STOP);
+                        context.thread.join();
+                    }
                 }
             }
         }
+        ImGui::End();
     }
-    ImGui::End();
-
     EndUI();
 }
 
@@ -293,23 +313,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     m_RecordingTime = m_Timer.GetTimeStamp();
 
-    const uint32_t threadIndex0 = 0;
+    constexpr uint32_t threadIndex0 = 0;
     ThreadContext& context0 = m_ThreadContexts[threadIndex0];
 
     const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
-    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
-        NRI.ResetCommandAllocator(*context0.commandAllocators[bufferedFrameIndex]);
-    }
 
     if (m_IsMultithreadingEnabled) {
         m_ReadyCount.store(0, std::memory_order_seq_cst);
 
         for (uint32_t i = 1; i < m_ThreadNum; i++) {
             ThreadContext& context = m_ThreadContexts[i];
-            if (frameIndex >= BUFFERED_FRAME_MAX_NUM)
-                NRI.ResetCommandAllocator(*context.commandAllocators[bufferedFrameIndex]);
-
             context.control.store(GO, std::memory_order_relaxed);
         }
     }
@@ -482,9 +495,7 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex) {
                     RenderUI(commandBuffer, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
                 }
                 NRI.CmdEndRendering(commandBuffer);
-            }
 
-            if (threadIndex == m_ThreadNum - 1) {
                 nri::TextureBarrierDesc backBufferTransition = {};
                 backBufferTransition.texture = m_BackBuffer->texture;
                 backBufferTransition.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};

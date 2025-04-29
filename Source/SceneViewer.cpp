@@ -40,6 +40,7 @@ public:
     ~Sample();
 
     bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
 
@@ -109,9 +110,10 @@ Sample::~Sample() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
-    nri::AdapterDesc bestAdapterDesc = {};
-    uint32_t adapterDescsNum = 1;
-    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(&bestAdapterDesc, adapterDescsNum));
+    // Adapters
+    nri::AdapterDesc adapterDesc[2] = {};
+    uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
+    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(adapterDesc, adapterDescsNum));
 
     // Device
     nri::DeviceCreationDesc deviceCreationDesc = {};
@@ -120,7 +122,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
     deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
-    deviceCreationDesc.adapterDesc = &bestAdapterDesc;
+    deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
@@ -232,7 +234,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         rasterizationDesc.fillMode = nri::FillMode::SOLID;
         rasterizationDesc.cullMode = nri::CullMode::NONE;
         rasterizationDesc.frontCounterClockwise = true;
-        rasterizationDesc.shadingRate = true;
+        rasterizationDesc.shadingRate = deviceDesc.tiers.shadingRate != 0;
 
         nri::MultisampleDesc multisampleDesc = {};
         multisampleDesc.sampleNum = 1;
@@ -379,7 +381,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         m_Buffers.push_back(buffer);
 
         // READBACK_BUFFER
-        bufferDesc.size = sizeof(nri::PipelineStatisticsDesc) * BUFFERED_FRAME_MAX_NUM;
+        bufferDesc.size = sizeof(nri::PipelineStatisticsDesc);
         bufferDesc.usage = nri::BufferUsageBits::NONE;
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, buffer));
         m_Buffers.push_back(buffer);
@@ -600,7 +602,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     if (deviceDesc.features.pipelineStatistics) {
         nri::QueryPoolDesc queryPoolDesc = {};
         queryPoolDesc.queryType = nri::QueryType::PIPELINE_STATISTICS;
-        queryPoolDesc.capacity = 1;
+        queryPoolDesc.capacity = BUFFERED_FRAME_MAX_NUM;
 
         NRI_ABORT_ON_FAILURE(NRI.CreateQueryPool(*m_Device, queryPoolDesc, m_QueryPool));
     }
@@ -614,12 +616,21 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     return InitUI(*m_Device);
 }
 
+void Sample::LatencySleep(uint32_t frameIndex) {
+    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
+    const Frame& frame = m_Frames[bufferedFrameIndex];
+
+    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
+        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
+        NRI.ResetCommandAllocator(*frame.commandAllocator);
+    }
+}
+
 void Sample::PrepareFrame(uint32_t frameIndex) {
     BeginUI();
-
-    // TODO: delay is not implemented
-    nri::PipelineStatisticsDesc* pipelineStats = (nri::PipelineStatisticsDesc*)NRI.MapBuffer(*m_Buffers[READBACK_BUFFER], 0, sizeof(nri::PipelineStatisticsDesc));
     {
+        nri::PipelineStatisticsDesc* pipelineStats = (nri::PipelineStatisticsDesc*)NRI.MapBuffer(*m_Buffers[READBACK_BUFFER], 0, sizeof(nri::PipelineStatisticsDesc));
+
         ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
         ImGui::SetNextWindowSize(ImVec2(0, 0));
         ImGui::Begin("Stats");
@@ -632,9 +643,9 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
             ImGui::Text("Fragment shader invocations  : %llu", pipelineStats->fragmentShaderInvocationNum);
         }
         ImGui::End();
-    }
-    NRI.UnmapBuffer(*m_Buffers[READBACK_BUFFER]);
 
+        NRI.UnmapBuffer(*m_Buffers[READBACK_BUFFER]);
+    }
     EndUI();
 
     CameraDesc desc = {};
@@ -649,15 +660,11 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
 
 void Sample::RenderFrame(uint32_t frameIndex) {
     const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
+    const uint32_t nextBufferedFrameIndex = (frameIndex + 1) % BUFFERED_FRAME_MAX_NUM;
     const Frame& frame = m_Frames[bufferedFrameIndex];
     const uint32_t windowWidth = GetWindowResolution().x;
     const uint32_t windowHeight = GetWindowResolution().y;
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-
-    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
-        NRI.ResetCommandAllocator(*frame.commandAllocator);
-    }
 
     const uint32_t currentTextureIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
     BackBuffer& backBuffer = m_SwapChainBuffers[currentTextureIndex];
@@ -709,8 +716,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 shadingRateDesc.shadingRate = nri::ShadingRate::FRAGMENT_SIZE_1X1;
                 shadingRateDesc.primitiveCombiner = nri::ShadingRateCombiner::REPLACE;
                 shadingRateDesc.attachmentCombiner = nri::ShadingRateCombiner::REPLACE;
-            }
-            else
+            } else
                 shadingRateDesc.shadingRate = nri::ShadingRate::FRAGMENT_SIZE_2X2;
 
             NRI.CmdSetShadingRate(commandBuffer, shadingRateDesc);
@@ -718,8 +724,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         // Test pipeline stats query
         if (m_QueryPool) {
-            NRI.CmdResetQueries(commandBuffer, *m_QueryPool, 0, 1);
-            NRI.CmdBeginQuery(commandBuffer, *m_QueryPool, 0);
+            NRI.CmdResetQueries(commandBuffer, *m_QueryPool, bufferedFrameIndex, 1);
+            NRI.CmdBeginQuery(commandBuffer, *m_QueryPool, bufferedFrameIndex);
         }
 
         { // Rendering
@@ -776,8 +782,9 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         // End query
         if (m_QueryPool) {
-            NRI.CmdEndQuery(commandBuffer, *m_QueryPool, 0);
-            NRI.CmdCopyQueries(commandBuffer, *m_QueryPool, 0, 1, *m_Buffers[READBACK_BUFFER], 0);
+            NRI.CmdEndQuery(commandBuffer, *m_QueryPool, bufferedFrameIndex);
+            if (frameIndex >= BUFFERED_FRAME_MAX_NUM)
+                NRI.CmdCopyQueries(commandBuffer, *m_QueryPool, nextBufferedFrameIndex, 1, *m_Buffers[READBACK_BUFFER], 0);
         }
 
         // Reset VRS

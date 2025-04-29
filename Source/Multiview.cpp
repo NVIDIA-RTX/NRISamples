@@ -45,6 +45,7 @@ public:
     ~Sample();
 
     bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
 
@@ -111,9 +112,10 @@ Sample::~Sample() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
-    nri::AdapterDesc bestAdapterDesc = {};
-    uint32_t adapterDescsNum = 1;
-    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(&bestAdapterDesc, adapterDescsNum));
+    // Adapters
+    nri::AdapterDesc adapterDesc[2] = {};
+    uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
+    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(adapterDesc, adapterDescsNum));
 
     // Device
     nri::DeviceCreationDesc deviceCreationDesc = {};
@@ -122,7 +124,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
     deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
-    deviceCreationDesc.adapterDesc = &bestAdapterDesc;
+    deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
@@ -434,18 +436,28 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     return initialized;
 }
 
+void Sample::LatencySleep(uint32_t frameIndex) {
+    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
+    const Frame& frame = m_Frames[bufferedFrameIndex];
+
+    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
+        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
+        NRI.ResetCommandAllocator(*frame.commandAllocator);
+    }
+}
+
 void Sample::PrepareFrame(uint32_t) {
     BeginUI();
-
-    ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
-    ImGui::SetNextWindowSize(ImVec2(0, 0));
-    ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
     {
-        ImGui::SliderFloat("Transparency", &m_Transparency, 0.0f, 1.0f);
-        ImGui::SliderFloat("Scale", &m_Scale, 0.75f, 1.25f);
+        ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
+        ImGui::SetNextWindowSize(ImVec2(0, 0));
+        ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
+        {
+            ImGui::SliderFloat("Transparency", &m_Transparency, 0.0f, 1.0f);
+            ImGui::SliderFloat("Scale", &m_Scale, 0.75f, 1.25f);
+        }
+        ImGui::End();
     }
-    ImGui::End();
-
     EndUI();
 }
 
@@ -458,11 +470,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
     const Frame& frame = m_Frames[bufferedFrameIndex];
-
-    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
-        NRI.ResetCommandAllocator(*frame.commandAllocator);
-    }
 
     const uint32_t currentTextureIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
     BackBuffer& backBuffer = m_SwapChainBuffers[currentTextureIndex];
@@ -554,13 +561,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 }
 
                 {
-                    nri::Rect scissor =
-                    {
+                    nri::Rect scissor = {
                         static_cast<int16_t>(0 + w4),
                         static_cast<int16_t>(h2),
                         static_cast<Nri(nri::Dim_t)>(w4),
-                        static_cast<Nri(nri::Dim_t)>(h2)
-                    };
+                        static_cast<Nri(nri::Dim_t)>(h2)};
                     NRI.CmdSetScissors(*commandBuffer, &scissor, 1);
 
                     NRI.CmdDraw(*commandBuffer, {3, 1, 0, 0});

@@ -92,9 +92,10 @@ Sample::~Sample() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
-    nri::AdapterDesc bestAdapterDesc = {};
-    uint32_t adapterDescsNum = 1;
-    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(&bestAdapterDesc, adapterDescsNum));
+    // Adapters
+    nri::AdapterDesc adapterDesc[2] = {};
+    uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
+    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(adapterDesc, adapterDescsNum));
 
     // Device
     nri::DeviceCreationDesc deviceCreationDesc = {};
@@ -103,7 +104,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
     deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
-    deviceCreationDesc.adapterDesc = &bestAdapterDesc;
+    deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 

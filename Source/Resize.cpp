@@ -23,8 +23,10 @@ public:
     ~Sample();
 
     bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
+
     void ResizeSwapChain();
 
 private:
@@ -69,9 +71,10 @@ Sample::~Sample() {
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     m_PrevWindowResolution = m_WindowResolution;
 
-    nri::AdapterDesc bestAdapterDesc = {};
-    uint32_t adapterDescsNum = 1;
-    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(&bestAdapterDesc, adapterDescsNum));
+    // Adapters
+    nri::AdapterDesc adapterDesc[2] = {};
+    uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
+    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(adapterDesc, adapterDescsNum));
 
     // Device
     nri::DeviceCreationDesc deviceCreationDesc = {};
@@ -80,7 +83,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
     deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
-    deviceCreationDesc.adapterDesc = &bestAdapterDesc;
+    deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
@@ -137,6 +140,16 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     }
 
     return InitUI(*m_Device);
+}
+
+void Sample::LatencySleep(uint32_t frameIndex) {
+    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
+    const Frame& frame = m_Frames[bufferedFrameIndex];
+
+    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
+        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
+        NRI.ResetCommandAllocator(*frame.commandAllocator);
+    }
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex) {
@@ -235,11 +248,6 @@ void Sample::ResizeSwapChain() {
 void Sample::RenderFrame(uint32_t frameIndex) {
     const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
     const Frame& frame = m_Frames[bufferedFrameIndex];
-
-    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
-        NRI.ResetCommandAllocator(*frame.commandAllocator);
-    }
 
     const uint32_t backBufferIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
     BackBuffer& backBuffer = m_SwapChainBuffers[backBufferIndex];

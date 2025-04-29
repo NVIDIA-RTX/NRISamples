@@ -31,6 +31,7 @@ public:
     ~Sample();
 
     bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
 
@@ -96,14 +97,10 @@ Sample::~Sample() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
-    nri::AdapterDesc bestAdapterDesc = {};
-    uint32_t adapterDescsNum = 1;
-    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(&bestAdapterDesc, adapterDescsNum));
-
-    if (bestAdapterDesc.queueNum[(uint32_t)nri::QueueType::COMPUTE] == 0) {
-        printf("COMPUTE queue is not supported by the device....");
-        return 1;
-    }
+    // Adapters
+    nri::AdapterDesc adapterDesc[2] = {};
+    uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
+    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(adapterDesc, adapterDescsNum));
 
     // Device
     nri::QueueFamilyDesc queueFamilies[2] = {};
@@ -120,7 +117,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
     deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
-    deviceCreationDesc.adapterDesc = &bestAdapterDesc;
+    deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
@@ -189,7 +186,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         for (size_t i = 0; i < frame.commandBufferGraphics.size(); i++)
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*frame.commandAllocatorGraphics, frame.commandBufferGraphics[i]));
 
-        if (deviceDesc.graphicsAPI != nri::GraphicsAPI::D3D11) {
+        if (m_IsAsyncMode) {
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_ComputeQueue, frame.commandAllocatorCompute));
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*frame.commandAllocatorCompute, frame.commandBufferCompute));
         }
@@ -355,20 +352,33 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     return InitUI(*m_Device);
 }
 
+void Sample::LatencySleep(uint32_t frameIndex) {
+    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
+    const Frame& frame = m_Frames[bufferedFrameIndex];
+
+    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
+        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
+        NRI.ResetCommandAllocator(*frame.commandAllocatorGraphics);
+
+        if (m_IsAsyncMode)
+            NRI.ResetCommandAllocator(*frame.commandAllocatorCompute);
+    }
+}
+
 void Sample::PrepareFrame(uint32_t) {
     BeginUI();
-
-    ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
-    ImGui::SetNextWindowSize(ImVec2(0, 0));
-    ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
     {
-        ImGui::Text("Left - graphics, Right - compute");
-        ImGui::BeginDisabled(!m_HasComputeQueue);
-        ImGui::Checkbox("Use ASYNC compute", &m_IsAsyncMode);
-        ImGui::EndDisabled();
+        ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
+        ImGui::SetNextWindowSize(ImVec2(0, 0));
+        ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
+        {
+            ImGui::Text("Left - graphics, Right - compute");
+            ImGui::BeginDisabled(!m_HasComputeQueue);
+            ImGui::Checkbox("Use ASYNC compute", &m_IsAsyncMode);
+            ImGui::EndDisabled();
+        }
+        ImGui::End();
     }
-    ImGui::End();
-
     EndUI();
 }
 
@@ -377,18 +387,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     const uint32_t windowHeight = GetWindowResolution().y;
     const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
     const Frame& frame = m_Frames[bufferedFrameIndex];
-    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-
-    nri::CommandAllocator& commandAllocatorGraphics = *frame.commandAllocatorGraphics;
-    nri::CommandAllocator& commandAllocatorCompute = *frame.commandAllocatorCompute;
-
-    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
-        NRI.ResetCommandAllocator(commandAllocatorGraphics);
-
-        if (deviceDesc.graphicsAPI != nri::GraphicsAPI::D3D11)
-            NRI.ResetCommandAllocator(commandAllocatorCompute);
-    }
 
     const uint32_t backBufferIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
     const BackBuffer& backBuffer = m_SwapChainBuffers[backBufferIndex];

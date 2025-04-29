@@ -2,6 +2,7 @@
 
 set DIR_DATA=_Data
 set DIR_BIN=_Bin\Release
+set ADAPTER=0
 
 if not exist "%DIR_BIN%" (
     set DIR_BIN=_Bin\Debug
@@ -48,7 +49,7 @@ exit /b
 :TestSample
 
 echo %1 [D3D11]
-"%DIR_BIN%\%1.exe" --api=D3D11 --frameNum=%2 --debugAPI --debugNRI
+"%DIR_BIN%\%1.exe" --api=D3D11 --frameNum=%2 --debugAPI --debugNRI --adapter=%ADAPTER%
 if %ERRORLEVEL% equ 0 (
     echo =^> OK
 ) else (
@@ -57,7 +58,7 @@ if %ERRORLEVEL% equ 0 (
 echo.
 
 echo %1 [D3D12]
-"%DIR_BIN%\%1.exe" --api=D3D12 --frameNum=%2 --debugAPI --debugNRI
+"%DIR_BIN%\%1.exe" --api=D3D12 --frameNum=%2 --debugAPI --debugNRI --adapter=%ADAPTER%
 if %ERRORLEVEL% equ 0 (
     echo =^> OK
 ) else (
@@ -66,7 +67,7 @@ if %ERRORLEVEL% equ 0 (
 echo.
 
 echo %1 [VULKAN]
-"%DIR_BIN%\%1.exe" --api=VULKAN --frameNum=%2 --debugAPI --debugNRI
+"%DIR_BIN%\%1.exe" --api=VULKAN --frameNum=%2 --debugAPI --debugNRI --adapter=%ADAPTER%
 if %ERRORLEVEL% equ 0 (
     echo =^> OK
 ) else (

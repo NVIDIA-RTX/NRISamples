@@ -2,7 +2,7 @@
 
 #include "NRI.hlsl"
 
-NRI_RESOURCE(RWTexture2D<float4>, g_Result, u, 0, 0);
+NRI_FORMAT("rgba8") NRI_RESOURCE(RWTexture2D<float4>, g_Result, u, 0, 0);
 
 [numthreads( 16, 16, 1 )]
 void main( uint2 pixelID : SV_DispatchThreadId )

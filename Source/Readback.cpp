@@ -23,6 +23,7 @@ public:
     ~Sample();
 
     bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
 
@@ -67,9 +68,10 @@ Sample::~Sample() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
-    nri::AdapterDesc bestAdapterDesc = {};
-    uint32_t adapterDescsNum = 1;
-    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(&bestAdapterDesc, adapterDescsNum));
+    // Adapters
+    nri::AdapterDesc adapterDesc[2] = {};
+    uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
+    NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(adapterDesc, adapterDescsNum));
 
     // Device
     nri::DeviceCreationDesc deviceCreationDesc = {};
@@ -78,7 +80,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
     deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
-    deviceCreationDesc.adapterDesc = &bestAdapterDesc;
+    deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
@@ -153,36 +155,46 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     return InitUI(*m_Device);
 }
 
+void Sample::LatencySleep(uint32_t frameIndex) {
+    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
+    const Frame& frame = m_Frames[bufferedFrameIndex];
+
+    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
+        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
+        NRI.ResetCommandAllocator(*frame.commandAllocator);
+    }
+}
+
 void Sample::PrepareFrame(uint32_t) {
     BeginUI();
-
-    uint32_t color = 0;
-    const uint32_t* data = (uint32_t*)NRI.MapBuffer(*m_ReadbackBuffer, 0, nri::WHOLE_SIZE);
-    if (data) {
-        color = *data | 0xFF000000;
-        NRI.UnmapBuffer(*m_ReadbackBuffer);
-    }
-
-    if (m_SwapChainFormat == nri::Format::BGRA8_UNORM) {
-        uint8_t* bgra = (uint8_t*)&color;
-        Swap(bgra[0], bgra[2]);
-    }
-
-    ImVec2 p = ImGui::GetIO().MousePos;
-    p.x += 24;
-
-    float sz = ImGui::GetTextLineHeight();
-    ImGui::SetNextWindowPos(p, ImGuiCond_Always);
-    ImGui::Begin("ColorWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
     {
-        p = ImGui::GetCursorScreenPos();
-        ImGui::GetWindowDrawList()->AddRectFilled(p, ImVec2(p.x + sz, p.y + sz), color);
-        ImGui::Dummy(ImVec2(sz, sz));
-        ImGui::SameLine();
-        ImGui::Text("Color");
-    }
-    ImGui::End();
+        uint32_t color = 0;
+        const uint32_t* data = (uint32_t*)NRI.MapBuffer(*m_ReadbackBuffer, 0, nri::WHOLE_SIZE);
+        if (data) {
+            color = *data | 0xFF000000;
+            NRI.UnmapBuffer(*m_ReadbackBuffer);
+        }
 
+        if (m_SwapChainFormat == nri::Format::BGRA8_UNORM) {
+            uint8_t* bgra = (uint8_t*)&color;
+            Swap(bgra[0], bgra[2]);
+        }
+
+        ImVec2 p = ImGui::GetIO().MousePos;
+        p.x += 24;
+
+        float sz = ImGui::GetTextLineHeight();
+        ImGui::SetNextWindowPos(p, ImGuiCond_Always);
+        ImGui::Begin("ColorWindow", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
+        {
+            p = ImGui::GetCursorScreenPos();
+            ImGui::GetWindowDrawList()->AddRectFilled(p, ImVec2(p.x + sz, p.y + sz), color);
+            ImGui::Dummy(ImVec2(sz, sz));
+            ImGui::SameLine();
+            ImGui::Text("Color");
+        }
+        ImGui::End();
+    }
     EndUI();
 }
 
@@ -191,11 +203,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     const uint32_t windowHeight = GetWindowResolution().y;
     const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
     const Frame& frame = m_Frames[bufferedFrameIndex];
-
-    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
-        NRI.ResetCommandAllocator(*frame.commandAllocator);
-    }
 
     const uint32_t backBufferIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
     BackBuffer& backBuffer = m_SwapChainBuffers[backBufferIndex];

@@ -80,6 +80,12 @@
         },
         {
           "Command": "--frameNum=9999999"
+        },
+        {
+          "Command": "--adapter=0"
+        },
+        {
+          "Command": "--adapter=1"
         }
       ]
     }
