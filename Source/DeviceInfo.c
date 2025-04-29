@@ -1,5 +1,6 @@
 // © 2021 NVIDIA Corporation
 
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -68,8 +69,8 @@ int main(int argc, char** argv) {
         printf("\tName                 : %s\n", adapterDesc->name);
         printf("\tVendor               : %s\n", vendors[adapterDesc->vendor]);
         printf("\tArchitecture         : %s\n", architectures[adapterDesc->architecture]);
-        printf("\tVideo memory         : %llu Mb\n", adapterDesc->videoMemorySize >> 20);
-        printf("\tShared system memory : %llu Mb\n", adapterDesc->sharedSystemMemorySize >> 20);
+        printf("\tVideo memory         : %" PRIu64 " Mb\n", adapterDesc->videoMemorySize >> 20);
+        printf("\tShared system memory : %" PRIu64 " Mb\n", adapterDesc->sharedSystemMemorySize >> 20);
         printf("\tQueues               : {%u, %u, %u}\n", adapterDesc->queueNum[0], adapterDesc->queueNum[1], adapterDesc->queueNum[2]);
         printf("\tID                   : 0x%08X\n", adapterDesc->deviceId);
         printf("\tLUID                 : 0x%016llX\n", adapterDesc->luid);

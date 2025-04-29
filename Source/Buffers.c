@@ -52,7 +52,7 @@ int main(int argc, char** argv) {
                 .graphicsAPI = graphicsAPI,
                 .enableGraphicsAPIValidation = debugAPI,
                 .enableNRIValidation = debugNRI,
-                .adapterDesc = &adapterDescs[min(adapterIndex, adapterDescsNum - 1)],
+                .adapterDesc = &adapterDescs[adapterIndex < adapterDescsNum ? adapterIndex : adapterDescsNum - 1],
             },
             &device));
     }
