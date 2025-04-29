@@ -635,12 +635,12 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
         ImGui::SetNextWindowSize(ImVec2(0, 0));
         ImGui::Begin("Stats");
         {
-            ImGui::Text("Input vertices               : %llu", pipelineStats->inputVertexNum);
-            ImGui::Text("Input primitives             : %llu", pipelineStats->inputPrimitiveNum);
-            ImGui::Text("Vertex shader invocations    : %llu", pipelineStats->vertexShaderInvocationNum);
-            ImGui::Text("Rasterizer input primitives  : %llu", pipelineStats->rasterizerInPrimitiveNum);
-            ImGui::Text("Rasterizer output primitives : %llu", pipelineStats->rasterizerOutPrimitiveNum);
-            ImGui::Text("Fragment shader invocations  : %llu", pipelineStats->fragmentShaderInvocationNum);
+            ImGui::Text("Input vertices               : %" PRIu64, pipelineStats->inputVertexNum);
+            ImGui::Text("Input primitives             : %" PRIu64, pipelineStats->inputPrimitiveNum);
+            ImGui::Text("Vertex shader invocations    : %" PRIu64, pipelineStats->vertexShaderInvocationNum);
+            ImGui::Text("Rasterizer input primitives  : %" PRIu64, pipelineStats->rasterizerInPrimitiveNum);
+            ImGui::Text("Rasterizer output primitives : %" PRIu64, pipelineStats->rasterizerOutPrimitiveNum);
+            ImGui::Text("Fragment shader invocations  : %" PRIu64, pipelineStats->fragmentShaderInvocationNum);
         }
         ImGui::End();
 
