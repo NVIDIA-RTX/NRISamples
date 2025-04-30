@@ -17,7 +17,6 @@ struct QueuedFrame {
 class Sample : public SampleBase {
 public:
     Sample() {
-        m_QueuedFrames.resize(GetQueuedFrameNum());
     }
 
     ~Sample();
@@ -111,6 +110,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     }
 
     // Buffered resources
+    m_QueuedFrames.resize(GetQueuedFrameNum());
     for (QueuedFrame& queuedFrame : m_QueuedFrames) {
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, queuedFrame.commandAllocator));
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));

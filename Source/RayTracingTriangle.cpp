@@ -20,7 +20,6 @@ struct QueuedFrame {
 class Sample : public SampleBase {
 public:
     Sample() {
-        m_QueuedFrames.resize(GetQueuedFrameNum());
     }
 
     ~Sample();
@@ -80,9 +79,9 @@ private:
 Sample::~Sample() {
     NRI.WaitForIdle(*m_GraphicsQueue);
 
-    for (uint32_t i = 0; i < m_QueuedFrames.size(); i++) {
-        NRI.DestroyCommandBuffer(*m_QueuedFrames[i].commandBuffer);
-        NRI.DestroyCommandAllocator(*m_QueuedFrames[i].commandAllocator);
+    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+        NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+        NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
     }
 
     for (uint32_t i = 0; i < m_SwapChainBuffers.size(); i++)
@@ -277,6 +276,7 @@ void Sample::CreateSwapChain(nri::Format& swapChainFormat) {
 }
 
 void Sample::CreateCommandBuffers() {
+    m_QueuedFrames.resize(GetQueuedFrameNum());
     for (QueuedFrame& queuedFrame : m_QueuedFrames) {
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, queuedFrame.commandAllocator));
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));
@@ -624,7 +624,7 @@ void Sample::CreateShaderTable() {
     {
         nri::BufferBarrierDesc bufferBarrier = {};
         bufferBarrier.buffer = m_ShaderTable;
-        
+
         nri::BarrierGroupDesc barrierGroupDesc = {};
         barrierGroupDesc.bufferNum = 1;
         barrierGroupDesc.buffers = &bufferBarrier;
