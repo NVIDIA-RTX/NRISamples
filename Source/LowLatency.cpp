@@ -23,7 +23,7 @@ struct NRIInterface
       public nri::SwapChainInterface,
       public nri::LowLatencyInterface {};
 
-struct Frame {
+struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
     nri::CommandBuffer* commandBuffer;
 };
@@ -31,6 +31,7 @@ struct Frame {
 class Sample : public SampleBase {
 public:
     Sample() {
+        m_QueuedFrames.resize(QUEUED_FRAMES_MAX_NUM);
     }
 
     ~Sample();
@@ -55,7 +56,7 @@ private:
     nri::Memory* m_Memory = nullptr;
     nri::Descriptor* m_BufferStorage = nullptr;
 
-    std::array<Frame, QUEUED_FRAMES_MAX_NUM> m_Frames = {};
+    std::vector<QueuedFrame> m_QueuedFrames = {};
     std::vector<BackBuffer> m_SwapChainBuffers;
     float m_CpuWorkload = 4.0f;                        // ms
     uint32_t m_GpuWorkload = 10;                       // in pigeons, current settings give ~10 ms on RTX 4080
@@ -67,9 +68,9 @@ private:
 Sample::~Sample() {
     NRI.WaitForIdle(*m_GraphicsQueue);
 
-    for (Frame& frame : m_Frames) {
-        NRI.DestroyCommandBuffer(*frame.commandBuffer);
-        NRI.DestroyCommandAllocator(*frame.commandAllocator);
+    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+        NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+        NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
     }
 
     for (BackBuffer& backBuffer : m_SwapChainBuffers)
@@ -121,7 +122,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     streamerDesc.dynamicBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
     streamerDesc.dynamicBufferUsageBits = nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER;
     streamerDesc.constantBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
-    streamerDesc.frameInFlightNum = QUEUED_FRAMES_MAX_NUM;
+    streamerDesc.queuedFrameNum = QUEUED_FRAMES_MAX_NUM;
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
     // Low latency
@@ -145,9 +146,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         swapChainDesc.verticalSyncInterval = m_VsyncInterval;
         swapChainDesc.width = (uint16_t)GetWindowResolution().x;
         swapChainDesc.height = (uint16_t)GetWindowResolution().y;
-        swapChainDesc.textureNum = (uint8_t)m_Frames.size();
+        swapChainDesc.textureNum = (uint8_t)m_QueuedFrames.size();
         swapChainDesc.verticalSyncInterval = VSYNC_INTERVAL;
-        swapChainDesc.queuedFrameNum = WAITABLE_SWAP_CHAIN ? WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY : (uint8_t)m_Frames.size();
+        swapChainDesc.queuedFrameNum = WAITABLE_SWAP_CHAIN ? WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY : (uint8_t)m_QueuedFrames.size();
         swapChainDesc.waitable = WAITABLE_SWAP_CHAIN;
         swapChainDesc.allowLowLatency = m_AllowLowLatency;
         NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
@@ -220,9 +221,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     }
 
     // Buffered resources
-    for (Frame& frame : m_Frames) {
-        NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, frame.commandAllocator));
-        NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*frame.commandAllocator, frame.commandBuffer));
+    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+        NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, queuedFrame.commandAllocator));
+        NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));
     }
 
     return InitUI(*m_Device);
@@ -241,10 +242,10 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 
     // Preserve frame queue (optimal place for "non-waitable" swap chain)
     if constexpr (WAITABLE_SWAP_CHAIN == EMULATE_BAD_PRACTICE) {
-        const Frame& frame = m_Frames[frameIndex % m_QueuedFrameNum];
+        const QueuedFrame& queuedFrame = m_QueuedFrames[frameIndex % m_QueuedFrameNum];
         if (frameIndex >= m_QueuedFrameNum) {
             NRI.Wait(*m_FrameFence, 1 + frameIndex - m_QueuedFrameNum);
-            NRI.ResetCommandAllocator(*frame.commandAllocator);
+            NRI.ResetCommandAllocator(*queuedFrame.commandAllocator);
         }
     }
 
@@ -304,7 +305,7 @@ void Sample::PrepareFrame(uint32_t) {
         ImGui::SliderInt("##GPU", (int32_t*)&m_GpuWorkload, 1, 20, "%d", ImGuiSliderFlags_NoInput);
         ImGui::Text("Queued frames:");
         ImGui::SetNextItemWidth(210.0f);
-        ImGui::SliderInt("##Frames", (int32_t*)&m_QueuedFrameNum, 1, (int32_t)m_Frames.size(), "%d", ImGuiSliderFlags_NoInput);
+        ImGui::SliderInt("##Frames", (int32_t*)&m_QueuedFrameNum, 1, (int32_t)m_QueuedFrames.size(), "%d", ImGuiSliderFlags_NoInput);
 
         if (!m_AllowLowLatency)
             ImGui::BeginDisabled();
@@ -348,18 +349,18 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     const uint32_t backBufferIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
     const BackBuffer& backBuffer = m_SwapChainBuffers[backBufferIndex];
-    const Frame& frame = m_Frames[frameIndex % m_QueuedFrameNum];
+    const QueuedFrame& queuedFrame = m_QueuedFrames[frameIndex % m_QueuedFrameNum];
 
     // Preserve frame queue (optimal place for "waitable" swapchain)
     if constexpr (WAITABLE_SWAP_CHAIN != EMULATE_BAD_PRACTICE) {
         if (frameIndex >= m_QueuedFrameNum) {
             NRI.Wait(*m_FrameFence, 1 + frameIndex - m_QueuedFrameNum);
-            NRI.ResetCommandAllocator(*frame.commandAllocator);
+            NRI.ResetCommandAllocator(*queuedFrame.commandAllocator);
         }
     }
 
     // Record
-    nri::CommandBuffer& commandBuffer = *frame.commandBuffer;
+    nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
     NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
     {
         NRI.CmdBeginAnnotation(commandBuffer, "Render", COLOR_RENDER);
@@ -438,7 +439,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         signalFence.value = 1 + frameIndex;
 
         nri::QueueSubmitDesc queueSubmitDesc = {};
-        queueSubmitDesc.commandBuffers = &frame.commandBuffer;
+        queueSubmitDesc.commandBuffers = &queuedFrame.commandBuffer;
         queueSubmitDesc.commandBufferNum = 1;
         queueSubmitDesc.signalFences = &signalFence;
         queueSubmitDesc.signalFenceNum = 1;

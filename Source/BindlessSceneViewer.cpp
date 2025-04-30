@@ -38,7 +38,7 @@ struct NRIInterface
       public nri::StreamerInterface,
       public nri::SwapChainInterface {};
 
-struct Frame {
+struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
     nri::CommandBuffer* commandBuffer;
     uint32_t globalConstantBufferViewOffsets;
@@ -47,6 +47,7 @@ struct Frame {
 class Sample : public SampleBase {
 public:
     Sample() {
+        m_QueuedFrames.resize(GetQueuedFrameNum());
     }
 
     ~Sample();
@@ -78,7 +79,7 @@ private:
     nri::Pipeline* m_Pipeline = nullptr;
     nri::Pipeline* m_ComputePipeline = nullptr;
 
-    std::array<Frame, BUFFERED_FRAME_MAX_NUM> m_Frames = {};
+    std::vector<QueuedFrame> m_QueuedFrames = {};
     std::vector<BackBuffer> m_SwapChainBuffers;
     std::vector<nri::DescriptorSet*> m_DescriptorSets;
     std::vector<nri::Texture*> m_Textures;
@@ -98,9 +99,9 @@ Sample::~Sample() {
 
     NRI.WaitForIdle(*m_GraphicsQueue);
 
-    for (Frame& frame : m_Frames) {
-        NRI.DestroyCommandBuffer(*frame.commandBuffer);
-        NRI.DestroyCommandAllocator(*frame.commandAllocator);
+    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+        NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+        NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
     }
 
     for (uint32_t i = 0; i < m_SwapChainBuffers.size(); i++)
@@ -167,7 +168,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     streamerDesc.dynamicBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
     streamerDesc.dynamicBufferUsageBits = nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER;
     streamerDesc.constantBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
-    streamerDesc.frameInFlightNum = BUFFERED_FRAME_MAX_NUM;
+    streamerDesc.queuedFrameNum = GetQueuedFrameNum();
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
     // Command queue
@@ -186,7 +187,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         swapChainDesc.verticalSyncInterval = m_VsyncInterval;
         swapChainDesc.width = (uint16_t)GetWindowResolution().x;
         swapChainDesc.height = (uint16_t)GetWindowResolution().y;
-        swapChainDesc.textureNum = SWAP_CHAIN_TEXTURE_NUM;
+        swapChainDesc.textureNum = GetSwapChainFrameNum();
+        swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
         NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
     }
 
@@ -195,9 +197,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     nri::Format swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
 
     // Buffered resources
-    for (Frame& frame : m_Frames) {
-        NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, frame.commandAllocator));
-        NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*frame.commandAllocator, frame.commandBuffer));
+    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+        NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, queuedFrame.commandAllocator));
+        NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));
     }
 
     // Pipeline
@@ -377,14 +379,14 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     { // Buffers
         // CONSTANT_BUFFER
         nri::BufferDesc bufferDesc = {};
-        bufferDesc.size = constantBufferSize * BUFFERED_FRAME_MAX_NUM;
+        bufferDesc.size = constantBufferSize * GetQueuedFrameNum();
         bufferDesc.usage = nri::BufferUsageBits::CONSTANT_BUFFER;
         nri::Buffer* buffer;
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, buffer));
         m_Buffers.push_back(buffer);
 
         // READBACK_BUFFER
-        bufferDesc.size = sizeof(nri::PipelineStatisticsDesc) * BUFFERED_FRAME_MAX_NUM;
+        bufferDesc.size = sizeof(nri::PipelineStatisticsDesc) * GetQueuedFrameNum();
         bufferDesc.usage = nri::BufferUsageBits::NONE;
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, buffer));
         m_Buffers.push_back(buffer);
@@ -468,7 +470,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
     // Create descriptors
     nri::Descriptor* anisotropicSampler = nullptr;
-    nri::Descriptor* constantBufferViews[BUFFERED_FRAME_MAX_NUM] = {};
+    nri::Descriptor* constantBufferViews[8] = {};
     nri::Descriptor* resourceViews[BUFFER_COUNT] = {};
     {
         // Material textures
@@ -529,8 +531,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         bufferViewDesc.format = nri::Format::UNKNOWN;
 
         // Constant buffer
-        for (uint32_t i = 0; i < BUFFERED_FRAME_MAX_NUM; i++) {
-            m_Frames[i].globalConstantBufferViewOffsets = i * constantBufferSize;
+        for (uint32_t i = 0; i < GetQueuedFrameNum(); i++) {
+            m_QueuedFrames[i].globalConstantBufferViewOffsets = i * constantBufferSize;
             bufferViewDesc.buffer = m_Buffers[CONSTANT_BUFFER];
             bufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
             bufferViewDesc.offset = i * constantBufferSize;
@@ -561,26 +563,26 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 
     { // Descriptor pool
         nri::DescriptorPoolDesc descriptorPoolDesc = {};
-        descriptorPoolDesc.descriptorSetMaxNum = materialNum + BUFFERED_FRAME_MAX_NUM + 2;
+        descriptorPoolDesc.descriptorSetMaxNum = materialNum + GetQueuedFrameNum() + 2;
         descriptorPoolDesc.textureMaxNum = materialNum * TEXTURES_PER_MATERIAL;
-        descriptorPoolDesc.samplerMaxNum = BUFFERED_FRAME_MAX_NUM;
+        descriptorPoolDesc.samplerMaxNum = GetQueuedFrameNum();
         descriptorPoolDesc.storageStructuredBufferMaxNum = 1 * 2 * TEST;
         descriptorPoolDesc.storageBufferMaxNum = 1 * 2 * TEST;
         descriptorPoolDesc.bufferMaxNum = 3 * 2 * TEST;
         descriptorPoolDesc.structuredBufferMaxNum = 4 * 2 * TEST;
-        descriptorPoolDesc.constantBufferMaxNum = BUFFERED_FRAME_MAX_NUM;
+        descriptorPoolDesc.constantBufferMaxNum = GetQueuedFrameNum();
 
         NRI_ABORT_ON_FAILURE(NRI.CreateDescriptorPool(*m_Device, descriptorPoolDesc, m_DescriptorPool));
     }
 
     { // Descriptor sets
-        m_DescriptorSets.resize(BUFFERED_FRAME_MAX_NUM + 2);
+        m_DescriptorSets.resize(GetQueuedFrameNum() + 2);
 
         // Global
         NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, GLOBAL_DESCRIPTOR_SET,
-            &m_DescriptorSets[0], BUFFERED_FRAME_MAX_NUM, 0));
+            &m_DescriptorSets[0], GetQueuedFrameNum(), 0));
 
-        for (uint32_t i = 0; i < BUFFERED_FRAME_MAX_NUM; i++) {
+        for (uint32_t i = 0; i < GetQueuedFrameNum(); i++) {
             nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDescs[3] = {};
             descriptorRangeUpdateDescs[0].descriptorNum = 1;
             descriptorRangeUpdateDescs[0].descriptors = &constantBufferViews[i];
@@ -593,15 +595,15 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         }
 
         // Material
-        NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, MATERIAL_DESCRIPTOR_SET, &m_DescriptorSets[BUFFERED_FRAME_MAX_NUM], 1, textureNum));
+        NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, MATERIAL_DESCRIPTOR_SET, &m_DescriptorSets[GetQueuedFrameNum()], 1, textureNum));
 
         nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc = {};
         descriptorRangeUpdateDesc.descriptorNum = textureNum;
         descriptorRangeUpdateDesc.descriptors = m_Descriptors.data();
-        NRI.UpdateDescriptorRanges(*m_DescriptorSets[BUFFERED_FRAME_MAX_NUM], 0, 1, &descriptorRangeUpdateDesc);
+        NRI.UpdateDescriptorRanges(*m_DescriptorSets[GetQueuedFrameNum()], 0, 1, &descriptorRangeUpdateDesc);
 
         // Culling
-        NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_ComputePipelineLayout, 0, &m_DescriptorSets[BUFFERED_FRAME_MAX_NUM + 1], 1, 0));
+        NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_ComputePipelineLayout, 0, &m_DescriptorSets[GetQueuedFrameNum() + 1], 1, 0));
 
         nri::Descriptor* storageDescriptors[2] = {m_IndirectBufferCountShaderStorage, m_IndirectBufferShaderStorage};
 
@@ -610,7 +612,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         rangeUpdateDescs[0].descriptors = storageDescriptors;
         rangeUpdateDescs[1].descriptorNum = BUFFER_COUNT;
         rangeUpdateDescs[1].descriptors = resourceViews;
-        NRI.UpdateDescriptorRanges(*m_DescriptorSets[BUFFERED_FRAME_MAX_NUM + 1], 0, 2, rangeUpdateDescs);
+        NRI.UpdateDescriptorRanges(*m_DescriptorSets[GetQueuedFrameNum() + 1], 0, 2, rangeUpdateDescs);
     }
 
     { // Upload data
@@ -735,12 +737,12 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
 }
 
 void Sample::LatencySleep(uint32_t frameIndex) {
-    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
-    const Frame& frame = m_Frames[bufferedFrameIndex];
+    uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
+    const QueuedFrame& queuedFrame = m_QueuedFrames[queuedFrameIndex];
 
-    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
-        NRI.ResetCommandAllocator(*frame.commandAllocator);
+    if (frameIndex >= GetQueuedFrameNum()) {
+        NRI.Wait(*m_FrameFence, 1 + frameIndex - GetQueuedFrameNum());
+        NRI.ResetCommandAllocator(*queuedFrame.commandAllocator);
     }
 }
 
@@ -778,8 +780,8 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
-    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
-    const Frame& frame = m_Frames[bufferedFrameIndex];
+    uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
+    const QueuedFrame& queuedFrame = m_QueuedFrames[queuedFrameIndex];
     const uint32_t windowWidth = GetWindowResolution().x;
     const uint32_t windowHeight = GetWindowResolution().y;
 
@@ -787,7 +789,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     BackBuffer& backBuffer = m_SwapChainBuffers[currentTextureIndex];
 
     // Update constants
-    const uint64_t rangeOffset = m_Frames[bufferedFrameIndex].globalConstantBufferViewOffsets;
+    const uint64_t rangeOffset = m_QueuedFrames[queuedFrameIndex].globalConstantBufferViewOffsets;
     auto constants = (GlobalConstants*)NRI.MapBuffer(*m_Buffers[CONSTANT_BUFFER], rangeOffset, sizeof(GlobalConstants));
     if (constants) {
         constants->gWorldToClip = m_Camera.state.mWorldToClip * m_Scene.mSceneToWorld;
@@ -797,7 +799,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     }
 
     // Record
-    nri::CommandBuffer& commandBuffer = *frame.commandBuffer;
+    nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
     NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
     {
         helper::Annotation annotation(NRI, commandBuffer, "Scene");
@@ -843,7 +845,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             cullingConstants.DrawCount = (uint32_t)m_Scene.instances.size();
 
             NRI.CmdSetPipelineLayout(commandBuffer, *m_ComputePipelineLayout);
-            NRI.CmdSetDescriptorSet(commandBuffer, 0, *m_DescriptorSets[BUFFERED_FRAME_MAX_NUM + 1], nullptr);
+            NRI.CmdSetDescriptorSet(commandBuffer, 0, *m_DescriptorSets[GetQueuedFrameNum() + 1], nullptr);
             NRI.CmdSetRootConstants(commandBuffer, 0, &cullingConstants, sizeof(cullingConstants));
             NRI.CmdSetPipeline(commandBuffer, *m_ComputePipeline);
             NRI.CmdDispatch(commandBuffer, {1, 1, 1});
@@ -882,8 +884,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 NRI.CmdSetScissors(commandBuffer, &scissor, 1);
 
                 NRI.CmdSetPipelineLayout(commandBuffer, *m_PipelineLayout);
-                NRI.CmdSetDescriptorSet(commandBuffer, GLOBAL_DESCRIPTOR_SET, *m_DescriptorSets[bufferedFrameIndex], nullptr);
-                NRI.CmdSetDescriptorSet(commandBuffer, MATERIAL_DESCRIPTOR_SET, *m_DescriptorSets[BUFFERED_FRAME_MAX_NUM], nullptr);
+                NRI.CmdSetDescriptorSet(commandBuffer, GLOBAL_DESCRIPTOR_SET, *m_DescriptorSets[queuedFrameIndex], nullptr);
+                NRI.CmdSetDescriptorSet(commandBuffer, MATERIAL_DESCRIPTOR_SET, *m_DescriptorSets[GetQueuedFrameNum()], nullptr);
                 NRI.CmdSetPipeline(commandBuffer, *m_Pipeline);
                 NRI.CmdSetIndexBuffer(commandBuffer, *m_Buffers[INDEX_BUFFER], 0, sizeof(utils::Index) == 2 ? nri::IndexType::UINT16 : nri::IndexType::UINT32);
 
@@ -932,7 +934,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     { // Submit
         nri::QueueSubmitDesc queueSubmitDesc = {};
-        queueSubmitDesc.commandBuffers = &frame.commandBuffer;
+        queueSubmitDesc.commandBuffers = &queuedFrame.commandBuffer;
         queueSubmitDesc.commandBufferNum = 1;
 
         NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);

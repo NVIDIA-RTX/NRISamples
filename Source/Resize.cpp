@@ -10,7 +10,7 @@ struct NRIInterface
       public nri::StreamerInterface,
       public nri::SwapChainInterface {};
 
-struct Frame {
+struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
     nri::CommandBuffer* commandBuffer;
 };
@@ -18,6 +18,7 @@ struct Frame {
 class Sample : public SampleBase {
 public:
     Sample() {
+        m_QueuedFrames.resize(GetQueuedFrameNum());
     }
 
     ~Sample();
@@ -37,7 +38,7 @@ private:
     nri::Queue* m_GraphicsQueue = nullptr;
     nri::Fence* m_FrameFence = nullptr;
 
-    std::array<Frame, BUFFERED_FRAME_MAX_NUM> m_Frames = {};
+    std::vector<QueuedFrame> m_QueuedFrames = {};
     std::vector<nri::Memory*> m_MemoryAllocations;
     std::vector<BackBuffer> m_SwapChainBuffers;
 
@@ -48,9 +49,9 @@ private:
 Sample::~Sample() {
     NRI.WaitForIdle(*m_GraphicsQueue);
 
-    for (Frame& frame : m_Frames) {
-        NRI.DestroyCommandBuffer(*frame.commandBuffer);
-        NRI.DestroyCommandAllocator(*frame.commandAllocator);
+    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+        NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+        NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
     }
 
     for (BackBuffer& backBuffer : m_SwapChainBuffers)
@@ -98,7 +99,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     streamerDesc.dynamicBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
     streamerDesc.dynamicBufferUsageBits = nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER;
     streamerDesc.constantBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
-    streamerDesc.frameInFlightNum = BUFFERED_FRAME_MAX_NUM;
+    streamerDesc.queuedFrameNum = GetQueuedFrameNum();
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
     // Command queue
@@ -115,7 +116,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         swapChainDesc.verticalSyncInterval = m_VsyncInterval;
         swapChainDesc.width = (uint16_t)m_WindowResolution.x;
         swapChainDesc.height = (uint16_t)m_WindowResolution.y;
-        swapChainDesc.textureNum = SWAP_CHAIN_TEXTURE_NUM;
+        swapChainDesc.textureNum = GetSwapChainFrameNum();
+        swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
         NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
 
         uint32_t swapChainTextureNum;
@@ -134,21 +136,21 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     }
 
     // Buffered resources
-    for (Frame& frame : m_Frames) {
-        NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, frame.commandAllocator));
-        NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*frame.commandAllocator, frame.commandBuffer));
+    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+        NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, queuedFrame.commandAllocator));
+        NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));
     }
 
     return InitUI(*m_Device);
 }
 
 void Sample::LatencySleep(uint32_t frameIndex) {
-    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
-    const Frame& frame = m_Frames[bufferedFrameIndex];
+    uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
+    const QueuedFrame& queuedFrame = m_QueuedFrames[queuedFrameIndex];
 
-    if (frameIndex >= BUFFERED_FRAME_MAX_NUM) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - BUFFERED_FRAME_MAX_NUM);
-        NRI.ResetCommandAllocator(*frame.commandAllocator);
+    if (frameIndex >= GetQueuedFrameNum()) {
+        NRI.Wait(*m_FrameFence, 1 + frameIndex - GetQueuedFrameNum());
+        NRI.ResetCommandAllocator(*queuedFrame.commandAllocator);
     }
 }
 
@@ -226,7 +228,8 @@ void Sample::ResizeSwapChain() {
     swapChainDesc.verticalSyncInterval = m_VsyncInterval;
     swapChainDesc.width = (uint16_t)m_WindowResolution.x;
     swapChainDesc.height = (uint16_t)m_WindowResolution.y;
-    swapChainDesc.textureNum = SWAP_CHAIN_TEXTURE_NUM;
+    swapChainDesc.textureNum = GetSwapChainFrameNum();
+    swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
     NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
 
     uint32_t swapChainTextureNum;
@@ -246,14 +249,14 @@ void Sample::ResizeSwapChain() {
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
-    const uint32_t bufferedFrameIndex = frameIndex % BUFFERED_FRAME_MAX_NUM;
-    const Frame& frame = m_Frames[bufferedFrameIndex];
+    uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
+    const QueuedFrame& queuedFrame = m_QueuedFrames[queuedFrameIndex];
 
     const uint32_t backBufferIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
     BackBuffer& backBuffer = m_SwapChainBuffers[backBufferIndex];
 
     // Record
-    nri::CommandBuffer& commandBuffer = *frame.commandBuffer;
+    nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
     NRI.BeginCommandBuffer(commandBuffer, nullptr);
     {
         nri::TextureBarrierDesc textureBarriers = {};
@@ -303,7 +306,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     { // Submit
         nri::QueueSubmitDesc queueSubmitDesc = {};
-        queueSubmitDesc.commandBuffers = &frame.commandBuffer;
+        queueSubmitDesc.commandBuffers = &queuedFrame.commandBuffer;
         queueSubmitDesc.commandBufferNum = 1;
 
         NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
