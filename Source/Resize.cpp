@@ -193,20 +193,20 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
 
     // UI
     BeginUI();
-
-    ImVec2 dims = ImGui::CalcTextSize(s);
-
-    ImVec2 p;
-    p.x = ((float)m_WindowResolution.x - dims.x) * 0.5f;
-    p.y = ((float)m_WindowResolution.y - dims.y) * 0.5f;
-
-    ImGui::SetNextWindowPos(p);
-    ImGui::Begin("Color", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
     {
-        ImGui::Text(s);
-    }
-    ImGui::End();
+        ImVec2 dims = ImGui::CalcTextSize(s);
 
+        ImVec2 p;
+        p.x = ((float)m_WindowResolution.x - dims.x) * 0.5f;
+        p.y = ((float)m_WindowResolution.y - dims.y) * 0.5f;
+
+        ImGui::SetNextWindowPos(p);
+        ImGui::Begin("Color", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
+        {
+            ImGui::Text(s);
+        }
+        ImGui::End();
+    }
     EndUI();
 }
 
