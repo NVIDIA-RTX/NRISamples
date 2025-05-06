@@ -26,6 +26,8 @@ struct NRIInterface
 struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
     nri::CommandBuffer* commandBuffer;
+    nri::Fence* textureAcquiredSemaphore;
+    nri::Fence* renderingFinishedSemaphore;
 };
 
 class Sample : public SampleBase {
@@ -71,6 +73,8 @@ Sample::~Sample() {
     for (QueuedFrame& queuedFrame : m_QueuedFrames) {
         NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
         NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+        NRI.DestroyFence(*queuedFrame.textureAcquiredSemaphore);
+        NRI.DestroyFence(*queuedFrame.renderingFinishedSemaphore);
     }
 
     for (BackBuffer& backBuffer : m_SwapChainBuffers)
@@ -87,7 +91,7 @@ Sample::~Sample() {
 
     NRI.FreeMemory(*m_Memory);
 
-    DestroyUI();
+    DestroyImgui();
 
     nri::nriDestroyDevice(*m_Device);
 }
@@ -137,8 +141,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     // Fence
     NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_FrameFence));
 
-    // Swap chain
-    {
+    { // Swap chain
         nri::SwapChainDesc swapChainDesc = {};
         swapChainDesc.window = GetWindow();
         swapChainDesc.queue = m_GraphicsQueue;
@@ -146,9 +149,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         swapChainDesc.verticalSyncInterval = m_VsyncInterval;
         swapChainDesc.width = (uint16_t)GetWindowResolution().x;
         swapChainDesc.height = (uint16_t)GetWindowResolution().y;
-        swapChainDesc.textureNum = (uint8_t)m_QueuedFrames.size();
+        swapChainDesc.textureNum = QUEUED_FRAMES_MAX_NUM + 1;
         swapChainDesc.verticalSyncInterval = VSYNC_INTERVAL;
-        swapChainDesc.queuedFrameNum = WAITABLE_SWAP_CHAIN ? WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY : (uint8_t)m_QueuedFrames.size();
+        swapChainDesc.queuedFrameNum = WAITABLE_SWAP_CHAIN ? WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY : QUEUED_FRAMES_MAX_NUM;
         swapChainDesc.waitable = WAITABLE_SWAP_CHAIN;
         swapChainDesc.allowLowLatency = m_AllowLowLatency;
         NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
@@ -220,13 +223,15 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         NRI.UpdateDescriptorRanges(*m_DescriptorSet, 0, 1, &descriptorRangeUpdateDesc);
     }
 
-    // Buffered resources
+    // Queued frames
     for (QueuedFrame& queuedFrame : m_QueuedFrames) {
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, queuedFrame.commandAllocator));
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));
+        NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, queuedFrame.textureAcquiredSemaphore));
+        NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, queuedFrame.renderingFinishedSemaphore));
     }
 
-    return InitUI(*m_Device);
+    return InitImgui(*m_Device);
 }
 
 void Sample::LatencySleep(uint32_t frameIndex) {
@@ -243,10 +248,9 @@ void Sample::LatencySleep(uint32_t frameIndex) {
     // Preserve frame queue (optimal place for "non-waitable" swap chain)
     if constexpr (WAITABLE_SWAP_CHAIN == EMULATE_BAD_PRACTICE) {
         const QueuedFrame& queuedFrame = m_QueuedFrames[frameIndex % m_QueuedFrameNum];
-        if (frameIndex >= m_QueuedFrameNum) {
-            NRI.Wait(*m_FrameFence, 1 + frameIndex - m_QueuedFrameNum);
-            NRI.ResetCommandAllocator(*queuedFrame.commandAllocator);
-        }
+
+        NRI.Wait(*m_FrameFence, frameIndex >= m_QueuedFrameNum ? 1 + frameIndex - m_QueuedFrameNum : 0);
+        NRI.ResetCommandAllocator(*queuedFrame.commandAllocator);
     }
 
     // Sleep just before sampling input
@@ -266,65 +270,66 @@ void Sample::PrepareFrame(uint32_t) {
     while (m_Timer.GetTimeStamp() < begin)
         ;
 
-    BeginUI();
-
-    // Lagometer
-    ImVec2 p = ImGui::GetIO().MousePos;
-    ImGui::GetForegroundDrawList()->AddRectFilled(p, ImVec2(p.x + 20, p.y + 20), IM_COL32(128, 10, 10, 255));
-
-    // Stats
     bool enableLowLatencyPrev = m_EnableLowLatency;
     uint32_t queuedFrameNumPrev = m_QueuedFrameNum;
 
-    nri::LatencyReport latencyReport = {};
-    if (m_AllowLowLatency)
-        NRI.GetLatencyReport(*m_SwapChain, latencyReport);
-
-    ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
-    ImGui::SetNextWindowSize(ImVec2(0, 0));
-    ImGui::Begin("Low latency");
+    ImGui::NewFrame();
     {
-        ImGui::Text("X (end) - Input    =   .... ms");
-        ImGui::Separator();
-        ImGui::Text("  Input            : %+6.2f", 0.0);
-        ImGui::Text("  Simulation       : %+6.2f", (int64_t)(latencyReport.simulationEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
-        ImGui::Text("  Render           : %+6.2f", (int64_t)(latencyReport.renderSubmitEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
-        ImGui::Text("  Present          : %+6.2f", (int64_t)(latencyReport.presentEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
-        ImGui::Text("  Driver           : %+6.2f", (int64_t)(latencyReport.driverEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
-        ImGui::Text("  OS render queue  : %+6.2f", (int64_t)(latencyReport.osRenderQueueEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
-        ImGui::Text("  GPU render       : %+6.2f", (int64_t)(latencyReport.gpuRenderEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
-        ImGui::Separator();
-        ImGui::Text("Frame time         : %6.2f ms", m_Timer.GetSmoothedFrameTime());
-        ImGui::Separator();
+        // Lagometer
+        ImVec2 p = ImGui::GetIO().MousePos;
+        ImGui::GetForegroundDrawList()->AddRectFilled(p, ImVec2(p.x + 20, p.y + 20), IM_COL32(128, 10, 10, 255));
 
-        ImGui::Text("CPU workload (ms):");
-        ImGui::SetNextItemWidth(210.0f);
-        ImGui::SliderFloat("##CPU", &m_CpuWorkload, 0.0f, 1000.0f / 30.0f, "%.1f", ImGuiSliderFlags_NoInput);
-        ImGui::Text("GPU workload (pigeons):");
-        ImGui::SetNextItemWidth(210.0f);
-        ImGui::SliderInt("##GPU", (int32_t*)&m_GpuWorkload, 1, 20, "%d", ImGuiSliderFlags_NoInput);
-        ImGui::Text("Queued frames:");
-        ImGui::SetNextItemWidth(210.0f);
-        ImGui::SliderInt("##Frames", (int32_t*)&m_QueuedFrameNum, 1, (int32_t)m_QueuedFrames.size(), "%d", ImGuiSliderFlags_NoInput);
+        // Stats
+        nri::LatencyReport latencyReport = {};
+        if (m_AllowLowLatency)
+            NRI.GetLatencyReport(*m_SwapChain, latencyReport);
 
-        if (!m_AllowLowLatency)
+        ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
+        ImGui::SetNextWindowSize(ImVec2(0, 0));
+        ImGui::Begin("Low latency");
+        {
+            ImGui::Text("X (end) - Input    =   .... ms");
+            ImGui::Separator();
+            ImGui::Text("  Input            : %+6.2f", 0.0);
+            ImGui::Text("  Simulation       : %+6.2f", (int64_t)(latencyReport.simulationEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
+            ImGui::Text("  Render           : %+6.2f", (int64_t)(latencyReport.renderSubmitEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
+            ImGui::Text("  Present          : %+6.2f", (int64_t)(latencyReport.presentEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
+            ImGui::Text("  Driver           : %+6.2f", (int64_t)(latencyReport.driverEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
+            ImGui::Text("  OS render queue  : %+6.2f", (int64_t)(latencyReport.osRenderQueueEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
+            ImGui::Text("  GPU render       : %+6.2f", (int64_t)(latencyReport.gpuRenderEndTimeUs - latencyReport.inputSampleTimeUs) / 1000.0);
+            ImGui::Separator();
+            ImGui::Text("Frame time         : %6.2f ms", m_Timer.GetSmoothedFrameTime());
+            ImGui::Separator();
+
+            ImGui::Text("CPU workload (ms):");
+            ImGui::SetNextItemWidth(210.0f);
+            ImGui::SliderFloat("##CPU", &m_CpuWorkload, 0.0f, 1000.0f / 30.0f, "%.1f", ImGuiSliderFlags_NoInput);
+            ImGui::Text("GPU workload (pigeons):");
+            ImGui::SetNextItemWidth(210.0f);
+            ImGui::SliderInt("##GPU", (int32_t*)&m_GpuWorkload, 1, 20, "%d", ImGuiSliderFlags_NoInput);
+            ImGui::Text("Queued frames:");
+            ImGui::SetNextItemWidth(210.0f);
+            ImGui::SliderInt("##Frames", (int32_t*)&m_QueuedFrameNum, 1, QUEUED_FRAMES_MAX_NUM, "%d", ImGuiSliderFlags_NoInput);
+
+            if (!m_AllowLowLatency)
+                ImGui::BeginDisabled();
+            ImGui::Checkbox("Low latency (F1)", &m_EnableLowLatency);
+            if (m_AllowLowLatency && IsKeyToggled(Key::F1))
+                m_EnableLowLatency = !m_EnableLowLatency;
+            if (!m_AllowLowLatency)
+                ImGui::EndDisabled();
+
             ImGui::BeginDisabled();
-        ImGui::Checkbox("Low latency (F1)", &m_EnableLowLatency);
-        if (m_AllowLowLatency && IsKeyToggled(Key::F1))
-            m_EnableLowLatency = !m_EnableLowLatency;
-        if (!m_AllowLowLatency)
+            bool waitable = WAITABLE_SWAP_CHAIN;
+            ImGui::Checkbox("Waitable swapchain (" STRINGIFY(WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY) ")", &waitable);
+            bool badPractice = EMULATE_BAD_PRACTICE;
+            ImGui::Checkbox("Bad practice", &badPractice);
             ImGui::EndDisabled();
-
-        ImGui::BeginDisabled();
-        bool waitable = WAITABLE_SWAP_CHAIN;
-        ImGui::Checkbox("Waitable swapchain (" STRINGIFY(WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY) ")", &waitable);
-        bool badPractice = EMULATE_BAD_PRACTICE;
-        ImGui::Checkbox("Bad practice", &badPractice);
-        ImGui::EndDisabled();
+        }
+        ImGui::End();
     }
-    ImGui::End();
-
-    EndUI();
+    ImGui::EndFrame();
+    ImGui::Render();
 
     if (enableLowLatencyPrev != m_EnableLowLatency) {
         nri::LatencySleepMode sleepMode = {};
@@ -347,17 +352,18 @@ void Sample::PrepareFrame(uint32_t) {
 void Sample::RenderFrame(uint32_t frameIndex) {
     nri::nriBeginAnnotation("Render", COLOR_RENDER);
 
-    const uint32_t backBufferIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
-    const BackBuffer& backBuffer = m_SwapChainBuffers[backBufferIndex];
     const QueuedFrame& queuedFrame = m_QueuedFrames[frameIndex % m_QueuedFrameNum];
 
     // Preserve frame queue (optimal place for "waitable" swapchain)
     if constexpr (WAITABLE_SWAP_CHAIN != EMULATE_BAD_PRACTICE) {
-        if (frameIndex >= m_QueuedFrameNum) {
-            NRI.Wait(*m_FrameFence, 1 + frameIndex - m_QueuedFrameNum);
-            NRI.ResetCommandAllocator(*queuedFrame.commandAllocator);
-        }
+        NRI.Wait(*m_FrameFence, frameIndex >= m_QueuedFrameNum ? 1 + frameIndex - m_QueuedFrameNum : 0);
+        NRI.ResetCommandAllocator(*queuedFrame.commandAllocator);
     }
+
+    uint32_t backBufferIndex = 0;
+    NRI.AcquireNextTexture(*m_SwapChain, *queuedFrame.textureAcquiredSemaphore, backBufferIndex);
+
+    BackBuffer& backBuffer = m_SwapChainBuffers[backBufferIndex];
 
     // Record
     nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
@@ -414,7 +420,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             NRI.CmdClearAttachments(commandBuffer, &clearDesc, 1, nullptr, 0);
 
-            RenderUI(commandBuffer, *m_Streamer, backBuffer.attachmentFormat, 1.0f, true);
+            RenderImgui(commandBuffer, *m_Streamer, backBuffer.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(commandBuffer);
 
@@ -434,15 +440,26 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.EndCommandBuffer(commandBuffer);
 
     { // Submit
-        nri::FenceSubmitDesc signalFence = {};
-        signalFence.fence = m_FrameFence;
-        signalFence.value = 1 + frameIndex;
+        nri::FenceSubmitDesc frameFence = {};
+        frameFence.fence = m_FrameFence;
+        frameFence.value = 1 + frameIndex;
+
+        nri::FenceSubmitDesc textureAcquiredFence = {};
+        textureAcquiredFence.fence = queuedFrame.textureAcquiredSemaphore;
+        textureAcquiredFence.stages = nri::StageBits::COLOR_ATTACHMENT;
+
+        nri::FenceSubmitDesc renderingFinishedFence = {};
+        renderingFinishedFence.fence = queuedFrame.renderingFinishedSemaphore;
+
+        nri::FenceSubmitDesc signalFences[] = {renderingFinishedFence, frameFence};
 
         nri::QueueSubmitDesc queueSubmitDesc = {};
+        queueSubmitDesc.waitFences = &textureAcquiredFence;
+        queueSubmitDesc.waitFenceNum = 1;
         queueSubmitDesc.commandBuffers = &queuedFrame.commandBuffer;
         queueSubmitDesc.commandBufferNum = 1;
-        queueSubmitDesc.signalFences = &signalFence;
-        queueSubmitDesc.signalFenceNum = 1;
+        queueSubmitDesc.signalFences = signalFences;
+        queueSubmitDesc.signalFenceNum = helper::GetCountOf(signalFences);
 
         NRI.QueueAnnotation(*m_GraphicsQueue, "Submit", COLOR_RENDER);
 
@@ -457,7 +474,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.StreamerFinalize(*m_Streamer);
 
     // Present
-    NRI.QueuePresent(*m_SwapChain);
+    NRI.QueuePresent(*m_SwapChain, *queuedFrame.renderingFinishedSemaphore);
 
     nri::nriEndAnnotation();
 }

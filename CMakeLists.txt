@@ -105,7 +105,8 @@ if(NOT DISABLE_SHADER_COMPILATION)
         --useAPI --binary --flatten --stripReflection --WX
         --sRegShift 0 --bRegShift 32 --uRegShift 64 --tRegShift 128 # TODO: must be in sync with "VK_BINDING_OFFSETS"
         --sourceDir "Shaders"
-        -c Shaders.cfg
+        --ignoreConfigDir
+        -c "Shaders/Shaders.cfg"
         -o "${SHADER_OUTPUT_PATH}"
         -I "Shaders"
         -I "${ML_SOURCE_DIR}"

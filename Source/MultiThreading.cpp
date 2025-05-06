@@ -36,9 +36,15 @@ struct Box {
     nri::Pipeline* pipeline;
 };
 
+struct QueuedFrame {
+    nri::CommandAllocator* commandAllocator;
+    nri::CommandBuffer* commandBuffer;
+    nri::Fence* textureAcquiredSemaphore;
+    nri::Fence* renderingFinishedSemaphore;
+};
+
 struct ThreadContext {
-    std::array<nri::CommandAllocator*, QUEUED_FRAME_MAX_NUM> commandAllocators;
-    std::array<nri::CommandBuffer*, QUEUED_FRAME_MAX_NUM> commandBuffers;
+    std::array<QueuedFrame, QUEUED_FRAME_MAX_NUM> queuedFrames;
     std::thread thread;
     std::atomic_uint32_t control;
 };
@@ -128,8 +134,12 @@ Sample::~Sample() {
         ThreadContext& threadContext = m_ThreadContexts[i];
 
         for (uint32_t j = 0; j < GetQueuedFrameNum(); j++) {
-            NRI.DestroyCommandBuffer(*threadContext.commandBuffers[j]);
-            NRI.DestroyCommandAllocator(*threadContext.commandAllocators[j]);
+            QueuedFrame& queuedFrame = threadContext.queuedFrames[j];
+
+            NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+            NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+            NRI.DestroyFence(*queuedFrame.textureAcquiredSemaphore);
+            NRI.DestroyFence(*queuedFrame.renderingFinishedSemaphore);
         }
     }
 
@@ -167,7 +177,7 @@ Sample::~Sample() {
     for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
         NRI.FreeMemory(*m_MemoryAllocations[i]);
 
-    DestroyUI();
+    DestroyImgui();
 
     nri::nriDestroyDevice(*m_Device);
 }
@@ -241,29 +251,22 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             m_ThreadContexts[i].thread = std::thread(&Sample::ThreadEntryPoint, this, i);
     }
 
-    return InitUI(*m_Device);
+    return InitImgui(*m_Device);
 }
 
 void Sample::LatencySleep(uint32_t frameIndex) {
     uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
-    ThreadContext& context0 = m_ThreadContexts[0];
+    NRI.Wait(*m_FrameFence, frameIndex >= GetQueuedFrameNum() ? 1 + frameIndex - GetQueuedFrameNum() : 0);
 
-    if (frameIndex >= GetQueuedFrameNum()) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - GetQueuedFrameNum());
-        NRI.ResetCommandAllocator(*context0.commandAllocators[queuedFrameIndex]);
-    }
-
-    if (m_IsMultithreadingEnabled) {
-        for (uint32_t i = 1; i < m_ThreadNum; i++) {
-            ThreadContext& threadContext = m_ThreadContexts[i];
-            if (frameIndex >= GetQueuedFrameNum())
-                NRI.ResetCommandAllocator(*threadContext.commandAllocators[queuedFrameIndex]);
-        }
+    uint32_t threadNum = m_IsMultithreadingEnabled ? m_ThreadNum : 1;
+    for (uint32_t i = 0; i < threadNum; i++) {
+        ThreadContext& threadContext = m_ThreadContexts[i];
+        NRI.ResetCommandAllocator(*threadContext.queuedFrames[queuedFrameIndex].commandAllocator);
     }
 }
 
 void Sample::PrepareFrame(uint32_t) {
-    BeginUI();
+    ImGui::NewFrame();
     {
         ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(0, 0));
@@ -298,21 +301,28 @@ void Sample::PrepareFrame(uint32_t) {
         }
         ImGui::End();
     }
-    EndUI();
+    ImGui::EndFrame();
+    ImGui::Render();
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
-    m_FrameIndex = frameIndex;
-
-    uint32_t backBufferIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
-    m_BackBuffer = &m_SwapChainBuffers[backBufferIndex];
-
-    m_RecordingTime = m_Timer.GetTimeStamp();
-
     constexpr uint32_t threadIndex0 = 0;
     ThreadContext& context0 = m_ThreadContexts[threadIndex0];
 
     uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
+    const QueuedFrame& queuedFrame = context0.queuedFrames[queuedFrameIndex];
+
+    uint32_t backBufferIndex = 0;
+    NRI.AcquireNextTexture(*m_SwapChain, *queuedFrame.textureAcquiredSemaphore, backBufferIndex);
+
+    m_BackBuffer = &m_SwapChainBuffers[backBufferIndex];
+    m_FrameIndex = frameIndex;
+
+    nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
+    m_FrameCommandBuffers[threadIndex0] = &commandBuffer;
+
+    // Record
+    m_RecordingTime = m_Timer.GetTimeStamp();
 
     if (m_IsMultithreadingEnabled) {
         m_ReadyCount.store(0, std::memory_order_seq_cst);
@@ -323,10 +333,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
     }
 
-    nri::CommandBuffer& commandBuffer = *context0.commandBuffers[queuedFrameIndex];
-    m_FrameCommandBuffers[threadIndex0] = &commandBuffer;
-
-    // Record
     NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
     {
         helper::Annotation annotation1(NRI, commandBuffer, "Frame");
@@ -370,7 +376,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
             {
-                RenderUI(commandBuffer, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
+                RenderImgui(commandBuffer, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
             }
             NRI.CmdEndRendering(commandBuffer);
 
@@ -398,9 +404,20 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     { // Submit
         m_SubmitTime = m_Timer.GetTimeStamp();
 
+        nri::FenceSubmitDesc textureAcquiredFence = {};
+        textureAcquiredFence.fence = queuedFrame.textureAcquiredSemaphore;
+        textureAcquiredFence.stages = nri::StageBits::COLOR_ATTACHMENT;
+
+        nri::FenceSubmitDesc renderingFinishedFence = {};
+        renderingFinishedFence.fence = queuedFrame.renderingFinishedSemaphore;
+
         nri::QueueSubmitDesc queueSubmitDesc = {};
+        queueSubmitDesc.waitFences = &textureAcquiredFence;
+        queueSubmitDesc.waitFenceNum = 1;
         queueSubmitDesc.commandBuffers = m_FrameCommandBuffers.data();
         queueSubmitDesc.commandBufferNum = m_IsMultithreadingEnabled ? (uint32_t)m_ThreadNum : 1;
+        queueSubmitDesc.signalFences = &renderingFinishedFence;
+        queueSubmitDesc.signalFenceNum = 1;
 
         NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
 
@@ -410,7 +427,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.StreamerFinalize(*m_Streamer);
 
     // Present
-    NRI.QueuePresent(*m_SwapChain);
+    NRI.QueuePresent(*m_SwapChain, *queuedFrame.renderingFinishedSemaphore);
 
     { // Signaling after "Present" improves D3D11 performance a bit
         nri::FenceSubmitDesc signalFence = {};
@@ -465,7 +482,7 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex) {
         threadContext.control.store(HALT, std::memory_order_seq_cst);
 
         uint32_t queuedFrameIndex = m_FrameIndex % GetQueuedFrameNum();
-        nri::CommandBuffer& commandBuffer = *threadContext.commandBuffers[queuedFrameIndex];
+        nri::CommandBuffer& commandBuffer = *threadContext.queuedFrames[queuedFrameIndex].commandBuffer;
         m_FrameCommandBuffers[threadIndex] = &commandBuffer;
 
         NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
@@ -488,7 +505,7 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex) {
 
                 NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
                 {
-                    RenderUI(commandBuffer, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
+                    RenderImgui(commandBuffer, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
                 }
                 NRI.CmdEndRendering(commandBuffer);
 
@@ -546,8 +563,15 @@ void Sample::CreateCommandBuffers() {
         ThreadContext& threadContext = m_ThreadContexts[i];
 
         for (uint32_t j = 0; j < GetQueuedFrameNum(); j++) {
-            NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, threadContext.commandAllocators[j]));
-            NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*threadContext.commandAllocators[j], threadContext.commandBuffers[j]));
+            QueuedFrame& queuedFrame = threadContext.queuedFrames[j];
+
+            NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, queuedFrame.commandAllocator));
+            NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));
+
+            if (i == 0) {
+                NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, queuedFrame.textureAcquiredSemaphore));
+                NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, queuedFrame.renderingFinishedSemaphore));
+            }
         }
     }
 }

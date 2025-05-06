@@ -79,9 +79,6 @@
           "Command": "--testMode"
         },
         {
-          "Command": "--frameNum=9999999"
-        },
-        {
           "Command": "--adapter=0"
         },
         {

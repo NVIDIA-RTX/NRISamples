@@ -17,6 +17,8 @@ struct QueuedFrame {
     nri::CommandAllocator* commandAllocatorCompute;
     std::array<nri::CommandBuffer*, 3> commandBufferGraphics;
     nri::CommandBuffer* commandBufferCompute;
+    nri::Fence* textureAcquiredSemaphore;
+    nri::Fence* renderingFinishedSemaphore;
 };
 
 struct Vertex {
@@ -70,6 +72,8 @@ Sample::~Sample() {
         NRI.DestroyCommandBuffer(*queuedFrame.commandBufferCompute);
         NRI.DestroyCommandAllocator(*queuedFrame.commandAllocatorCompute);
         NRI.DestroyCommandAllocator(*queuedFrame.commandAllocatorGraphics);
+        NRI.DestroyFence(*queuedFrame.textureAcquiredSemaphore);
+        NRI.DestroyFence(*queuedFrame.renderingFinishedSemaphore);
     }
 
     for (uint32_t i = 0; i < m_SwapChainBuffers.size(); i++)
@@ -91,7 +95,7 @@ Sample::~Sample() {
     for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
         NRI.FreeMemory(*m_MemoryAllocations[i]);
 
-    DestroyUI();
+    DestroyImgui();
 
     nri::nriDestroyDevice(*m_Device);
 }
@@ -181,7 +185,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         }
     }
 
-    // Buffered resources
+    // Queued frames
     m_QueuedFrames.resize(GetQueuedFrameNum());
     for (QueuedFrame& queuedFrame : m_QueuedFrames) {
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, queuedFrame.commandAllocatorGraphics));
@@ -192,6 +196,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_ComputeQueue, queuedFrame.commandAllocatorCompute));
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocatorCompute, queuedFrame.commandBufferCompute));
         }
+
+        NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, queuedFrame.textureAcquiredSemaphore));
+        NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, queuedFrame.renderingFinishedSemaphore));
     }
 
     utils::ShaderCodeStorage shaderCodeStorage;
@@ -351,24 +358,22 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, &textureData, 1, &bufferData, 1));
     }
 
-    return InitUI(*m_Device);
+    return InitImgui(*m_Device);
 }
 
 void Sample::LatencySleep(uint32_t frameIndex) {
     uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
     const QueuedFrame& queuedFrame = m_QueuedFrames[queuedFrameIndex];
 
-    if (frameIndex >= GetQueuedFrameNum()) {
-        NRI.Wait(*m_FrameFence, 1 + frameIndex - GetQueuedFrameNum());
-        NRI.ResetCommandAllocator(*queuedFrame.commandAllocatorGraphics);
+    NRI.Wait(*m_FrameFence, frameIndex >= GetQueuedFrameNum() ? 1 + frameIndex - GetQueuedFrameNum() : 0);
+    NRI.ResetCommandAllocator(*queuedFrame.commandAllocatorGraphics);
 
-        if (m_IsAsyncMode)
-            NRI.ResetCommandAllocator(*queuedFrame.commandAllocatorCompute);
-    }
+    if (m_IsAsyncMode)
+        NRI.ResetCommandAllocator(*queuedFrame.commandAllocatorCompute);
 }
 
 void Sample::PrepareFrame(uint32_t) {
-    BeginUI();
+    ImGui::NewFrame();
     {
         ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
         ImGui::SetNextWindowSize(ImVec2(0, 0));
@@ -381,7 +386,8 @@ void Sample::PrepareFrame(uint32_t) {
         }
         ImGui::End();
     }
-    EndUI();
+    ImGui::EndFrame();
+    ImGui::Render();
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
@@ -390,7 +396,9 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
     const QueuedFrame& queuedFrame = m_QueuedFrames[queuedFrameIndex];
 
-    const uint32_t backBufferIndex = NRI.AcquireNextSwapChainTexture(*m_SwapChain);
+    uint32_t backBufferIndex = 0;
+    NRI.AcquireNextTexture(*m_SwapChain, *queuedFrame.textureAcquiredSemaphore, backBufferIndex);
+
     const BackBuffer& backBuffer = m_SwapChainBuffers[backBufferIndex];
 
     nri::TextureBarrierDesc textureBarriers[2] = {};
@@ -460,7 +468,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             NRI.CmdDraw(commandBuffer1, {VERTEX_NUM, 1, 0, 0});
 
-            RenderUI(commandBuffer1, *m_Streamer, backBuffer.attachmentFormat, 1.0f, true);
+            RenderImgui(commandBuffer1, *m_Streamer, backBuffer.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(commandBuffer1);
     }
@@ -507,58 +515,74 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     nri::CommandBuffer* commandBufferArray[3] = {&commandBuffer0, &commandBuffer1, &commandBuffer2};
 
-    // Submit work
-    if (m_IsAsyncMode) {
-        nri::FenceSubmitDesc computeFinishedFence = {};
-        computeFinishedFence.fence = m_ComputeFence;
-        computeFinishedFence.value = 1 + frameIndex;
+    { // Submit work
+        nri::FenceSubmitDesc textureAcquiredFence = {};
+        textureAcquiredFence.fence = queuedFrame.textureAcquiredSemaphore;
+        textureAcquiredFence.stages = nri::StageBits::COPY;
 
-        { // Submit the Compute task into the COMPUTE queue
-            nri::FenceSubmitDesc waitFence = {};
-            waitFence.fence = m_FrameFence;
-            waitFence.value = frameIndex;
+        nri::FenceSubmitDesc renderingFinishedFence = {};
+        renderingFinishedFence.fence = queuedFrame.renderingFinishedSemaphore;
 
-            nri::QueueSubmitDesc computeTask = {};
-            computeTask.waitFences = &waitFence; // Wait for the previous frame completion before execution
-            computeTask.waitFenceNum = 1;
-            computeTask.commandBuffers = &commandBufferArray[0];
-            computeTask.commandBufferNum = 1;
-            computeTask.signalFences = &computeFinishedFence;
-            computeTask.signalFenceNum = 1;
+        if (m_IsAsyncMode) {
+            nri::FenceSubmitDesc computeFinishedFence = {};
+            computeFinishedFence.fence = m_ComputeFence;
+            computeFinishedFence.value = 1 + frameIndex;
 
-            NRI.QueueSubmit(*m_ComputeQueue, computeTask);
+            { // Submit the Compute task into the COMPUTE queue
+                nri::FenceSubmitDesc waitFence = {};
+                waitFence.fence = m_FrameFence;
+                waitFence.value = frameIndex;
+
+                nri::QueueSubmitDesc computeTask = {};
+                computeTask.waitFences = &waitFence; // Wait for the previous frame completion before execution
+                computeTask.waitFenceNum = 1;
+                computeTask.commandBuffers = &commandBufferArray[0];
+                computeTask.commandBufferNum = 1;
+                computeTask.signalFences = &computeFinishedFence;
+                computeTask.signalFenceNum = 1;
+
+                NRI.QueueSubmit(*m_ComputeQueue, computeTask);
+            }
+
+            { // Submit the Graphics task into the GRAPHICS queue
+                nri::QueueSubmitDesc graphicsTask = {};
+                graphicsTask.commandBuffers = &commandBufferArray[1];
+                graphicsTask.commandBufferNum = 1;
+
+                NRI.QueueSubmit(*m_GraphicsQueue, graphicsTask);
+            }
+
+            { // Submit the Composition task into the GRAPHICS queue
+                nri::FenceSubmitDesc waitFences[] = {textureAcquiredFence, computeFinishedFence};
+
+                nri::QueueSubmitDesc compositionTask = {};
+                compositionTask.waitFences = waitFences; // Wait for the Compute task completion before execution
+                compositionTask.waitFenceNum = helper::GetCountOf(waitFences);
+                compositionTask.commandBuffers = &commandBufferArray[2];
+                compositionTask.commandBufferNum = 1;
+                compositionTask.signalFences = &renderingFinishedFence;
+                compositionTask.signalFenceNum = 1;
+
+                NRI.QueueSubmit(*m_GraphicsQueue, compositionTask);
+            }
+        } else {
+            // Submit all tasks to the GRAPHICS queue
+            nri::QueueSubmitDesc allTasks = {};
+            allTasks.waitFences = &textureAcquiredFence;
+            allTasks.waitFenceNum = 1;
+            allTasks.commandBuffers = commandBufferArray;
+            allTasks.commandBufferNum = helper::GetCountOf(commandBufferArray);
+            allTasks.signalFences = &renderingFinishedFence;
+            allTasks.signalFenceNum = 1;
+
+            NRI.QueueSubmit(*m_GraphicsQueue, allTasks);
         }
-
-        { // Submit the Graphics task into the GRAPHICS queue
-            nri::QueueSubmitDesc graphicsTask = {};
-            graphicsTask.commandBuffers = &commandBufferArray[1];
-            graphicsTask.commandBufferNum = 1;
-
-            NRI.QueueSubmit(*m_GraphicsQueue, graphicsTask);
-        }
-
-        { // Submit the Composition task into the GRAPHICS queue
-            nri::QueueSubmitDesc compositionTask = {};
-            compositionTask.waitFences = &computeFinishedFence; // Wait for the Compute task completion before execution
-            compositionTask.waitFenceNum = 1;
-            compositionTask.commandBuffers = &commandBufferArray[2];
-            compositionTask.commandBufferNum = 1;
-
-            NRI.QueueSubmit(*m_GraphicsQueue, compositionTask);
-        }
-    } else {
-        // Submit all tasks to the GRAPHICS queue
-        nri::QueueSubmitDesc allTasks = {};
-        allTasks.commandBuffers = commandBufferArray;
-        allTasks.commandBufferNum = helper::GetCountOf(commandBufferArray);
-
-        NRI.QueueSubmit(*m_GraphicsQueue, allTasks);
     }
 
     NRI.StreamerFinalize(*m_Streamer);
 
     // Present
-    NRI.QueuePresent(*m_SwapChain);
+    NRI.QueuePresent(*m_SwapChain, *queuedFrame.renderingFinishedSemaphore);
 
     { // Signaling after "Present" improves D3D11 performance a bit
         nri::FenceSubmitDesc signalFence = {};
