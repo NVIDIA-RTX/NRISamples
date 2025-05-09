@@ -379,7 +379,7 @@ void Sample::CreateVulkanDevice() {
     deviceDesc.queueFamilyNum = 1;
     deviceDesc.minorVersion = VK_MINOR_VERSION;
 
-    NRI_ABORT_ON_FAILURE(nri::nriCreateDeviceFromVkDevice(deviceDesc, m_Device));
+    NRI_ABORT_ON_FAILURE(nri::nriCreateDeviceFromVKDevice(deviceDesc, m_Device));
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
