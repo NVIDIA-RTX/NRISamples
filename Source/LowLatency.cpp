@@ -149,7 +149,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         swapChainDesc.verticalSyncInterval = m_VsyncInterval;
         swapChainDesc.width = (uint16_t)GetWindowResolution().x;
         swapChainDesc.height = (uint16_t)GetWindowResolution().y;
-        swapChainDesc.textureNum = QUEUED_FRAMES_MAX_NUM + 1;
+        swapChainDesc.textureNum = QUEUED_FRAMES_MAX_NUM; // TODO: +1 is desired (?), but requires decoupling swap chain semaphores from "QueuedFrame" 
         swapChainDesc.verticalSyncInterval = VSYNC_INTERVAL;
         swapChainDesc.queuedFrameNum = WAITABLE_SWAP_CHAIN ? WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY : QUEUED_FRAMES_MAX_NUM;
         swapChainDesc.waitable = WAITABLE_SWAP_CHAIN;
