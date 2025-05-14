@@ -271,13 +271,7 @@ void Sample::CreateVulkanDevice() {
     };
     const char* deviceExtensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-#ifdef __APPLE__
-        VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
-        VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
-        VK_KHR_COPY_COMMANDS_2_EXTENSION_NAME,
-        VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
-#endif
-#if (VK_MINOR_VERSION == 2)
+#if (defined(__APPLE__) || VK_MINOR_VERSION == 2)
         VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
         VK_KHR_COPY_COMMANDS_2_EXTENSION_NAME,
@@ -446,7 +440,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, releaseSemaphore));
 
             SwapChainTexture& swapChainTexture = m_SwapChainTextures.emplace_back();
-            
+
             swapChainTexture = {};
             swapChainTexture.acquireSemaphore = acquireSemaphore;
             swapChainTexture.releaseSemaphore = releaseSemaphore;
