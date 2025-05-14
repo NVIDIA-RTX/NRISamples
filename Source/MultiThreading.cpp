@@ -39,8 +39,6 @@ struct Box {
 struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
     nri::CommandBuffer* commandBuffer;
-    nri::Fence* textureAcquiredSemaphore;
-    nri::Fence* renderingFinishedSemaphore;
 };
 
 struct ThreadContext {
@@ -107,13 +105,13 @@ private:
     std::vector<nri::Descriptor*> m_TextureViews;
     std::vector<nri::Descriptor*> m_FakeConstantBufferViews;
     std::vector<Box> m_Boxes;
-    std::vector<BackBuffer> m_SwapChainBuffers;
+    std::vector<SwapChainTexture> m_SwapChainTextures;
     std::vector<nri::Memory*> m_MemoryAllocations;
     uint32_t m_ThreadNum = 0;
     uint32_t m_FrameIndex = 0;
     uint32_t m_BoxesPerThread = 0;
     uint32_t m_IndexNum = 0;
-    const BackBuffer* m_BackBuffer = nullptr;
+    const SwapChainTexture* m_BackBuffer = nullptr;
     double m_RecordingTime = 0.0;
     double m_SubmitTime = 0.0;
     bool m_IsMultithreadingEnabled = true;
@@ -138,13 +136,14 @@ Sample::~Sample() {
 
             NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
             NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
-            NRI.DestroyFence(*queuedFrame.textureAcquiredSemaphore);
-            NRI.DestroyFence(*queuedFrame.renderingFinishedSemaphore);
         }
     }
 
-    for (uint32_t i = 0; i < m_SwapChainBuffers.size(); i++)
-        NRI.DestroyDescriptor(*m_SwapChainBuffers[i].colorAttachment);
+    for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
+        NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
+        NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
+        NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+    }
 
     for (size_t i = 0; i < m_Textures.size(); i++)
         NRI.DestroyDescriptor(*m_TextureViews[i]);
@@ -312,16 +311,22 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
     const QueuedFrame& queuedFrame = context0.queuedFrames[queuedFrameIndex];
 
-    uint32_t backBufferIndex = 0;
-    NRI.AcquireNextTexture(*m_SwapChain, *queuedFrame.textureAcquiredSemaphore, backBufferIndex);
+    // Acquire a swap chain texture
+    uint32_t recycledSemaphoreIndex = frameIndex % (uint32_t)m_SwapChainTextures.size();
+    nri::Fence* swapChainAcquireSemaphore = m_SwapChainTextures[recycledSemaphoreIndex].acquireSemaphore;
 
-    m_BackBuffer = &m_SwapChainBuffers[backBufferIndex];
-    m_FrameIndex = frameIndex;
+    uint32_t currentSwapChainTextureIndex = 0;
+    NRI.AcquireNextTexture(*m_SwapChain, *swapChainAcquireSemaphore, currentSwapChainTextureIndex);
 
+    const SwapChainTexture& swapChainTexture = m_SwapChainTextures[currentSwapChainTextureIndex];
+
+    m_BackBuffer = &m_SwapChainTextures[currentSwapChainTextureIndex];
+
+    // Record
     nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
     m_FrameCommandBuffers[threadIndex0] = &commandBuffer;
 
-    // Record
+    m_FrameIndex = frameIndex;
     m_RecordingTime = m_Timer.GetTimeStamp();
 
     if (m_IsMultithreadingEnabled) {
@@ -405,11 +410,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         m_SubmitTime = m_Timer.GetTimeStamp();
 
         nri::FenceSubmitDesc textureAcquiredFence = {};
-        textureAcquiredFence.fence = queuedFrame.textureAcquiredSemaphore;
+        textureAcquiredFence.fence = swapChainAcquireSemaphore;
         textureAcquiredFence.stages = nri::StageBits::COLOR_ATTACHMENT;
 
         nri::FenceSubmitDesc renderingFinishedFence = {};
-        renderingFinishedFence.fence = queuedFrame.renderingFinishedSemaphore;
+        renderingFinishedFence.fence = swapChainTexture.releaseSemaphore;
 
         nri::QueueSubmitDesc queueSubmitDesc = {};
         queueSubmitDesc.waitFences = &textureAcquiredFence;
@@ -427,7 +432,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.StreamerFinalize(*m_Streamer);
 
     // Present
-    NRI.QueuePresent(*m_SwapChain, *queuedFrame.renderingFinishedSemaphore);
+    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
 
     { // Signaling after "Present" improves D3D11 performance a bit
         nri::FenceSubmitDesc signalFence = {};
@@ -537,24 +542,37 @@ void Sample::CreateSwapChain(nri::Format& swapChainFormat) {
     swapChainDesc.verticalSyncInterval = m_VsyncInterval;
     swapChainDesc.width = (uint16_t)GetWindowResolution().x;
     swapChainDesc.height = (uint16_t)GetWindowResolution().y;
-    swapChainDesc.textureNum = GetSwapChainFrameNum();
+    swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
     swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
 
     NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
 
     uint32_t swapChainTextureNum = 0;
     nri::Texture* const* swapChainTextures = NRI.GetSwapChainTextures(*m_SwapChain, swapChainTextureNum);
+
     swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
 
-    m_SwapChainBuffers.clear();
+    m_SwapChainTextures.clear();
     for (uint32_t i = 0; i < swapChainTextureNum; i++) {
         nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
 
-        nri::Descriptor* colorAttachment;
+        nri::Descriptor* colorAttachment = nullptr;
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
 
-        const BackBuffer backBuffer = {colorAttachment, swapChainTextures[i], swapChainFormat};
-        m_SwapChainBuffers.push_back(backBuffer);
+        nri::Fence* acquireSemaphore = nullptr;
+        NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, acquireSemaphore));
+
+        nri::Fence* releaseSemaphore = nullptr;
+        NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, releaseSemaphore));
+
+        SwapChainTexture& swapChainTexture = m_SwapChainTextures.emplace_back();
+            
+        swapChainTexture = {};
+        swapChainTexture.acquireSemaphore = acquireSemaphore;
+        swapChainTexture.releaseSemaphore = releaseSemaphore;
+        swapChainTexture.texture = swapChainTextures[i];
+        swapChainTexture.colorAttachment = colorAttachment;
+        swapChainTexture.attachmentFormat = swapChainFormat;
     }
 }
 
@@ -567,11 +585,6 @@ void Sample::CreateCommandBuffers() {
 
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, queuedFrame.commandAllocator));
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));
-
-            if (i == 0) {
-                NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, queuedFrame.textureAcquiredSemaphore));
-                NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, queuedFrame.renderingFinishedSemaphore));
-            }
         }
     }
 }
