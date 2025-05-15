@@ -5,16 +5,16 @@
 #include <array>
 
 // Tweakables, which must be set only once
-#define ALLOW_LOW_LATENCY true
-#define WAITABLE_SWAP_CHAIN false
+#define ALLOW_LOW_LATENCY                     true
+#define WAITABLE_SWAP_CHAIN                   false
 #define WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY 1 // 2 helps to avoid "TOTAL = GPU + CPU" time issue
-#define EMULATE_BAD_PRACTICE false
-#define VSYNC_INTERVAL 0
-#define QUEUED_FRAMES_MAX_NUM 3
-#define CTA_NUM 38000 // TODO: tuned to reach ~1ms on RTX 4080
-#define COLOR_LATENCY_SLEEP NriBgra(255, 0, 0)
-#define COLOR_SIMULATION NriBgra(0, 255, 0)
-#define COLOR_RENDER NriBgra(0, 0, 255)
+#define EMULATE_BAD_PRACTICE                  false
+#define VSYNC_INTERVAL                        0
+#define QUEUED_FRAMES_MAX_NUM                 3
+#define CTA_NUM                               38000 // TODO: tuned to reach ~1ms on RTX 4080
+#define COLOR_LATENCY_SLEEP                   NriBgra(255, 0, 0)
+#define COLOR_SIMULATION                      NriBgra(0, 255, 0)
+#define COLOR_RENDER                          NriBgra(0, 0, 255)
 
 struct NRIInterface
     : public nri::CoreInterface,
@@ -173,7 +173,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, releaseSemaphore));
 
             SwapChainTexture& swapChainTexture = m_SwapChainTextures.emplace_back();
-            
+
             swapChainTexture = {};
             swapChainTexture.acquireSemaphore = acquireSemaphore;
             swapChainTexture.releaseSemaphore = releaseSemaphore;

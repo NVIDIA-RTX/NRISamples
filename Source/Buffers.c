@@ -35,7 +35,7 @@ int main(int argc, char** argv) {
             debugAPI = true;
         else if (!strcmp(argv[i], "--debugNRI"))
             debugNRI = true;
-        else if(!strcmp(argv[i], "--adapter=1"))
+        else if (!strcmp(argv[i], "--adapter=1"))
             adapterIndex = 1;
     }
 

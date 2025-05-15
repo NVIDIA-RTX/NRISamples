@@ -137,7 +137,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
             NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, releaseSemaphore));
 
             SwapChainTexture& swapChainTexture = m_SwapChainTextures.emplace_back();
-            
+
             swapChainTexture = {};
             swapChainTexture.acquireSemaphore = acquireSemaphore;
             swapChainTexture.releaseSemaphore = releaseSemaphore;
