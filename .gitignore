@@ -1,32 +1,5 @@
-# cmake
-CMakeFiles/
-.cmake/
-*.dir/
-*.tlog/
-CMakeCache.txt
-cmake_install.cmake
-*.recipe
-
-# make
-Makefile
-
-# VS
-*.vcxproj*
-*.sln
-.vs/
-*.args.json
-*.manifest
-
 # VS Code
 .vscode/
-
-# shaders
-*.dxbc
-*.dxil
-*.spirv
-*.dxbc.h
-*.dxil.h
-*.spirv.h
 
 # ninja
 .ninja_deps
@@ -36,29 +9,11 @@ compile_commands.json
 *.log
 *.ninja
 
-# library
-*.lib
-*.exp
-*.dll
-*.ilk
-*.pdb
-*.so
-*.so.*
-*.manifest
-
-# external packages
-External/Assimp/
-External/Detex/
-External/Glfw/
-External/ImGui/
-External/vulkansdk/
-External/DXC/
-
 # generated folders
 _Bin/
 _Build/
-_Data/
 _Shaders/
+_Data/
 
 # can be a symbolic link
 _Data
