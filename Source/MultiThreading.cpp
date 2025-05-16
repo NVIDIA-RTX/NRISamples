@@ -333,7 +333,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         nri::CommandBuffer& commandBufferPre = *queuedFrame.commandBufferPre;
         NRI.BeginCommandBuffer(commandBufferPre, m_DescriptorPool);
         {
-            helper::Annotation annotation(NRI, commandBufferPre, "Frame (pre)");
+            helper::Annotation annotation(NRI, commandBufferPre, "Pre");
 
             nri::TextureBarrierDesc swapChainTextureTransition = {};
             swapChainTextureTransition.texture = m_BackBuffer->texture;
@@ -393,7 +393,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
         NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
         {
-            helper::Annotation annotation(NRI, commandBuffer, "Frame");
+            helper::Annotation annotation(NRI, commandBuffer, "Render boxes");
 
             nri::AttachmentsDesc attachmentsDesc = {};
             attachmentsDesc.colorNum = 1;
@@ -430,7 +430,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         nri::CommandBuffer& commandBufferPost = *queuedFrame.commandBufferPost;
         NRI.BeginCommandBuffer(commandBufferPost, m_DescriptorPool);
         {
-            helper::Annotation annotation(NRI, commandBufferPost, "Frame");
+            helper::Annotation annotation(NRI, commandBufferPost, "Post");
 
             nri::AttachmentsDesc attachmentsDesc = {};
             attachmentsDesc.colorNum = 1;
