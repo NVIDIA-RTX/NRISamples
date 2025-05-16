@@ -10,6 +10,19 @@
 #include <atomic>
 #include <thread>
 
+// Found in sse2neon
+#if (defined(__arm__) || defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM))
+inline void _mm_pause() {
+#    if defined(_MSC_VER)
+    __isb(_ARM64_BARRIER_SY);
+#    else
+    __asm__ __volatile__("isb\n");
+#    endif
+}
+#else
+#    include <xmmintrin.h>
+#endif
+
 constexpr uint32_t BOX_NUM = 30000;
 constexpr uint32_t DRAW_CALLS_PER_PIPELINE = 4;
 constexpr size_t QUEUED_FRAME_MAX_NUM = 8;
@@ -60,23 +73,31 @@ private:
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
 
-    void RenderBoxes(nri::CommandBuffer& commandBuffer, uint32_t offset, uint32_t number);
-    void ThreadEntryPoint(uint32_t threadIndex);
-    void CreateSwapChain(nri::Format& swapChainFormat);
+    nri::Format CreateSwapChain();
     void CreateCommandBuffers();
-    bool CreatePipeline(nri::Format swapChainFormat);
+    void CreatePipeline(nri::Format swapChainFormat);
+    void CreateTextures();
     void CreateDepthTexture();
     void CreateVertexBuffer();
     void CreateDescriptorPool();
-    void LoadTextures();
     void CreateTransformConstantBuffer();
     void CreateDescriptorSets();
     void CreateFakeConstantBuffers();
     void CreateViewConstantBuffer();
+    void RenderBoxes(nri::CommandBuffer& commandBuffer, uint32_t offset, uint32_t number);
+    void ThreadEntryPoint(uint32_t threadIndex);
     void SetupProjViewMatrix(float4x4& projViewMatrix);
-    uint32_t GetPhysicalCoreNum() const;
 
 private:
+    std::array<ThreadContext, THREAD_MAX_NUM> m_ThreadContexts = {};
+    std::vector<nri::CommandBuffer*> m_FrameCommandBuffers;
+    std::vector<nri::Pipeline*> m_Pipelines;
+    std::vector<nri::Texture*> m_Textures;
+    std::vector<nri::Descriptor*> m_TextureViews;
+    std::vector<nri::Descriptor*> m_FakeConstantBufferViews;
+    std::vector<Box> m_Boxes;
+    std::vector<SwapChainTexture> m_SwapChainTextures;
+    std::vector<nri::Memory*> m_MemoryAllocations;
     NRIInterface NRI = {};
     nri::Device* m_Device = nullptr;
     nri::Streamer* m_Streamer = nullptr;
@@ -96,24 +117,14 @@ private:
     nri::Buffer* m_TransformConstantBuffer = nullptr;
     nri::Buffer* m_ViewConstantBuffer = nullptr;
     nri::Buffer* m_FakeConstantBuffer = nullptr;
+    const SwapChainTexture* m_BackBuffer = nullptr;
     nri::Format m_DepthFormat = nri::Format::UNKNOWN;
-
-    std::vector<nri::CommandBuffer*> m_FrameCommandBuffers;
-    std::array<ThreadContext, THREAD_MAX_NUM> m_ThreadContexts = {};
-    std::vector<nri::Pipeline*> m_Pipelines;
-    std::vector<nri::Texture*> m_Textures;
-    std::vector<nri::Descriptor*> m_TextureViews;
-    std::vector<nri::Descriptor*> m_FakeConstantBufferViews;
-    std::vector<Box> m_Boxes;
-    std::vector<SwapChainTexture> m_SwapChainTextures;
-    std::vector<nri::Memory*> m_MemoryAllocations;
+    double m_RecordingTime = 0.0;
+    double m_SubmitTime = 0.0;
     uint32_t m_ThreadNum = 0;
     uint32_t m_FrameIndex = 0;
     uint32_t m_BoxesPerThread = 0;
     uint32_t m_IndexNum = 0;
-    const SwapChainTexture* m_BackBuffer = nullptr;
-    double m_RecordingTime = 0.0;
-    double m_SubmitTime = 0.0;
     bool m_IsMultithreadingEnabled = true;
 
     std::atomic_uint32_t m_ReadyCount;
@@ -182,10 +193,8 @@ Sample::~Sample() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
-    uint32_t logicalCoreNum = std::thread::hardware_concurrency();
-    uint32_t phyiscalCoreNum = GetPhysicalCoreNum();
-    uint32_t ratio = std::max(logicalCoreNum / std::max(phyiscalCoreNum, 1u), 1u);
-    m_ThreadNum = std::min((phyiscalCoreNum - 1) * ratio, (uint32_t)THREAD_MAX_NUM);
+    uint32_t concurrentThreadMaxNum = std::thread::hardware_concurrency();
+    m_ThreadNum = std::min((concurrentThreadMaxNum * 3) / 4, (uint32_t)THREAD_MAX_NUM);
 
     m_FrameCommandBuffers.resize(m_ThreadNum);
     for (ThreadContext& threadContext : m_ThreadContexts)
@@ -228,20 +237,16 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_FrameFence));
 
     m_DepthFormat = nri::GetSupportedDepthFormat(NRI, *m_Device, 24, false);
-    nri::Format swapChainFormat = nri::Format::UNKNOWN;
+    nri::Format swapChainFormat = CreateSwapChain();
 
     CreateCommandBuffers();
     CreateDepthTexture();
-    CreateSwapChain(swapChainFormat);
-
-    NRI_ABORT_ON_FALSE(CreatePipeline(swapChainFormat));
-
-    LoadTextures();
+    CreatePipeline(swapChainFormat);
+    CreateTextures();
     CreateFakeConstantBuffers();
     CreateViewConstantBuffer();
     CreateVertexBuffer();
     CreateDescriptorPool();
-
     CreateTransformConstantBuffer();
     CreateDescriptorSets();
 
@@ -267,7 +272,6 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 void Sample::PrepareFrame(uint32_t) {
     ImGui::NewFrame();
     {
-        ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Always);
         ImGui::SetNextWindowSize(ImVec2(0, 0));
         ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
         {
@@ -345,8 +349,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         nri::TextureBarrierDesc backBufferTransition = {};
         backBufferTransition.texture = m_BackBuffer->texture;
         backBufferTransition.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-        backBufferTransition.layerNum = nri::REMAINING_LAYERS;
-        backBufferTransition.mipNum = nri::REMAINING_MIPS;
 
         nri::BarrierGroupDesc barrierGroupDesc = {};
         barrierGroupDesc.textures = &backBufferTransition;
@@ -399,10 +401,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     }
     NRI.EndCommandBuffer(commandBuffer);
 
-    while (m_IsMultithreadingEnabled && m_ReadyCount.load(std::memory_order_relaxed) != m_ThreadNum - 1) {
-        for (volatile uint32_t i = 0; i < 100; i++)
-            ;
-    }
+    while (m_IsMultithreadingEnabled && m_ReadyCount.load(std::memory_order_relaxed) != m_ThreadNum - 1)
+        _mm_pause();
 
     m_RecordingTime = m_Timer.GetTimeStamp() - m_RecordingTime;
 
@@ -534,7 +534,7 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex) {
     }
 }
 
-void Sample::CreateSwapChain(nri::Format& swapChainFormat) {
+nri::Format Sample::CreateSwapChain() {
     nri::SwapChainDesc swapChainDesc = {};
     swapChainDesc.window = GetWindow();
     swapChainDesc.queue = m_GraphicsQueue;
@@ -550,7 +550,7 @@ void Sample::CreateSwapChain(nri::Format& swapChainFormat) {
     uint32_t swapChainTextureNum = 0;
     nri::Texture* const* swapChainTextures = NRI.GetSwapChainTextures(*m_SwapChain, swapChainTextureNum);
 
-    swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
+    nri::Format swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
 
     m_SwapChainTextures.clear();
     for (uint32_t i = 0; i < swapChainTextureNum; i++) {
@@ -574,6 +574,8 @@ void Sample::CreateSwapChain(nri::Format& swapChainFormat) {
         swapChainTexture.colorAttachment = colorAttachment;
         swapChainTexture.attachmentFormat = swapChainFormat;
     }
+
+    return swapChainFormat;
 }
 
 void Sample::CreateCommandBuffers() {
@@ -589,7 +591,7 @@ void Sample::CreateCommandBuffers() {
     }
 }
 
-bool Sample::CreatePipeline(nri::Format swapChainFormat) {
+void Sample::CreatePipeline(nri::Format swapChainFormat) {
     nri::DescriptorRangeDesc descriptorRanges0[] = {
         {1, 3, nri::DescriptorType::CONSTANT_BUFFER, nri::StageBits::ALL},
         {0, 3, nri::DescriptorType::TEXTURE, nri::StageBits::FRAGMENT_SHADER}};
@@ -691,8 +693,6 @@ bool Sample::CreatePipeline(nri::Format swapChainFormat) {
 
         NRI_ABORT_ON_FAILURE(NRI.CreateGraphicsPipeline(*m_Device, graphicsPipelineDesc, m_Pipelines[i]));
     }
-
-    return true;
 }
 
 void Sample::CreateDepthTexture() {
@@ -854,35 +854,36 @@ void Sample::CreateTransformConstantBuffer() {
 }
 
 void Sample::CreateDescriptorSets() {
-    // DescriptorSet 0 (per box)
-    std::vector<nri::DescriptorSet*> descriptorSets(m_Boxes.size());
-    NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 0, descriptorSets.data(), (uint32_t)descriptorSets.size(), 0);
+    { // DescriptorSet 0 (per box)
+        std::vector<nri::DescriptorSet*> descriptorSets(m_Boxes.size());
+        NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 0, descriptorSets.data(), (uint32_t)descriptorSets.size(), 0);
 
-    for (size_t i = 0; i < m_Boxes.size(); i++) {
-        Box& box = m_Boxes[i];
+        for (size_t i = 0; i < m_Boxes.size(); i++) {
+            Box& box = m_Boxes[i];
 
-        nri::Descriptor* constantBuffers[] = {
-            m_FakeConstantBufferViews[0],
-            m_ViewConstantBufferView,
-            m_FakeConstantBufferViews[rand() % m_FakeConstantBufferViews.size()]};
+            nri::Descriptor* constantBuffers[] = {
+                m_FakeConstantBufferViews[0],
+                m_ViewConstantBufferView,
+                m_FakeConstantBufferViews[rand() % m_FakeConstantBufferViews.size()],
+            };
 
-        const nri::Descriptor* textureViews[3] = {};
-        for (size_t j = 0; j < helper::GetCountOf(textureViews); j++)
-            textureViews[j] = m_TextureViews[rand() % m_TextureViews.size()];
+            const nri::Descriptor* textureViews[3] = {};
+            for (size_t j = 0; j < helper::GetCountOf(textureViews); j++)
+                textureViews[j] = m_TextureViews[rand() % m_TextureViews.size()];
 
-        const nri::DescriptorRangeUpdateDesc rangeUpdates[] = {
-            {constantBuffers, helper::GetCountOf(constantBuffers)},
-            {textureViews, helper::GetCountOf(textureViews)}};
+            const nri::DescriptorRangeUpdateDesc rangeUpdates[] = {
+                {constantBuffers, helper::GetCountOf(constantBuffers)},
+                {textureViews, helper::GetCountOf(textureViews)}};
 
-        box.pipeline = m_Pipelines[(i / DRAW_CALLS_PER_PIPELINE) % m_Pipelines.size()];
+            box.pipeline = m_Pipelines[(i / DRAW_CALLS_PER_PIPELINE) % m_Pipelines.size()];
+            box.descriptorSet = descriptorSets[i];
 
-        box.descriptorSet = descriptorSets[i];
-        NRI.UpdateDescriptorRanges(*box.descriptorSet, 0, helper::GetCountOf(rangeUpdates), rangeUpdates);
-        NRI.UpdateDynamicConstantBuffers(*box.descriptorSet, 0, 1, &m_TransformConstantBufferView);
+            NRI.UpdateDescriptorRanges(*box.descriptorSet, 0, helper::GetCountOf(rangeUpdates), rangeUpdates);
+            NRI.UpdateDynamicConstantBuffers(*box.descriptorSet, 0, 1, &m_TransformConstantBufferView);
+        }
     }
 
-    // DescriptorSet 1 (shared)
-    {
+    { // DescriptorSet 1 (shared)
         const nri::DescriptorRangeUpdateDesc rangeUpdates[] = {
             {&m_Sampler, 1}};
 
@@ -904,7 +905,7 @@ void Sample::CreateDescriptorPool() {
     NRI_ABORT_ON_FAILURE(NRI.CreateDescriptorPool(*m_Device, descriptorPoolDesc, m_DescriptorPool));
 }
 
-void Sample::LoadTextures() {
+void Sample::CreateTextures() {
     constexpr uint32_t textureNum = 8;
 
     std::vector<utils::Texture> loadedTextures(textureNum);
@@ -1058,51 +1059,6 @@ void Sample::SetupProjViewMatrix(float4x4& projViewMatrix) {
     viewMatrix.PreTranslation(-cameraPosition);
 
     projViewMatrix = projectionMatrix * viewMatrix;
-}
-
-uint32_t Sample::GetPhysicalCoreNum() const {
-#if _WIN32
-    const char* moduleName = "kernel32";
-    const char* funcName = "GetLogicalProcessorInformation";
-
-    const HMODULE kernel32 = GetModuleHandleA(moduleName);
-    assert(kernel32 != nullptr);
-
-    void* address = (void*)GetProcAddress(kernel32, funcName);
-    assert(address != nullptr);
-
-    typedef BOOL(WINAPI * LPFN_GLPI)(PSYSTEM_LOGICAL_PROCESSOR_INFORMATION, PDWORD);
-    const LPFN_GLPI GetLogicalProcessorInformation = (LPFN_GLPI)address;
-
-    typedef SYSTEM_LOGICAL_PROCESSOR_INFORMATION Buffer;
-    Buffer* buffer = nullptr;
-    DWORD bufferSize = 0;
-    while (true) {
-        const DWORD res = GetLogicalProcessorInformation(buffer, &bufferSize);
-        if (res == TRUE)
-            break;
-
-        GetLastError();
-        SetLastError(0);
-
-        free(buffer);
-        buffer = (Buffer*)malloc(bufferSize); // TODO: Use alloca?
-    }
-
-    uint32_t coreNum = 0;
-    char* ptr = (char*)buffer;
-    char* end = ptr + bufferSize;
-    for (; ptr < end; ptr += sizeof(Buffer)) {
-        Buffer* info = (Buffer*)ptr;
-        coreNum += (info->Relationship == RelationProcessorCore) ? 1 : 0;
-    }
-
-    free(buffer);
-
-    return coreNum;
-#else
-    return std::thread::hardware_concurrency();
-#endif
 }
 
 SAMPLE_MAIN(Sample, 0);
