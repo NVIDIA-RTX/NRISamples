@@ -52,6 +52,10 @@ struct Box {
 struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
     nri::CommandBuffer* commandBuffer;
+
+    // Used by the main thread only
+    nri::CommandBuffer* commandBufferPre;
+    nri::CommandBuffer* commandBufferPost;
 };
 
 struct ThreadContext {
@@ -117,14 +121,14 @@ private:
     nri::Buffer* m_ViewConstantBuffer = nullptr;
     nri::Buffer* m_FakeConstantBuffer = nullptr;
     const SwapChainTexture* m_BackBuffer = nullptr;
+    double m_FrameTime = 0.0;
     nri::Format m_DepthFormat = nri::Format::UNKNOWN;
-    double m_RecordingTime = 0.0;
-    double m_SubmitTime = 0.0;
     uint32_t m_ThreadNum = 0;
     uint32_t m_FrameIndex = 0;
     uint32_t m_BoxesPerThread = 0;
     uint32_t m_IndexNum = 0;
-    bool m_IsMultithreadingEnabled = true;
+    bool m_MultiThreading = true;
+    bool m_MultiSubmit = false;
 
     std::atomic_uint32_t m_ReadyCount;
 };
@@ -132,7 +136,7 @@ private:
 Sample::~Sample() {
     NRI.WaitForIdle(*m_GraphicsQueue);
 
-    for (size_t i = 1; m_IsMultithreadingEnabled && i < m_ThreadNum; i++) {
+    for (size_t i = 1; m_MultiThreading && i < m_ThreadNum; i++) {
         ThreadContext& threadContext = m_ThreadContexts[i];
         threadContext.control.store(STOP);
         threadContext.thread.join();
@@ -145,6 +149,8 @@ Sample::~Sample() {
             QueuedFrame& queuedFrame = threadContext.queuedFrames[j];
 
             NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+            NRI.DestroyCommandBuffer(*queuedFrame.commandBufferPre);
+            NRI.DestroyCommandBuffer(*queuedFrame.commandBufferPost);
             NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
         }
     }
@@ -248,7 +254,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     CreateTransformConstantBuffer();
     CreateDescriptorSets();
 
-    if (m_IsMultithreadingEnabled) {
+    if (m_MultiThreading) {
         for (uint32_t i = 1; i < m_ThreadNum; i++)
             m_ThreadContexts[i].thread = std::thread(&Sample::ThreadEntryPoint, this, i);
     }
@@ -260,7 +266,7 @@ void Sample::LatencySleep(uint32_t frameIndex) {
     uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
     NRI.Wait(*m_FrameFence, frameIndex >= GetQueuedFrameNum() ? 1 + frameIndex - GetQueuedFrameNum() : 0);
 
-    uint32_t threadNum = m_IsMultithreadingEnabled ? m_ThreadNum : 1;
+    uint32_t threadNum = m_MultiThreading ? m_ThreadNum : 1;
     for (uint32_t i = 0; i < threadNum; i++) {
         ThreadContext& threadContext = m_ThreadContexts[i];
         NRI.ResetCommandAllocator(*threadContext.queuedFrames[queuedFrameIndex].commandAllocator);
@@ -268,6 +274,8 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 }
 
 void Sample::PrepareFrame(uint32_t) {
+    bool multiThreadingPrev = m_MultiThreading;
+
     ImGui::NewFrame();
     {
         ImGui::SetNextWindowSize(ImVec2(0, 0));
@@ -275,35 +283,30 @@ void Sample::PrepareFrame(uint32_t) {
         {
             ImGui::Text("Box number: %u", (uint32_t)m_Boxes.size());
             ImGui::Text("Draw calls per pipeline: %u", DRAW_CALLS_PER_PIPELINE);
-
-            ImGui::Text("Command buffer recording: %.2f ms", m_RecordingTime);
-            ImGui::Text("Command buffer submit: %.2f ms", m_SubmitTime);
-
-            bool isMultithreadingEnabled = m_IsMultithreadingEnabled;
-            ImGui::Checkbox("Multithreading", &isMultithreadingEnabled);
-
-            if (isMultithreadingEnabled != m_IsMultithreadingEnabled) {
-                m_IsMultithreadingEnabled = isMultithreadingEnabled;
-
-                if (m_IsMultithreadingEnabled) {
-                    for (uint32_t i = 1; i < m_ThreadNum; i++) {
-                        ThreadContext& threadContext = m_ThreadContexts[i];
-                        threadContext.control.store(HALT);
-                        threadContext.thread = std::thread(&Sample::ThreadEntryPoint, this, i);
-                    }
-                } else {
-                    for (size_t i = 1; i < m_ThreadNum; i++) {
-                        ThreadContext& threadContext = m_ThreadContexts[i];
-                        threadContext.control.store(STOP);
-                        threadContext.thread.join();
-                    }
-                }
-            }
+            ImGui::Text("Frame time: %.2f ms", m_FrameTime);
+            ImGui::Checkbox("Multi-threading", &m_MultiThreading);
+            ImGui::Checkbox("Multi-submit", &m_MultiSubmit);
         }
         ImGui::End();
     }
     ImGui::EndFrame();
     ImGui::Render();
+
+    if (m_MultiThreading != multiThreadingPrev) {
+        if (m_MultiThreading) {
+            for (uint32_t i = 1; i < m_ThreadNum; i++) {
+                ThreadContext& threadContext = m_ThreadContexts[i];
+                threadContext.control.store(HALT);
+                threadContext.thread = std::thread(&Sample::ThreadEntryPoint, this, i);
+            }
+        } else {
+            for (size_t i = 1; i < m_ThreadNum; i++) {
+                ThreadContext& threadContext = m_ThreadContexts[i];
+                threadContext.control.store(STOP);
+                threadContext.thread.join();
+            }
+        }
+    }
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
@@ -321,11 +324,63 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     const SwapChainTexture& swapChainTexture = m_SwapChainTextures[currentSwapChainTextureIndex];
 
-    // Pass "GO" to workers
     m_BackBuffer = &m_SwapChainTextures[currentSwapChainTextureIndex];
     m_FrameIndex = frameIndex;
 
-    if (m_IsMultithreadingEnabled) {
+    m_FrameTime = m_Timer.GetTimeStamp();
+
+    { // Record pre
+        nri::CommandBuffer& commandBufferPre = *queuedFrame.commandBufferPre;
+        NRI.BeginCommandBuffer(commandBufferPre, m_DescriptorPool);
+        {
+            helper::Annotation annotation(NRI, commandBufferPre, "Frame (pre)");
+
+            nri::TextureBarrierDesc swapChainTextureTransition = {};
+            swapChainTextureTransition.texture = m_BackBuffer->texture;
+            swapChainTextureTransition.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+
+            nri::BarrierGroupDesc barrierGroupDesc = {};
+            barrierGroupDesc.textures = &swapChainTextureTransition;
+            barrierGroupDesc.textureNum = 1;
+
+            NRI.CmdBarrier(commandBufferPre, barrierGroupDesc);
+
+            nri::AttachmentsDesc attachmentsDesc = {};
+            attachmentsDesc.colorNum = 1;
+            attachmentsDesc.colors = &m_BackBuffer->colorAttachment;
+            attachmentsDesc.depthStencil = m_DepthTextureView;
+
+            NRI.CmdBeginRendering(commandBufferPre, attachmentsDesc);
+            {
+                nri::ClearDesc clearDescs[2] = {};
+                clearDescs[0].planes = nri::PlaneBits::COLOR;
+                clearDescs[1].planes = nri::PlaneBits::DEPTH;
+                clearDescs[1].value.depthStencil.depth = 1.0f;
+
+                NRI.CmdClearAttachments(commandBufferPre, clearDescs, helper::GetCountOf(clearDescs), nullptr, 0);
+            }
+            NRI.CmdEndRendering(commandBufferPre);
+        }
+        NRI.EndCommandBuffer(commandBufferPre);
+
+        // Submit pre
+        if (m_MultiSubmit) {
+            nri::FenceSubmitDesc textureAcquiredFence = {};
+            textureAcquiredFence.fence = swapChainAcquireSemaphore;
+            textureAcquiredFence.stages = nri::StageBits::COLOR_ATTACHMENT;
+
+            nri::QueueSubmitDesc queueSubmitDesc = {};
+            queueSubmitDesc.waitFences = &textureAcquiredFence;
+            queueSubmitDesc.waitFenceNum = 1;
+            queueSubmitDesc.commandBuffers = &queuedFrame.commandBufferPre;
+            queueSubmitDesc.commandBufferNum = 1;
+
+            NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
+        }
+    }
+
+    // Pass "GO" to workers
+    if (m_MultiThreading) {
         m_ReadyCount.store(0, std::memory_order_seq_cst);
 
         for (uint32_t i = 1; i < m_ThreadNum; i++) {
@@ -334,84 +389,98 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
     }
 
-    // Record
-    m_RecordingTime = m_Timer.GetTimeStamp();
-
-    nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
-
-    NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
-    {
-        helper::Annotation annotation1(NRI, commandBuffer, "Frame");
-
-        nri::TextureBarrierDesc backBufferTransition = {};
-        backBufferTransition.texture = m_BackBuffer->texture;
-        backBufferTransition.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-
-        nri::BarrierGroupDesc barrierGroupDesc = {};
-        barrierGroupDesc.textures = &backBufferTransition;
-        barrierGroupDesc.textureNum = 1;
-
-        NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
-
-        nri::AttachmentsDesc attachmentsDesc = {};
-        attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &m_BackBuffer->colorAttachment;
-        attachmentsDesc.depthStencil = m_DepthTextureView;
-
-        NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
+    { // Record
+        nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
+        NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
         {
-            nri::ClearDesc clearDescs[2] = {};
-            clearDescs[0].planes = nri::PlaneBits::COLOR;
-            clearDescs[1].planes = nri::PlaneBits::DEPTH;
-            clearDescs[1].value.depthStencil.depth = 1.0f;
-            NRI.CmdClearAttachments(commandBuffer, clearDescs, helper::GetCountOf(clearDescs), nullptr, 0);
+            helper::Annotation annotation(NRI, commandBuffer, "Frame");
 
-            if (m_IsMultithreadingEnabled) {
-                uint32_t boxNum = std::min(m_BoxesPerThread, (uint32_t)m_Boxes.size());
-                RenderBoxes(commandBuffer, 0, boxNum);
-            } else
-                RenderBoxes(commandBuffer, 0, (uint32_t)m_Boxes.size());
-        }
-        NRI.CmdEndRendering(commandBuffer);
-
-        if (!m_IsMultithreadingEnabled) {
-            attachmentsDesc.depthStencil = nullptr;
+            nri::AttachmentsDesc attachmentsDesc = {};
+            attachmentsDesc.colorNum = 1;
+            attachmentsDesc.colors = &m_BackBuffer->colorAttachment;
+            attachmentsDesc.depthStencil = m_DepthTextureView;
 
             NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
             {
-                RenderImgui(commandBuffer, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
+                uint32_t boxNum = m_MultiThreading ? m_BoxesPerThread : (uint32_t)m_Boxes.size();
+
+                RenderBoxes(commandBuffer, 0, boxNum);
             }
             NRI.CmdEndRendering(commandBuffer);
+        }
+        NRI.EndCommandBuffer(commandBuffer);
 
-            backBufferTransition.texture = m_BackBuffer->texture;
-            backBufferTransition.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-            backBufferTransition.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
-            backBufferTransition.layerNum = 1;
-            backBufferTransition.mipNum = 1;
+        // Submit
+        if (m_MultiSubmit) {
+            nri::QueueSubmitDesc queueSubmitDesc = {};
+            queueSubmitDesc.commandBuffers = &queuedFrame.commandBuffer;
+            queueSubmitDesc.commandBufferNum = 1;
 
-            barrierGroupDesc.textures = &backBufferTransition;
-            barrierGroupDesc.textureNum = 1;
-
-            NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
+            NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
         }
     }
-    NRI.EndCommandBuffer(commandBuffer);
 
     // Wait for completion
-    if (m_IsMultithreadingEnabled) {
+    if (m_MultiThreading) {
         while (m_ReadyCount.load(std::memory_order_relaxed) != m_ThreadNum - 1)
             _mm_pause();
     }
 
-    m_RecordingTime = m_Timer.GetTimeStamp() - m_RecordingTime;
+    { // Record post
+        nri::CommandBuffer& commandBufferPost = *queuedFrame.commandBufferPost;
+        NRI.BeginCommandBuffer(commandBufferPost, m_DescriptorPool);
+        {
+            helper::Annotation annotation(NRI, commandBufferPost, "Frame");
 
-    { // Submit
-        m_SubmitTime = m_Timer.GetTimeStamp();
+            nri::AttachmentsDesc attachmentsDesc = {};
+            attachmentsDesc.colorNum = 1;
+            attachmentsDesc.colors = &m_BackBuffer->colorAttachment;
 
-        uint32_t commandBufferNum = m_IsMultithreadingEnabled ? (uint32_t)m_ThreadNum : 1;
+            NRI.CmdBeginRendering(commandBufferPost, attachmentsDesc);
+            {
+                RenderImgui(commandBufferPost, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
+            }
+            NRI.CmdEndRendering(commandBufferPost);
+
+            nri::TextureBarrierDesc swapChainTextureTransition = {};
+            swapChainTextureTransition.texture = m_BackBuffer->texture;
+            swapChainTextureTransition.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+            swapChainTextureTransition.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+            swapChainTextureTransition.layerNum = 1;
+            swapChainTextureTransition.mipNum = 1;
+
+            nri::BarrierGroupDesc barrierGroupDesc = {};
+            barrierGroupDesc.textures = &swapChainTextureTransition;
+            barrierGroupDesc.textureNum = 1;
+
+            NRI.CmdBarrier(commandBufferPost, barrierGroupDesc);
+        }
+        NRI.EndCommandBuffer(commandBufferPost);
+
+        // Submit post
+        if (m_MultiSubmit) {
+            nri::FenceSubmitDesc renderingFinishedFence = {};
+            renderingFinishedFence.fence = swapChainTexture.releaseSemaphore;
+
+            nri::QueueSubmitDesc queueSubmitDesc = {};
+            queueSubmitDesc.commandBuffers = &queuedFrame.commandBufferPost;
+            queueSubmitDesc.commandBufferNum = 1;
+            queueSubmitDesc.signalFences = &renderingFinishedFence;
+            queueSubmitDesc.signalFenceNum = 1;
+
+            NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
+        }
+    }
+
+    // Submit all
+    if (!m_MultiSubmit) {
+        uint32_t threadNum = m_MultiThreading ? (uint32_t)m_ThreadNum : 1;
         nri::CommandBuffer* commandBuffers[THREAD_MAX_NUM + 2] = {};
-        for (uint32_t i = 0; i < commandBufferNum; i++)
-            commandBuffers[i] = m_ThreadContexts[i].queuedFrames[queuedFrameIndex].commandBuffer;
+
+        commandBuffers[0] = queuedFrame.commandBufferPre;
+        commandBuffers[1 + threadNum] = queuedFrame.commandBufferPost;
+        for (uint32_t i = 0; i < threadNum; i++)
+            commandBuffers[1 + i] = m_ThreadContexts[i].queuedFrames[queuedFrameIndex].commandBuffer;
 
         nri::FenceSubmitDesc textureAcquiredFence = {};
         textureAcquiredFence.fence = swapChainAcquireSemaphore;
@@ -424,14 +493,14 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         queueSubmitDesc.waitFences = &textureAcquiredFence;
         queueSubmitDesc.waitFenceNum = 1;
         queueSubmitDesc.commandBuffers = commandBuffers;
-        queueSubmitDesc.commandBufferNum = commandBufferNum;
+        queueSubmitDesc.commandBufferNum = threadNum + 2;
         queueSubmitDesc.signalFences = &renderingFinishedFence;
         queueSubmitDesc.signalFenceNum = 1;
 
         NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
-
-        m_SubmitTime = m_Timer.GetTimeStamp() - m_SubmitTime;
     }
+
+    m_FrameTime = m_Timer.GetTimeStamp() - m_FrameTime;
 
     NRI.StreamerFinalize(*m_Streamer);
 
@@ -493,6 +562,7 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex) {
         uint32_t queuedFrameIndex = m_FrameIndex % GetQueuedFrameNum();
         nri::CommandBuffer& commandBuffer = *threadContext.queuedFrames[queuedFrameIndex].commandBuffer;
 
+        // Record
         NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
         {
             nri::AttachmentsDesc attachmentsDesc = {};
@@ -504,35 +574,23 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex) {
             {
                 uint32_t baseBoxIndex = threadIndex * m_BoxesPerThread;
                 uint32_t boxNum = std::min(m_BoxesPerThread, (uint32_t)m_Boxes.size() - baseBoxIndex);
+
                 RenderBoxes(commandBuffer, baseBoxIndex, boxNum);
             }
             NRI.CmdEndRendering(commandBuffer);
-
-            if (threadIndex == m_ThreadNum - 1) {
-                attachmentsDesc.depthStencil = nullptr;
-
-                NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
-                {
-                    RenderImgui(commandBuffer, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
-                }
-                NRI.CmdEndRendering(commandBuffer);
-
-                nri::TextureBarrierDesc backBufferTransition = {};
-                backBufferTransition.texture = m_BackBuffer->texture;
-                backBufferTransition.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-                backBufferTransition.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
-                backBufferTransition.layerNum = 1;
-                backBufferTransition.mipNum = 1;
-
-                nri::BarrierGroupDesc barrierGroupDesc = {};
-                barrierGroupDesc.textures = &backBufferTransition;
-                barrierGroupDesc.textureNum = 1;
-
-                NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
-            }
         }
         NRI.EndCommandBuffer(commandBuffer);
 
+        // Submit
+        if (m_MultiSubmit) {
+            nri::QueueSubmitDesc queueSubmitDesc = {};
+            queueSubmitDesc.commandBuffers = &threadContext.queuedFrames[queuedFrameIndex].commandBuffer;
+            queueSubmitDesc.commandBufferNum = 1;
+
+            NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
+        }
+
+        // Signal "done" and stay in "HALT" mode (wait for instructions from the main thread)
         m_ReadyCount.fetch_add(1, std::memory_order_release);
     }
 }
@@ -590,6 +648,11 @@ void Sample::CreateCommandBuffers() {
 
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, queuedFrame.commandAllocator));
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));
+
+            if (i == 0) {
+                NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBufferPre));
+                NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBufferPost));
+            }
         }
     }
 }
