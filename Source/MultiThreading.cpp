@@ -90,7 +90,6 @@ private:
 
 private:
     std::array<ThreadContext, THREAD_MAX_NUM> m_ThreadContexts = {};
-    std::vector<nri::CommandBuffer*> m_FrameCommandBuffers;
     std::vector<nri::Pipeline*> m_Pipelines;
     std::vector<nri::Texture*> m_Textures;
     std::vector<nri::Descriptor*> m_TextureViews;
@@ -196,7 +195,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     uint32_t concurrentThreadMaxNum = std::thread::hardware_concurrency();
     m_ThreadNum = std::min((concurrentThreadMaxNum * 3) / 4, (uint32_t)THREAD_MAX_NUM);
 
-    m_FrameCommandBuffers.resize(m_ThreadNum);
     for (ThreadContext& threadContext : m_ThreadContexts)
         threadContext.control.store(HALT, std::memory_order_relaxed);
 
@@ -323,14 +321,9 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     const SwapChainTexture& swapChainTexture = m_SwapChainTextures[currentSwapChainTextureIndex];
 
+    // Pass "GO" to workers
     m_BackBuffer = &m_SwapChainTextures[currentSwapChainTextureIndex];
-
-    // Record
-    nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
-    m_FrameCommandBuffers[0] = &commandBuffer;
-
     m_FrameIndex = frameIndex;
-    m_RecordingTime = m_Timer.GetTimeStamp();
 
     if (m_IsMultithreadingEnabled) {
         m_ReadyCount.store(0, std::memory_order_seq_cst);
@@ -340,6 +333,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             threadContext.control.store(GO, std::memory_order_relaxed);
         }
     }
+
+    // Record
+    m_RecordingTime = m_Timer.GetTimeStamp();
+
+    nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
 
     NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
     {
@@ -399,13 +397,21 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     }
     NRI.EndCommandBuffer(commandBuffer);
 
-    while (m_IsMultithreadingEnabled && m_ReadyCount.load(std::memory_order_relaxed) != m_ThreadNum - 1)
-        _mm_pause();
+    // Wait for completion
+    if (m_IsMultithreadingEnabled) {
+        while (m_ReadyCount.load(std::memory_order_relaxed) != m_ThreadNum - 1)
+            _mm_pause();
+    }
 
     m_RecordingTime = m_Timer.GetTimeStamp() - m_RecordingTime;
 
     { // Submit
         m_SubmitTime = m_Timer.GetTimeStamp();
+
+        uint32_t commandBufferNum = m_IsMultithreadingEnabled ? (uint32_t)m_ThreadNum : 1;
+        nri::CommandBuffer* commandBuffers[THREAD_MAX_NUM + 2] = {};
+        for (uint32_t i = 0; i < commandBufferNum; i++)
+            commandBuffers[i] = m_ThreadContexts[i].queuedFrames[queuedFrameIndex].commandBuffer;
 
         nri::FenceSubmitDesc textureAcquiredFence = {};
         textureAcquiredFence.fence = swapChainAcquireSemaphore;
@@ -417,8 +423,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         nri::QueueSubmitDesc queueSubmitDesc = {};
         queueSubmitDesc.waitFences = &textureAcquiredFence;
         queueSubmitDesc.waitFenceNum = 1;
-        queueSubmitDesc.commandBuffers = m_FrameCommandBuffers.data();
-        queueSubmitDesc.commandBufferNum = m_IsMultithreadingEnabled ? (uint32_t)m_ThreadNum : 1;
+        queueSubmitDesc.commandBuffers = commandBuffers;
+        queueSubmitDesc.commandBufferNum = commandBufferNum;
         queueSubmitDesc.signalFences = &renderingFinishedFence;
         queueSubmitDesc.signalFenceNum = 1;
 
@@ -486,7 +492,6 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex) {
 
         uint32_t queuedFrameIndex = m_FrameIndex % GetQueuedFrameNum();
         nri::CommandBuffer& commandBuffer = *threadContext.queuedFrames[queuedFrameIndex].commandBuffer;
-        m_FrameCommandBuffers[threadIndex] = &commandBuffer;
 
         NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
         {
