@@ -25,7 +25,7 @@ inline void _mm_pause() {
 
 constexpr uint32_t BOX_NUM = 30000;
 constexpr uint32_t DRAW_CALLS_PER_PIPELINE = 4;
-constexpr size_t QUEUED_FRAME_MAX_NUM = 8;
+constexpr size_t QUEUED_FRAME_MAX_NUM = 4;
 constexpr size_t THREAD_MAX_NUM = 64;
 
 constexpr uint32_t HALT = 0;
@@ -309,8 +309,7 @@ void Sample::PrepareFrame(uint32_t) {
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
-    constexpr uint32_t threadIndex0 = 0;
-    ThreadContext& context0 = m_ThreadContexts[threadIndex0];
+    ThreadContext& context0 = m_ThreadContexts[0];
 
     uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
     const QueuedFrame& queuedFrame = context0.queuedFrames[queuedFrameIndex];
@@ -328,7 +327,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     // Record
     nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
-    m_FrameCommandBuffers[threadIndex0] = &commandBuffer;
+    m_FrameCommandBuffers[0] = &commandBuffer;
 
     m_FrameIndex = frameIndex;
     m_RecordingTime = m_Timer.GetTimeStamp();
@@ -370,9 +369,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.CmdClearAttachments(commandBuffer, clearDescs, helper::GetCountOf(clearDescs), nullptr, 0);
 
             if (m_IsMultithreadingEnabled) {
-                uint32_t baseBoxIndex = threadIndex0 * m_BoxesPerThread;
-                uint32_t boxNum = std::min(m_BoxesPerThread, (uint32_t)m_Boxes.size() - baseBoxIndex);
-                RenderBoxes(commandBuffer, baseBoxIndex, boxNum);
+                uint32_t boxNum = std::min(m_BoxesPerThread, (uint32_t)m_Boxes.size());
+                RenderBoxes(commandBuffer, 0, boxNum);
             } else
                 RenderBoxes(commandBuffer, 0, (uint32_t)m_Boxes.size());
         }
