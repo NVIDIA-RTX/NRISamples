@@ -1,7 +1,6 @@
 cmake_minimum_required(VERSION 3.30)
 
 # Options
-option(DISABLE_SHADER_COMPILATION "Disable shader compilation" OFF)
 set(SHADER_OUTPUT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/_Shaders")
 
 # Cached
@@ -52,16 +51,18 @@ if(NOT "${PACKMAN_RESULT}" STREQUAL "0")
 endif()
 
 # Compile options
-if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "x86_64")
-    set(SSE_FLAG -msse4.1)
+if(NOT((CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64") OR(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")))
+    set(SIMD -mssse3)
 endif()
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
-    set(COMPILE_OPTIONS ${SSE_FLAG} -Wextra -Wno-missing-field-initializers)
+    set(COMPILE_OPTIONS ${SIMD} -Wextra -Wno-missing-field-initializers)
 elseif(CMAKE_CXX_COMPILER_ID MATCHES "GNU")
-    set(COMPILE_OPTIONS ${SSE_FLAG} -Wextra -Wno-missing-field-initializers)
+    set(COMPILE_OPTIONS ${SIMD} -Wextra -Wno-missing-field-initializers)
 elseif(MSVC)
-    set(COMPILE_OPTIONS /W4 /WX /wd4324)
+    set(COMPILE_OPTIONS /W4 /WX
+        /wd4324 # padding was added at the end of a structure because you specified an alignment specifier
+    )
 else()
     message(WARNING "Unknown compiler!")
 endif()
@@ -94,56 +95,53 @@ endfunction()
 fix_folders("External/NRIFramework" "External")
 
 # Shaders
-if(NOT DISABLE_SHADER_COMPILATION)
-    file(GLOB_RECURSE SHADERS "Shaders/*.hlsl" "Shaders/*.hlsli")
-    set_source_files_properties(${SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
+file(GLOB_RECURSE SHADERS "Shaders/*.hlsl" "Shaders/*.hlsli")
+set_source_files_properties(${SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
 
-    get_target_property(ML_SOURCE_DIR MathLib SOURCE_DIR)
-    get_target_property(NRI_SOURCE_DIR NRI SOURCE_DIR)
+get_target_property(ML_SOURCE_DIR MathLib SOURCE_DIR)
+get_target_property(NRI_SOURCE_DIR NRI SOURCE_DIR)
 
-    set(SHADERMAKE_GENERAL_ARGS
-        --useAPI --binary --flatten --stripReflection --WX
-        --sRegShift 0 --bRegShift 32 --uRegShift 64 --tRegShift 128 # TODO: must be in sync with "VK_BINDING_OFFSETS"
-        --sourceDir "Shaders"
-        --ignoreConfigDir
-        -c "Shaders/Shaders.cfg"
-        -o "${SHADER_OUTPUT_PATH}"
-        -I "Shaders"
-        -I "${ML_SOURCE_DIR}"
-        -I "${NRI_SOURCE_DIR}/Include"
-    )
+set(SHADERMAKE_GENERAL_ARGS
+    --useAPI --binary --flatten --stripReflection --WX
+    --sRegShift 0 --bRegShift 32 --uRegShift 64 --tRegShift 128 # TODO: must be in sync with "VK_BINDING_OFFSETS"
+    --sourceDir "Shaders"
+    --ignoreConfigDir
+    -c "Shaders/Shaders.cfg"
+    -o "${SHADER_OUTPUT_PATH}"
+    -I "Shaders"
+    -I "${ML_SOURCE_DIR}"
+    -I "${NRI_SOURCE_DIR}/Include"
+)
 
-    if(WIN32)
-        add_custom_target(${PROJECT_NAME}Shaders ALL
-            COMMAND ShaderMake ${SHADERMAKE_GENERAL_ARGS} -p DXBC --compiler "${FXC_PATH}"
-            COMMAND ShaderMake ${SHADERMAKE_GENERAL_ARGS} -p DXIL --compiler "${DXC_PATH}"
-            COMMAND ShaderMake ${SHADERMAKE_GENERAL_ARGS} -p SPIRV --compiler "${DXC_SPIRV_PATH}"
-            DEPENDS ShaderMake
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            VERBATIM
-            SOURCES ${SHADERS}
-        )
-    else()
-        add_custom_target(${PROJECT_NAME}Shaders ALL
-            COMMAND ShaderMake ${SHADERMAKE_GENERAL_ARGS} -p SPIRV --compiler "${DXC_SPIRV_PATH}"
-            DEPENDS ShaderMake
-            WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-            VERBATIM
-            SOURCES ${SHADERS}
-        )
-    endif()
+set(SHADERMAKE_COMMANDS "")
 
-    set_property(TARGET ${PROJECT_NAME}Shaders PROPERTY FOLDER ${PROJECT_NAME})
+if(NRI_ENABLE_D3D11_SUPPORT)
+    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p DXBC --compiler "${SHADERMAKE_FXC_PATH}" ${SHADERMAKE_GENERAL_ARGS})
 endif()
+
+if(NRI_ENABLE_D3D12_SUPPORT)
+    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p DXIL --compiler "${SHADERMAKE_DXC_PATH}" ${SHADERMAKE_GENERAL_ARGS})
+endif()
+
+if(NRI_ENABLE_VK_SUPPORT)
+    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ShaderMake -p SPIRV --compiler "${SHADERMAKE_DXC_VK_PATH}" ${SHADERMAKE_GENERAL_ARGS})
+endif()
+
+add_custom_target(${PROJECT_NAME}Shaders ALL
+    ${SHADERMAKE_COMMANDS}
+    DEPENDS ShaderMake
+    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+    VERBATIM
+    SOURCES ${SHADERS}
+)
+
+set_property(TARGET ${PROJECT_NAME}Shaders PROPERTY FOLDER ${PROJECT_NAME})
 
 # Samples
 function(add_sample NAME EXT)
     add_executable(${NAME} "Source/${NAME}.${EXT}")
     source_group("" FILES "Source/${NAME}.${EXT}")
-
-    if(NOT DISABLE_SHADER_COMPILATION)
-        add_dependencies(${NAME} ${PROJECT_NAME}Shaders)
-    endif()
+    add_dependencies(${NAME} ${PROJECT_NAME}Shaders)
 
     target_compile_definitions(${NAME} PRIVATE ${COMPILE_DEFINITIONS} PROJECT_NAME=${NAME})
     target_compile_options(${NAME} PRIVATE ${COMPILE_OPTIONS})
