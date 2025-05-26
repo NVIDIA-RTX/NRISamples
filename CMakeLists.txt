@@ -170,12 +170,14 @@ add_sample(Readback cpp)
 add_sample(SceneViewer cpp)
 add_sample(BindlessSceneViewer cpp)
 add_sample(Triangle cpp)
-add_sample(Wrapper cpp)
 add_sample(Resize cpp)
 
-# Samples - special
-if(WIN32)
-    target_link_libraries(Wrapper PRIVATE d3d11 d3d12)
-endif()
+# Wrapper depends on Vulkan SDK availability
+if(DEFINED ENV{VULKAN_SDK})
+    add_sample(Wrapper cpp)
+    target_include_directories(Wrapper PRIVATE "$ENV{VULKAN_SDK}/include")
 
-target_include_directories(Wrapper PRIVATE "$ENV{VULKAN_SDK}/include")
+    if(WIN32)
+        target_link_libraries(Wrapper PRIVATE d3d11 d3d12)
+    endif()
+endif()

@@ -219,7 +219,7 @@ void Sample::PrepareFrame(uint32_t) {
         ImGui::SetNextWindowPos(p);
         ImGui::Begin("Color", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
         {
-            ImGui::Text(s);
+            ImGui::Text("%s", s);
         }
         ImGui::End();
     }
