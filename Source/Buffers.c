@@ -21,13 +21,7 @@ int main(int argc, char** argv) {
     const bool useBarriersBetweenSelfCopies = true;
     const uint32_t bufferZeroSize = 1024;
     const uint32_t bufferOneSize = 64 * 1024;
-
-#ifdef __APPLE__
     NriGraphicsAPI graphicsAPI = NriGraphicsAPI_VK;
-#else
-    NriGraphicsAPI graphicsAPI = NriGraphicsAPI_D3D11;
-#endif
-
 
     bool debugAPI = false;
     bool debugNRI = false;
