@@ -11,15 +11,8 @@
 #include <thread>
 
 // Found in sse2neon
-#if (defined(__arm__) || defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM))
-inline void _mm_pause() {
-#    if defined(_MSC_VER)
-    __isb(_ARM64_BARRIER_SY);
-#    else
-    __asm__ __volatile__("isb\n");
-#    endif
-}
-#else
+// _mm_pause is already defined in sse2neon.h for ARM platforms
+#if !(defined(__arm__) || defined(__aarch64__) || defined(_M_ARM64) || defined(_M_ARM))
 #    include <xmmintrin.h>
 #endif
 
