@@ -592,7 +592,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
     }
 
-    NRI.StreamerFinalize(*m_Streamer);
+    NRI.EndStreamerFrame(*m_Streamer);
 
     // Present
     NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);

@@ -502,7 +502,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     m_FrameTime = m_Timer.GetTimeStamp() - m_FrameTime;
 
-    NRI.StreamerFinalize(*m_Streamer);
+    NRI.EndStreamerFrame(*m_Streamer);
 
     // Present
     NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);

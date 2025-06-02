@@ -686,7 +686,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
     }
 
-    NRI.StreamerFinalize(*m_Streamer);
+    NRI.EndStreamerFrame(*m_Streamer);
 
     // Present
     NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
