@@ -1,6 +1,9 @@
 # VS Code
 .vscode/
 
+#CLion
+.idea
+
 # ninja
 .ninja_deps
 .ninja_log
