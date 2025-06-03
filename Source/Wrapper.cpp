@@ -1,28 +1,9 @@
 // © 2021 NVIDIA Corporation
 
 #include "NRIFramework.h"
+#undef APIENTRY // defined in GLFW
 
 #define VK_MINOR_VERSION 3
-
-#ifdef _WIN32
-#    undef APIENTRY // defined in GLFW
-
-#    include <d3d11.h>
-#    include "Extensions/NRIWrapperD3D11.h"
-
-#    include <d3d12.h>
-#    include "Extensions/NRIWrapperD3D12.h"
-
-#    define VK_USE_PLATFORM_WIN32_KHR
-const char* VULKAN_LIB = "vulkan-1.dll";
-#elif defined(__APPLE__)
-#    define VK_USE_PLATFORM_METAL_EXT
-const char* VULKAN_LIB = "/usr/local/lib/libvulkan.dylib";
-
-#else
-#    define VK_USE_PLATFORM_XLIB_KHR
-const char* VULKAN_LIB = "libvulkan.so";
-#endif
 
 #define VK_NO_PROTOTYPES 1
 #include "vulkan/vulkan.h"
@@ -31,8 +12,12 @@ const char* VULKAN_LIB = "libvulkan.so";
 
 struct Library;
 
-#ifdef _WIN32
-#    include <windows.h>
+#if (NRIF_PLATFORM == NRIF_WINDOWS)
+#    include <d3d11.h>
+#    include "Extensions/NRIWrapperD3D11.h"
+
+#    include <d3d12.h>
+#    include "Extensions/NRIWrapperD3D12.h"
 
 static Library* LoadSharedLibrary(const char* path) {
     return (Library*)LoadLibraryA(path);
@@ -46,7 +31,7 @@ static void UnloadSharedLibrary(Library& library) {
     FreeLibrary((HMODULE)&library);
 }
 
-#elif defined(__linux__) || defined(__APPLE__)
+#else
 #    include <dlfcn.h>
 
 static Library* LoadSharedLibrary(const char* path) {
@@ -61,8 +46,6 @@ static void UnloadSharedLibrary(Library& library) {
     dlclose((void*)&library);
 }
 
-#else
-#    error unknown platform
 #endif
 
 constexpr nri::Color32f COLOR_0 = {0.5f, 0.0f, 1.0f, 1.0f};
@@ -247,7 +230,15 @@ void Sample::CreateD3D12Device() {
 }
 
 void Sample::CreateVulkanDevice() {
-    m_VulkanLoader = LoadSharedLibrary(VULKAN_LIB);
+#if (NRIF_PLATFORM == NRIF_WINDOWS)
+    const char* libraryName = "vulkan-1.dll";
+#elif (NRIF_PLATFORM == NRIF_COCOA)
+    const char* libraryName = "libvulkan.1.dylib";
+#else
+    const char* libraryName = "libvulkan.so.1";
+#endif
+
+    m_VulkanLoader = LoadSharedLibrary(libraryName);
 
     auto vkGetInstanceProcAddr = (PFN_vkGetInstanceProcAddr)GetSharedLibraryFunction(*m_VulkanLoader, "vkGetInstanceProcAddr");
     auto vkCreateInstance = (PFN_vkCreateInstance)vkGetInstanceProcAddr(VK_NULL_HANDLE, "vkCreateInstance");
