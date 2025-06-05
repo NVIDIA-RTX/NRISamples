@@ -148,12 +148,6 @@ static const uint16_t indices[12 * 3] = {
     20, 21, 22,
     21, 22, 23};
 
-struct NRIInterface
-    : public nri::CoreInterface,
-      public nri::SwapChainInterface,
-      public nri::HelperInterface,
-      public nri::RayTracingInterface {};
-
 struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
     nri::CommandBuffer* commandBuffer;
@@ -222,43 +216,50 @@ private:
 };
 
 Sample::~Sample() {
-    NRI.WaitForIdle(*m_GraphicsQueue);
+    if (NRI.HasHelper())
+        NRI.WaitForIdle(*m_GraphicsQueue);
 
-    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
-        NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
-        NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+    if (NRI.HasCore()) {
+        for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+            NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+            NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+        }
+
+        for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
+            NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
+            NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
+            NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+        }
+
+        NRI.DestroyDescriptor(*m_RayTracingOutputView);
+        NRI.DestroyDescriptor(*m_TexCoordBufferView);
+        NRI.DestroyDescriptor(*m_IndexBufferView);
+        NRI.DestroyDescriptor(*m_TLASDescriptor);
+
+        NRI.DestroyTexture(*m_RayTracingOutput);
+
+        NRI.DestroyDescriptorPool(*m_DescriptorPool);
+
+        NRI.DestroyBuffer(*m_ShaderTable);
+        NRI.DestroyBuffer(*m_TexCoordBuffer);
+        NRI.DestroyBuffer(*m_IndexBuffer);
+
+        NRI.DestroyPipeline(*m_Pipeline);
+        NRI.DestroyPipelineLayout(*m_PipelineLayout);
+
+        NRI.DestroyFence(*m_FrameFence);
+
+        for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
+            NRI.FreeMemory(*m_MemoryAllocations[i]);
     }
 
-    for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-        NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-        NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-        NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+    if (NRI.HasRayTracing()) {
+        NRI.DestroyAccelerationStructure(*m_BLAS);
+        NRI.DestroyAccelerationStructure(*m_TLAS);
     }
 
-    NRI.DestroyDescriptor(*m_RayTracingOutputView);
-    NRI.DestroyTexture(*m_RayTracingOutput);
-
-    NRI.DestroyDescriptorPool(*m_DescriptorPool);
-
-    NRI.DestroyAccelerationStructure(*m_BLAS);
-    NRI.DestroyAccelerationStructure(*m_TLAS);
-    NRI.DestroyDescriptor(*m_TLASDescriptor);
-    NRI.DestroyBuffer(*m_ShaderTable);
-
-    NRI.DestroyDescriptor(*m_TexCoordBufferView);
-    NRI.DestroyDescriptor(*m_IndexBufferView);
-    NRI.DestroyBuffer(*m_TexCoordBuffer);
-    NRI.DestroyBuffer(*m_IndexBuffer);
-
-    NRI.DestroyPipeline(*m_Pipeline);
-    NRI.DestroyPipelineLayout(*m_PipelineLayout);
-
-    NRI.DestroyFence(*m_FrameFence);
-
-    NRI.DestroySwapChain(*m_SwapChain);
-
-    for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
-        NRI.FreeMemory(*m_MemoryAllocations[i]);
+    if (NRI.HasSwapChain())
+        NRI.DestroySwapChain(*m_SwapChain);
 
     DestroyImgui();
 

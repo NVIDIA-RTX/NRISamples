@@ -25,12 +25,6 @@ constexpr uint32_t HALT = 0;
 constexpr uint32_t GO = 1;
 constexpr uint32_t STOP = 2;
 
-struct NRIInterface
-    : public nri::CoreInterface,
-      public nri::HelperInterface,
-      public nri::StreamerInterface,
-      public nri::SwapChainInterface {};
-
 struct Vertex {
     float position[3];
     float texCoords[2];
@@ -127,63 +121,70 @@ private:
 };
 
 Sample::~Sample() {
-    NRI.WaitForIdle(*m_GraphicsQueue);
-
     for (size_t i = 1; m_MultiThreading && i < m_ThreadNum; i++) {
         ThreadContext& threadContext = m_ThreadContexts[i];
         threadContext.control.store(STOP);
         threadContext.thread.join();
     }
 
-    for (uint32_t i = 0; i < m_ThreadNum; i++) {
-        ThreadContext& threadContext = m_ThreadContexts[i];
+    if (NRI.HasHelper())
+        NRI.WaitForIdle(*m_GraphicsQueue);
 
-        for (uint32_t j = 0; j < GetQueuedFrameNum(); j++) {
-            QueuedFrame& queuedFrame = threadContext.queuedFrames[j];
+    if (NRI.HasCore()) {
+        for (uint32_t i = 0; i < m_ThreadNum; i++) {
+            ThreadContext& threadContext = m_ThreadContexts[i];
 
-            NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
-            NRI.DestroyCommandBuffer(*queuedFrame.commandBufferPre);
-            NRI.DestroyCommandBuffer(*queuedFrame.commandBufferPost);
-            NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+            for (uint32_t j = 0; j < GetQueuedFrameNum(); j++) {
+                QueuedFrame& queuedFrame = threadContext.queuedFrames[j];
+
+                NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+                NRI.DestroyCommandBuffer(*queuedFrame.commandBufferPre);
+                NRI.DestroyCommandBuffer(*queuedFrame.commandBufferPost);
+                NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+            }
         }
+
+        for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
+            NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
+            NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
+            NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+        }
+
+        for (size_t i = 0; i < m_Textures.size(); i++)
+            NRI.DestroyDescriptor(*m_TextureViews[i]);
+
+        for (size_t i = 0; i < m_Textures.size(); i++)
+            NRI.DestroyTexture(*m_Textures[i]);
+
+        for (size_t i = 0; i < m_FakeConstantBufferViews.size(); i++)
+            NRI.DestroyDescriptor(*m_FakeConstantBufferViews[i]);
+
+        for (size_t i = 0; i < m_Pipelines.size(); i++)
+            NRI.DestroyPipeline(*m_Pipelines[i]);
+
+        NRI.DestroyDescriptor(*m_Sampler);
+        NRI.DestroyDescriptor(*m_DepthTextureView);
+        NRI.DestroyDescriptor(*m_TransformConstantBufferView);
+        NRI.DestroyDescriptor(*m_ViewConstantBufferView);
+        NRI.DestroyTexture(*m_DepthTexture);
+        NRI.DestroyBuffer(*m_TransformConstantBuffer);
+        NRI.DestroyBuffer(*m_ViewConstantBuffer);
+        NRI.DestroyBuffer(*m_FakeConstantBuffer);
+        NRI.DestroyBuffer(*m_VertexBuffer);
+        NRI.DestroyBuffer(*m_IndexBuffer);
+        NRI.DestroyPipelineLayout(*m_PipelineLayout);
+        NRI.DestroyDescriptorPool(*m_DescriptorPool);
+        NRI.DestroyFence(*m_FrameFence);
+
+        for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
+            NRI.FreeMemory(*m_MemoryAllocations[i]);
     }
 
-    for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-        NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-        NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-        NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
-    }
+    if (NRI.HasSwapChain())
+        NRI.DestroySwapChain(*m_SwapChain);
 
-    for (size_t i = 0; i < m_Textures.size(); i++)
-        NRI.DestroyDescriptor(*m_TextureViews[i]);
-
-    for (size_t i = 0; i < m_Textures.size(); i++)
-        NRI.DestroyTexture(*m_Textures[i]);
-
-    for (size_t i = 0; i < m_FakeConstantBufferViews.size(); i++)
-        NRI.DestroyDescriptor(*m_FakeConstantBufferViews[i]);
-
-    for (size_t i = 0; i < m_Pipelines.size(); i++)
-        NRI.DestroyPipeline(*m_Pipelines[i]);
-
-    NRI.DestroyDescriptor(*m_Sampler);
-    NRI.DestroyDescriptor(*m_DepthTextureView);
-    NRI.DestroyDescriptor(*m_TransformConstantBufferView);
-    NRI.DestroyDescriptor(*m_ViewConstantBufferView);
-    NRI.DestroyTexture(*m_DepthTexture);
-    NRI.DestroyBuffer(*m_TransformConstantBuffer);
-    NRI.DestroyBuffer(*m_ViewConstantBuffer);
-    NRI.DestroyBuffer(*m_FakeConstantBuffer);
-    NRI.DestroyBuffer(*m_VertexBuffer);
-    NRI.DestroyBuffer(*m_IndexBuffer);
-    NRI.DestroyPipelineLayout(*m_PipelineLayout);
-    NRI.DestroyDescriptorPool(*m_DescriptorPool);
-    NRI.DestroyFence(*m_FrameFence);
-    NRI.DestroySwapChain(*m_SwapChain);
-    NRI.DestroyStreamer(*m_Streamer);
-
-    for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
-        NRI.FreeMemory(*m_MemoryAllocations[i]);
+    if (NRI.HasStreamer())
+        NRI.DestroyStreamer(*m_Streamer);
 
     DestroyImgui();
 

@@ -14,13 +14,6 @@ constexpr uint32_t COLOR_LATENCY_SLEEP = NriBgra(255, 0, 0);
 constexpr uint32_t COLOR_SIMULATION = NriBgra(0, 255, 0);
 constexpr uint32_t COLOR_RENDER = NriBgra(0, 0, 255);
 
-struct NRIInterface
-    : public nri::CoreInterface,
-      public nri::HelperInterface,
-      public nri::StreamerInterface,
-      public nri::SwapChainInterface,
-      public nri::LowLatencyInterface {};
-
 struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
     nri::CommandBuffer* commandBuffer;
@@ -64,29 +57,36 @@ private:
 };
 
 Sample::~Sample() {
-    NRI.WaitForIdle(*m_GraphicsQueue);
+    if (NRI.HasHelper())
+        NRI.WaitForIdle(*m_GraphicsQueue);
 
-    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
-        NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
-        NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+    if (NRI.HasCore()) {
+        for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+            NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+            NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+        }
+
+        for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
+            NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
+            NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
+            NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+        }
+
+        NRI.DestroyDescriptorPool(*m_DescriptorPool);
+        NRI.DestroyDescriptor(*m_BufferStorage);
+        NRI.DestroyBuffer(*m_Buffer);
+        NRI.DestroyPipeline(*m_Pipeline);
+        NRI.DestroyPipelineLayout(*m_PipelineLayout);
+        NRI.DestroyFence(*m_FrameFence);
+
+        NRI.FreeMemory(*m_Memory);
     }
 
-    for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-        NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-        NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-        NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
-    }
+    if (NRI.HasSwapChain())
+        NRI.DestroySwapChain(*m_SwapChain);
 
-    NRI.DestroyDescriptorPool(*m_DescriptorPool);
-    NRI.DestroyDescriptor(*m_BufferStorage);
-    NRI.DestroyBuffer(*m_Buffer);
-    NRI.DestroyPipeline(*m_Pipeline);
-    NRI.DestroyPipelineLayout(*m_PipelineLayout);
-    NRI.DestroyFence(*m_FrameFence);
-    NRI.DestroySwapChain(*m_SwapChain);
-    NRI.DestroyStreamer(*m_Streamer);
-
-    NRI.FreeMemory(*m_Memory);
+    if (NRI.HasStreamer())
+        NRI.DestroyStreamer(*m_Streamer);
 
     DestroyImgui();
 

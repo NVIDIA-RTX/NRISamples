@@ -4,12 +4,6 @@
 
 #include <array>
 
-struct NRIInterface
-    : public nri::CoreInterface,
-      public nri::HelperInterface,
-      public nri::StreamerInterface,
-      public nri::SwapChainInterface {};
-
 struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
     nri::CommandBuffer* commandBuffer;
@@ -44,26 +38,33 @@ private:
 };
 
 Sample::~Sample() {
-    NRI.WaitForIdle(*m_GraphicsQueue);
+    if (NRI.HasHelper())
+        NRI.WaitForIdle(*m_GraphicsQueue);
 
-    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
-        NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
-        NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+    if (NRI.HasCore()) {
+        for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+            NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+            NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+        }
+
+        for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
+            NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
+            NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
+            NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+        }
+
+        NRI.DestroyBuffer(*m_ReadbackBuffer);
+        NRI.DestroyFence(*m_FrameFence);
+
+        for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
+            NRI.FreeMemory(*m_MemoryAllocations[i]);
     }
 
-    for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-        NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-        NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-        NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
-    }
+    if (NRI.HasSwapChain())
+        NRI.DestroySwapChain(*m_SwapChain);
 
-    NRI.DestroyBuffer(*m_ReadbackBuffer);
-    NRI.DestroyFence(*m_FrameFence);
-    NRI.DestroySwapChain(*m_SwapChain);
-    NRI.DestroyStreamer(*m_Streamer);
-
-    for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
-        NRI.FreeMemory(*m_MemoryAllocations[i]);
+    if (NRI.HasStreamer())
+        NRI.DestroyStreamer(*m_Streamer);
 
     DestroyImgui();
 

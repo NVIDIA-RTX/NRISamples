@@ -23,12 +23,6 @@ static const Vertex g_VertexData[] = {
 
 static const uint16_t g_IndexData[] = {0, 1, 2};
 
-struct NRIInterface
-    : public nri::CoreInterface,
-      public nri::HelperInterface,
-      public nri::StreamerInterface,
-      public nri::SwapChainInterface {};
-
 struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
     nri::CommandBuffer* commandBuffer;
@@ -78,35 +72,42 @@ private:
 };
 
 Sample::~Sample() {
-    NRI.WaitForIdle(*m_GraphicsQueue);
+    if (NRI.HasHelper())
+        NRI.WaitForIdle(*m_GraphicsQueue);
 
-    for (QueuedFrame& queuedFrame : m_QueuedFrames) {
-        NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
-        NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
-        NRI.DestroyDescriptor(*queuedFrame.constantBufferView);
+    if (NRI.HasCore()) {
+        for (QueuedFrame& queuedFrame : m_QueuedFrames) {
+            NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
+            NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+            NRI.DestroyDescriptor(*queuedFrame.constantBufferView);
+        }
+
+        for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
+            NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
+            NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
+            NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+        }
+
+        NRI.DestroyPipeline(*m_Pipeline);
+        NRI.DestroyPipeline(*m_PipelineMultiview);
+        NRI.DestroyPipelineLayout(*m_PipelineLayout);
+        NRI.DestroyDescriptor(*m_TextureShaderResource);
+        NRI.DestroyDescriptor(*m_Sampler);
+        NRI.DestroyBuffer(*m_ConstantBuffer);
+        NRI.DestroyBuffer(*m_GeometryBuffer);
+        NRI.DestroyTexture(*m_Texture);
+        NRI.DestroyDescriptorPool(*m_DescriptorPool);
+        NRI.DestroyFence(*m_FrameFence);
+
+        for (nri::Memory* memory : m_MemoryAllocations)
+            NRI.FreeMemory(*memory);
     }
 
-    for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-        NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-        NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-        NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
-    }
+    if (NRI.HasSwapChain())
+        NRI.DestroySwapChain(*m_SwapChain);
 
-    NRI.DestroyPipeline(*m_Pipeline);
-    NRI.DestroyPipeline(*m_PipelineMultiview);
-    NRI.DestroyPipelineLayout(*m_PipelineLayout);
-    NRI.DestroyDescriptor(*m_TextureShaderResource);
-    NRI.DestroyDescriptor(*m_Sampler);
-    NRI.DestroyBuffer(*m_ConstantBuffer);
-    NRI.DestroyBuffer(*m_GeometryBuffer);
-    NRI.DestroyTexture(*m_Texture);
-    NRI.DestroyDescriptorPool(*m_DescriptorPool);
-    NRI.DestroyFence(*m_FrameFence);
-    NRI.DestroySwapChain(*m_SwapChain);
-    NRI.DestroyStreamer(*m_Streamer);
-
-    for (nri::Memory* memory : m_MemoryAllocations)
-        NRI.FreeMemory(*memory);
+    if (NRI.HasStreamer())
+        NRI.DestroyStreamer(*m_Streamer);
 
     DestroyImgui();
 
