@@ -2,19 +2,17 @@
 
 #include "NRIFramework.h"
 
-#include <array>
-
 // Tweakables, which must be set only once
-#define ALLOW_LOW_LATENCY                     true
-#define WAITABLE_SWAP_CHAIN                   false
-#define WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY 1 // 2 helps to avoid "TOTAL = GPU + CPU" time issue
-#define EMULATE_BAD_PRACTICE                  false
-#define VSYNC_INTERVAL                        0
-#define QUEUED_FRAMES_MAX_NUM                 3
-#define CTA_NUM                               38000 // TODO: tuned to reach ~1ms on RTX 4080
-#define COLOR_LATENCY_SLEEP                   NriBgra(255, 0, 0)
-#define COLOR_SIMULATION                      NriBgra(0, 255, 0)
-#define COLOR_RENDER                          NriBgra(0, 0, 255)
+constexpr bool ALLOW_LOW_LATENCY = true;
+constexpr bool WAITABLE_SWAP_CHAIN = false;
+constexpr bool EMULATE_BAD_PRACTICE = false;
+constexpr bool VSYNC = false;
+constexpr uint32_t WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY = 1; // 2 helps to avoid "TOTAL = GPU + CPU" time issue
+constexpr uint32_t QUEUED_FRAMES_MAX_NUM = 3;
+constexpr uint32_t CTA_NUM = 38000; // TODO: tuned to reach ~1ms on RTX 4080
+constexpr uint32_t COLOR_LATENCY_SLEEP = NriBgra(255, 0, 0);
+constexpr uint32_t COLOR_SIMULATION = NriBgra(0, 255, 0);
+constexpr uint32_t COLOR_RENDER = NriBgra(0, 0, 255);
 
 struct NRIInterface
     : public nri::CoreInterface,
@@ -145,14 +143,19 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         swapChainDesc.window = GetWindow();
         swapChainDesc.queue = m_GraphicsQueue;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
-        swapChainDesc.verticalSyncInterval = m_VsyncInterval;
+        swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | nri::SwapChainBits::ALLOW_TEARING;
         swapChainDesc.width = (uint16_t)GetWindowResolution().x;
         swapChainDesc.height = (uint16_t)GetWindowResolution().y;
         swapChainDesc.textureNum = QUEUED_FRAMES_MAX_NUM + 1;
-        swapChainDesc.verticalSyncInterval = VSYNC_INTERVAL;
         swapChainDesc.queuedFrameNum = WAITABLE_SWAP_CHAIN ? WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY : QUEUED_FRAMES_MAX_NUM;
-        swapChainDesc.waitable = WAITABLE_SWAP_CHAIN;
-        swapChainDesc.allowLowLatency = m_AllowLowLatency;
+
+        if constexpr (VSYNC)
+            swapChainDesc.flags |= nri::SwapChainBits::VSYNC;
+        if constexpr (WAITABLE_SWAP_CHAIN)
+            swapChainDesc.flags |= nri::SwapChainBits::WAITABLE;
+        if (m_AllowLowLatency)
+            swapChainDesc.flags |= nri::SwapChainBits::ALLOW_LOW_LATENCY;
+
         NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
 
         uint32_t swapChainTextureNum;
@@ -329,9 +332,12 @@ void Sample::PrepareFrame(uint32_t) {
             if (!m_AllowLowLatency)
                 ImGui::EndDisabled();
 
+            char s[64];
+            snprintf(s, sizeof(s), "Waitable swapchain (%u)", WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY);
+
             ImGui::BeginDisabled();
             bool waitable = WAITABLE_SWAP_CHAIN;
-            ImGui::Checkbox("Waitable swapchain (" STRINGIFY(WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY) ")", &waitable);
+            ImGui::Checkbox(s, &waitable);
             bool badPractice = EMULATE_BAD_PRACTICE;
             ImGui::Checkbox("Bad practice", &badPractice);
             ImGui::EndDisabled();

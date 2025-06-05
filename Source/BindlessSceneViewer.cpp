@@ -186,7 +186,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         swapChainDesc.window = GetWindow();
         swapChainDesc.queue = m_GraphicsQueue;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_10BIT;
-        swapChainDesc.verticalSyncInterval = m_VsyncInterval;
+        swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | nri::SwapChainBits::ALLOW_TEARING;
         swapChainDesc.width = (uint16_t)GetWindowResolution().x;
         swapChainDesc.height = (uint16_t)GetWindowResolution().y;
         swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
@@ -749,6 +749,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     m_Scene.UnloadGeometryData();
     m_Scene.UnloadTextureData();
 
+    m_UseGPUDrawGeneration = deviceDesc.features.drawIndirectCount != 0;
+
     return InitImgui(*m_Device);
 }
 
@@ -761,6 +763,8 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 }
 
 void Sample::PrepareFrame(uint32_t frameIndex) {
+    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
+
     ImGui::NewFrame();
     {
         nri::PipelineStatisticsDesc* pipelineStats = (nri::PipelineStatisticsDesc*)NRI.MapBuffer(*m_Buffers[READBACK_BUFFER], 0, sizeof(nri::PipelineStatisticsDesc));
@@ -775,7 +779,10 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
             ImGui::Text("Rasterizer input primitives  : %" PRIu64, pipelineStats->rasterizerInPrimitiveNum);
             ImGui::Text("Rasterizer output primitives : %" PRIu64, pipelineStats->rasterizerOutPrimitiveNum);
             ImGui::Text("Fragment shader invocations  : %" PRIu64, pipelineStats->fragmentShaderInvocationNum);
+
+            ImGui::BeginDisabled(!deviceDesc.features.drawIndirectCount);
             ImGui::Checkbox("GPU draw call generation", &m_UseGPUDrawGeneration);
+            ImGui::EndDisabled();
         }
         ImGui::End();
 
