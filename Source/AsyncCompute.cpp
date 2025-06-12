@@ -458,6 +458,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         attachmentsDesc.colorNum = 1;
         attachmentsDesc.colors = &swapChainTexture.colorAttachment;
 
+        CmdCopyImguiData(commandBuffer1, *m_Streamer);
+
         NRI.CmdBeginRendering(commandBuffer1, attachmentsDesc);
         {
             const nri::Viewport viewport = {0.0f, 0.0f, (float)windowWidth, (float)windowHeight, 0.0f, 1.0f};
@@ -482,7 +484,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             NRI.CmdDraw(commandBuffer1, {VERTEX_NUM, 1, 0, 0});
 
-            RenderImgui(commandBuffer1, *m_Streamer, swapChainTexture.attachmentFormat, 1.0f, true);
+            CmdDrawImgui(commandBuffer1, swapChainTexture.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(commandBuffer1);
     }

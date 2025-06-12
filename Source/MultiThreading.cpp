@@ -430,9 +430,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             attachmentsDesc.colorNum = 1;
             attachmentsDesc.colors = &m_BackBuffer->colorAttachment;
 
+            CmdCopyImguiData(commandBufferPost, *m_Streamer);
+
             NRI.CmdBeginRendering(commandBufferPost, attachmentsDesc);
             {
-                RenderImgui(commandBufferPost, *m_Streamer, m_BackBuffer->attachmentFormat, 1.0f, true);
+                CmdDrawImgui(commandBufferPost, m_BackBuffer->attachmentFormat, 1.0f, true);
             }
             NRI.CmdEndRendering(commandBufferPost);
 

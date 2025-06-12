@@ -74,6 +74,11 @@ Sample::~Sample() {
     if (NRI.HasHelper())
         NRI.WaitForIdle(*m_GraphicsQueue);
 
+    if (NRI.HasRayTracing()) {
+        NRI.DestroyAccelerationStructure(*m_BLAS);
+        NRI.DestroyAccelerationStructure(*m_TLAS);
+    }
+
     if (NRI.HasCore()) {
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {
             NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
@@ -106,11 +111,6 @@ Sample::~Sample() {
         NRI.FreeMemory(*m_BLASMemory);
         NRI.FreeMemory(*m_TLASMemory);
         NRI.FreeMemory(*m_ShaderTableMemory);
-    }
-
-    if (NRI.HasRayTracing()) {
-        NRI.DestroyAccelerationStructure(*m_BLAS);
-        NRI.DestroyAccelerationStructure(*m_TLAS);
     }
 
     if (NRI.HasSwapChain())

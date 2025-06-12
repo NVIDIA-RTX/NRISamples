@@ -321,6 +321,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         attachmentsDesc.colorNum = 1;
         attachmentsDesc.colors = &swapChainTexture.colorAttachment;
 
+        CmdCopyImguiData(commandBuffer, *m_Streamer);
+
         NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
         {
             helper::Annotation annotation(NRI, commandBuffer, "Clear");
@@ -333,7 +335,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 clearDesc.value.color.f = {1.0f, 0.0f, 0.0f, 1.0f};
             NRI.CmdClearAttachments(commandBuffer, &clearDesc, 1, nullptr, 0);
 
-            RenderImgui(commandBuffer, *m_Streamer, swapChainTexture.attachmentFormat, 1.0f, true);
+            CmdDrawImgui(commandBuffer, swapChainTexture.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(commandBuffer);
 
