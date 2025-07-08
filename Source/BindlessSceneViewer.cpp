@@ -349,13 +349,14 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         NRI_ABORT_ON_FAILURE(NRI.CreateComputePipeline(*m_Device, computePipelineDesc, m_ComputePipeline));
     }
 
-    // Scene
-    std::string sceneFile = utils::GetFullPath(m_SceneFile, utils::DataFolder::SCENES);
-    NRI_ABORT_ON_FALSE(utils::LoadScene(sceneFile, m_Scene, false));
+    if (isFirstTime) {
+        // Scene
+        std::string sceneFile = utils::GetFullPath(m_SceneFile, utils::DataFolder::SCENES);
+        NRI_ABORT_ON_FALSE(utils::LoadScene(sceneFile, m_Scene, false));
 
-    // Camera
-    if (isFirstTime)
+        // Camera
         m_Camera.Initialize(m_Scene.aabb.GetCenter(), m_Scene.aabb.vMin, false);
+    }
 
     const uint32_t textureNum = (uint32_t)m_Scene.textures.size();
     const uint32_t materialNum = (uint32_t)m_Scene.materials.size();
@@ -760,8 +761,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
     }
 
     // Keep data for "DEVICE_LOST" testing
-    //m_Scene.UnloadGeometryData();
-    //m_Scene.UnloadTextureData();
+    // m_Scene.UnloadGeometryData();
+    // m_Scene.UnloadTextureData();
 
     m_UseGPUDrawGeneration = deviceDesc.features.drawIndirectCount != 0;
 
