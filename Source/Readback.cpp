@@ -16,7 +16,7 @@ public:
 
     ~Sample();
 
-    bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    bool Initialize(nri::GraphicsAPI graphicsAPI, bool) override;
     void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
@@ -38,10 +38,9 @@ private:
 };
 
 Sample::~Sample() {
-    if (NRI.HasHelper())
-        NRI.WaitForIdle(*m_GraphicsQueue);
-
     if (NRI.HasCore()) {
+        NRI.DeviceWaitIdle(*m_Device);
+
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {
             NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
             NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
@@ -71,7 +70,7 @@ Sample::~Sample() {
     nri::nriDestroyDevice(*m_Device);
 }
 
-bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
+bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     // Adapters
     nri::AdapterDesc adapterDesc[2] = {};
     uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);

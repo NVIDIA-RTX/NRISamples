@@ -1,5 +1,9 @@
 // © 2021 NVIDIA Corporation
 
+#if defined(_WIN32)
+#    include <d3d12.h> // RemoveDevice
+#endif
+
 #include "NRI.hlsl"
 #include "NRIFramework.h"
 
@@ -43,14 +47,18 @@ public:
     Sample() {
     }
 
-    ~Sample();
+    ~Sample() {
+        Destroy();
+    }
+
+    void Destroy();
 
     inline uint32_t GetDrawIndexedCommandSize() {
         const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
         return deviceDesc.graphicsAPI == nri::GraphicsAPI::VK ? sizeof(nri::DrawIndexedDesc) : sizeof(nri::DrawIndexedBaseDesc); // sizeof(nri::DrawIndexedDesc) can be used if VS is compiled with SM 6.8
     }
 
-    bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    bool Initialize(nri::GraphicsAPI graphicsAPI, bool bFirstTime = true) override;
     void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
@@ -86,11 +94,10 @@ private:
     utils::Scene m_Scene;
 };
 
-Sample::~Sample() {
-    if (NRI.HasHelper())
-        NRI.WaitForIdle(*m_GraphicsQueue);
-
+void Sample::Destroy() {
     if (NRI.HasCore()) {
+        NRI.DeviceWaitIdle(*m_Device);
+
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {
             NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
             NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
@@ -116,7 +123,6 @@ Sample::~Sample() {
 
         NRI.DestroyPipeline(*m_Pipeline);
         NRI.DestroyPipeline(*m_ComputePipeline);
-
         NRI.DestroyQueryPool(*m_QueryPool);
         NRI.DestroyPipelineLayout(*m_PipelineLayout);
         NRI.DestroyPipelineLayout(*m_ComputePipelineLayout);
@@ -133,9 +139,16 @@ Sample::~Sample() {
     DestroyImgui();
 
     nri::nriDestroyDevice(*m_Device);
+
+    m_QueuedFrames.clear();
+    m_SwapChainTextures.clear();
+    m_Descriptors.clear();
+    m_Textures.clear();
+    m_Buffers.clear();
+    m_MemoryAllocations.clear();
 }
 
-bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
+bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
     if (graphicsAPI == nri::GraphicsAPI::D3D11) {
         printf("This sample supports only D3D12 and Vulkan\n");
         return false;
@@ -155,6 +168,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
+    deviceCreationDesc.disableDefaultAbortExecution = true;
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
     // NRI
@@ -309,7 +323,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         outputMergerDesc.colorNum = 1;
         outputMergerDesc.depthStencilFormat = m_DepthFormat;
         outputMergerDesc.depth.write = true;
-        outputMergerDesc.depth.compareFunc = CLEAR_DEPTH == 1.0f ? nri::CompareFunc::LESS : nri::CompareFunc::GREATER;
+        outputMergerDesc.depth.compareOp = CLEAR_DEPTH == 1.0f ? nri::CompareOp::LESS : nri::CompareOp::GREATER;
 
         nri::ShaderDesc shaderStages[] = {
             utils::LoadShader(deviceDesc.graphicsAPI, "ForwardBindless.vs", shaderCodeStorage),
@@ -340,7 +354,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
     NRI_ABORT_ON_FALSE(utils::LoadScene(sceneFile, m_Scene, false));
 
     // Camera
-    m_Camera.Initialize(m_Scene.aabb.GetCenter(), m_Scene.aabb.vMin, false);
+    if (isFirstTime)
+        m_Camera.Initialize(m_Scene.aabb.GetCenter(), m_Scene.aabb.vMin, false);
 
     const uint32_t textureNum = (uint32_t)m_Scene.textures.size();
     const uint32_t materialNum = (uint32_t)m_Scene.materials.size();
@@ -744,8 +759,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
         NRI_ABORT_ON_FAILURE(NRI.CreateQueryPool(*m_Device, queryPoolDesc, m_QueryPool));
     }
 
-    m_Scene.UnloadGeometryData();
-    m_Scene.UnloadTextureData();
+    // Keep data for "DEVICE_LOST" testing
+    //m_Scene.UnloadGeometryData();
+    //m_Scene.UnloadTextureData();
 
     m_UseGPUDrawGeneration = deviceDesc.features.drawIndirectCount != 0;
 
@@ -781,6 +797,11 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
             ImGui::BeginDisabled(!deviceDesc.features.drawIndirectCount);
             ImGui::Checkbox("GPU draw call generation", &m_UseGPUDrawGeneration);
             ImGui::EndDisabled();
+
+            if (deviceDesc.graphicsAPI == nri::GraphicsAPI::D3D12 && ImGui::Button("Trigger DEVICE_LOST")) {
+                ID3D12Device5* device = (ID3D12Device5*)NRI.GetDeviceNativeObject(*m_Device);
+                device->RemoveDevice();
+            }
         }
         ImGui::End();
 
@@ -982,7 +1003,15 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.EndStreamerFrame(*m_Streamer);
 
     // Present
-    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
+    nri::Result result = NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
+
+    // Handle "DEVICE_LOST"
+    if (result == nri::Result::DEVICE_LOST) {
+        Destroy();
+        Initialize(nri::GraphicsAPI::D3D12, false);
+
+        // "m_FrameFence" must be signaled as usual, because of "Wait" in "LatencySleep"
+    }
 
     { // Signaling after "Present" improves D3D11 performance a bit
         nri::FenceSubmitDesc signalFence = {};

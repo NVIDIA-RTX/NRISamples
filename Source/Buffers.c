@@ -72,7 +72,7 @@ int main(int argc, char** argv) {
             device, NRI_INTERFACE(NriResourceAllocatorInterface), &iResourceAllocator));
 
         const NriDeviceDesc* deviceDesc = iCore.GetDeviceDesc(device);
-        if (deviceDesc->graphicsAPI == NriGraphicsAPI_D3D11 || !deviceDesc->features.enchancedBarrier)
+        if (deviceDesc->graphicsAPI == NriGraphicsAPI_D3D11 || !deviceDesc->features.enhancedBarriers)
             useSelfCopies = false; // Vulkan or D3D12 with AgilitySDK required
     }
 
@@ -239,7 +239,7 @@ int main(int argc, char** argv) {
             });
 
         // Wait for idle
-        iHelper.WaitForIdle(queue);
+        iCore.QueueWaitIdle(queue);
     }
 
     { // Validate result

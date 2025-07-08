@@ -59,7 +59,7 @@ public:
     ~Sample();
 
 private:
-    bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    bool Initialize(nri::GraphicsAPI graphicsAPI, bool) override;
     void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
@@ -127,10 +127,9 @@ Sample::~Sample() {
         threadContext.thread.join();
     }
 
-    if (NRI.HasHelper())
-        NRI.WaitForIdle(*m_GraphicsQueue);
-
     if (NRI.HasCore()) {
+        NRI.DeviceWaitIdle(*m_Device);
+
         for (uint32_t i = 0; i < m_ThreadNum; i++) {
             ThreadContext& threadContext = m_ThreadContexts[i];
 
@@ -191,7 +190,7 @@ Sample::~Sample() {
     nri::nriDestroyDevice(*m_Device);
 }
 
-bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
+bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     uint32_t concurrentThreadMaxNum = std::thread::hardware_concurrency();
     m_ThreadNum = std::min((concurrentThreadMaxNum * 3) / 4, (uint32_t)THREAD_MAX_NUM);
 
@@ -728,7 +727,7 @@ void Sample::CreatePipeline(nri::Format swapChainFormat) {
     colorAttachmentDesc.colorWriteMask = nri::ColorWriteBits::RGBA;
 
     nri::DepthAttachmentDesc depthAttachmentDesc = {};
-    depthAttachmentDesc.compareFunc = nri::CompareFunc::LESS;
+    depthAttachmentDesc.compareOp = nri::CompareOp::LESS;
     depthAttachmentDesc.write = true;
 
     nri::OutputMergerDesc outputMergerDesc = {};
@@ -736,7 +735,7 @@ void Sample::CreatePipeline(nri::Format swapChainFormat) {
     outputMergerDesc.colorNum = 1;
 
     outputMergerDesc.depthStencilFormat = m_DepthFormat;
-    outputMergerDesc.depth.compareFunc = nri::CompareFunc::LESS;
+    outputMergerDesc.depth.compareOp = nri::CompareOp::LESS;
     outputMergerDesc.depth.write = true;
 
     nri::GraphicsPipelineDesc graphicsPipelineDesc = {};

@@ -161,7 +161,7 @@ public:
     ~Sample();
 
 private:
-    bool Initialize(nri::GraphicsAPI graphicsAPI) override;
+    bool Initialize(nri::GraphicsAPI graphicsAPI, bool) override;
     void LatencySleep(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
 
@@ -216,15 +216,14 @@ private:
 };
 
 Sample::~Sample() {
-    if (NRI.HasHelper())
-        NRI.WaitForIdle(*m_GraphicsQueue);
-
-    if (NRI.HasRayTracing()) {
-        NRI.DestroyAccelerationStructure(*m_BLAS);
-        NRI.DestroyAccelerationStructure(*m_TLAS);
-    }
-
     if (NRI.HasCore()) {
+        NRI.DeviceWaitIdle(*m_Device);
+
+        if (NRI.HasRayTracing()) {
+            NRI.DestroyAccelerationStructure(*m_BLAS);
+            NRI.DestroyAccelerationStructure(*m_TLAS);
+        }
+
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {
             NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
             NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
@@ -266,7 +265,7 @@ Sample::~Sample() {
     nri::nriDestroyDevice(*m_Device);
 }
 
-bool Sample::Initialize(nri::GraphicsAPI graphicsAPI) {
+bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     // Adapters
     nri::AdapterDesc adapterDesc[2] = {};
     uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
@@ -802,8 +801,9 @@ void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& a
         NRI.CmdBuildBottomLevelAccelerationStructures(*commandBuffer, &desc, 1);
     }
     NRI.EndCommandBuffer(*commandBuffer);
+
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
-    NRI.WaitForIdle(*m_GraphicsQueue);
+    NRI.QueueWaitIdle(*m_GraphicsQueue);
 
     NRI.DestroyCommandBuffer(*commandBuffer);
     NRI.DestroyCommandAllocator(*commandAllocator);
@@ -837,8 +837,9 @@ void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& acce
         NRI.CmdBuildTopLevelAccelerationStructures(*commandBuffer, &desc, 1);
     }
     NRI.EndCommandBuffer(*commandBuffer);
+
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
-    NRI.WaitForIdle(*m_GraphicsQueue);
+    NRI.QueueWaitIdle(*m_GraphicsQueue);
 
     NRI.DestroyCommandBuffer(*commandBuffer);
     NRI.DestroyCommandAllocator(*commandAllocator);
