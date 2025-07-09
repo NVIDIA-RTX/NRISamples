@@ -440,7 +440,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             nri::TextureBarrierDesc swapChainTextureTransition = {};
             swapChainTextureTransition.texture = m_BackBuffer->texture;
             swapChainTextureTransition.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-            swapChainTextureTransition.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+            swapChainTextureTransition.after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
             swapChainTextureTransition.layerNum = 1;
             swapChainTextureTransition.mipNum = 1;
 

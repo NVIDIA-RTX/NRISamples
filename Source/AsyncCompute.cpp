@@ -518,7 +518,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         // Resource transitions
         textureBarriers[0].before = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
-        textureBarriers[0].after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+        textureBarriers[0].after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
 
         textureBarriers[1].before = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
         textureBarriers[1].after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::Layout::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};

@@ -975,7 +975,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         // Barriers
         textureBarrier.before = textureBarrier.after;
-        textureBarrier.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+        textureBarrier.after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
 
         barrierGroupDesc.bufferNum = 0;
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);

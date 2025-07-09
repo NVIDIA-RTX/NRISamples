@@ -341,7 +341,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         textureTransitions[0].mipNum = 1;
 
         textureTransitions[1].texture = m_RayTracingOutput;
-        textureTransitions[1].before = {frameIndex == 0 ? nri::AccessBits::UNKNOWN : nri::AccessBits::COPY_SOURCE, frameIndex == 0 ? nri::Layout::UNKNOWN : nri::Layout::COPY_SOURCE};
+        textureTransitions[1].before = {frameIndex == 0 ? nri::AccessBits::NONE : nri::AccessBits::COPY_SOURCE, frameIndex == 0 ? nri::Layout::UNDEFINED : nri::Layout::COPY_SOURCE};
         textureTransitions[1].after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::Layout::SHADER_RESOURCE_STORAGE};
         textureTransitions[1].layerNum = 1;
         textureTransitions[1].mipNum = 1;
@@ -387,7 +387,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         // Present
         textureTransitions[0].before = textureTransitions[0].after;
-        textureTransitions[0].after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+        textureTransitions[0].after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
 
         barrierGroupDesc.textures = textureTransitions;
         barrierGroupDesc.textureNum = 1;
@@ -877,7 +877,7 @@ void Sample::CreateShaderTable() {
     nri::BufferUploadDesc dataDesc = {};
     dataDesc.data = content.data();
     dataDesc.buffer = m_ShaderTable;
-    dataDesc.after = {nri::AccessBits::UNKNOWN};
+    dataDesc.after = {nri::AccessBits::NONE};
     NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, nullptr, 0, &dataDesc, 1));
 }
 

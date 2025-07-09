@@ -447,7 +447,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         { // Barrier
             swapchainBarrier.before = swapchainBarrier.after;
-            swapchainBarrier.after = {nri::AccessBits::UNKNOWN, nri::Layout::PRESENT};
+            swapchainBarrier.after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
 
             nri::BarrierGroupDesc barriers = {};
             barriers.textureNum = 1;
