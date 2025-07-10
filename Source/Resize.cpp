@@ -3,6 +3,7 @@
 #include "NRIFramework.h"
 
 #define SWITCH_TIME 2.5f
+#define NOT_ALLOW_TEARING nri::SwapChainBits::NONE // no "ALLOW_TEARING" to avoid getting a VIDMODE switch caused by the VK driver
 
 struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
@@ -116,7 +117,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         swapChainDesc.window = GetWindow();
         swapChainDesc.queue = m_GraphicsQueue;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
-        swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | nri::SwapChainBits::ALLOW_TEARING;
+        swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | NOT_ALLOW_TEARING;
         swapChainDesc.width = (uint16_t)m_WindowResolution.x;
         swapChainDesc.height = (uint16_t)m_WindowResolution.y;
         swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
@@ -245,7 +246,7 @@ void Sample::ResizeSwapChain() {
     swapChainDesc.window = GetWindow();
     swapChainDesc.queue = m_GraphicsQueue;
     swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
-    swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | nri::SwapChainBits::ALLOW_TEARING;
+    swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | NOT_ALLOW_TEARING;
     swapChainDesc.width = (uint16_t)m_WindowResolution.x;
     swapChainDesc.height = (uint16_t)m_WindowResolution.y;
     swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
