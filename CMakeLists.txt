@@ -78,7 +78,8 @@ if(WIN32)
 endif()
 
 # External/NRIFramework
-set(NRIF_SHADERS_PATH "${SHADER_OUTPUT_PATH}" CACHE STRING "")
+set(NRI_SHADERS_PATH "${SHADER_OUTPUT_PATH}" CACHE STRING "")
+
 add_subdirectory("External/NRIFramework")
 
 # Move dependencies into "External"
