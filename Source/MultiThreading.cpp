@@ -128,7 +128,7 @@ Sample::~Sample() {
     }
 
     if (NRI.HasCore()) {
-        NRI.DeviceWaitIdle(*m_Device);
+        NRI.DeviceWaitIdle(m_Device);
 
         for (uint32_t i = 0; i < m_ThreadNum; i++) {
             ThreadContext& threadContext = m_ThreadContexts[i];
@@ -136,58 +136,58 @@ Sample::~Sample() {
             for (uint32_t j = 0; j < GetQueuedFrameNum(); j++) {
                 QueuedFrame& queuedFrame = threadContext.queuedFrames[j];
 
-                NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
-                NRI.DestroyCommandBuffer(*queuedFrame.commandBufferPre);
-                NRI.DestroyCommandBuffer(*queuedFrame.commandBufferPost);
-                NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+                NRI.DestroyCommandBuffer(queuedFrame.commandBuffer);
+                NRI.DestroyCommandBuffer(queuedFrame.commandBufferPre);
+                NRI.DestroyCommandBuffer(queuedFrame.commandBufferPost);
+                NRI.DestroyCommandAllocator(queuedFrame.commandAllocator);
             }
         }
 
         for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-            NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-            NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-            NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+            NRI.DestroyFence(swapChainTexture.acquireSemaphore);
+            NRI.DestroyFence(swapChainTexture.releaseSemaphore);
+            NRI.DestroyDescriptor(swapChainTexture.colorAttachment);
         }
 
         for (size_t i = 0; i < m_Textures.size(); i++)
-            NRI.DestroyDescriptor(*m_TextureViews[i]);
+            NRI.DestroyDescriptor(m_TextureViews[i]);
 
         for (size_t i = 0; i < m_Textures.size(); i++)
-            NRI.DestroyTexture(*m_Textures[i]);
+            NRI.DestroyTexture(m_Textures[i]);
 
         for (size_t i = 0; i < m_FakeConstantBufferViews.size(); i++)
-            NRI.DestroyDescriptor(*m_FakeConstantBufferViews[i]);
+            NRI.DestroyDescriptor(m_FakeConstantBufferViews[i]);
 
         for (size_t i = 0; i < m_Pipelines.size(); i++)
-            NRI.DestroyPipeline(*m_Pipelines[i]);
+            NRI.DestroyPipeline(m_Pipelines[i]);
 
-        NRI.DestroyDescriptor(*m_Sampler);
-        NRI.DestroyDescriptor(*m_DepthTextureView);
-        NRI.DestroyDescriptor(*m_TransformConstantBufferView);
-        NRI.DestroyDescriptor(*m_ViewConstantBufferView);
-        NRI.DestroyTexture(*m_DepthTexture);
-        NRI.DestroyBuffer(*m_TransformConstantBuffer);
-        NRI.DestroyBuffer(*m_ViewConstantBuffer);
-        NRI.DestroyBuffer(*m_FakeConstantBuffer);
-        NRI.DestroyBuffer(*m_VertexBuffer);
-        NRI.DestroyBuffer(*m_IndexBuffer);
-        NRI.DestroyPipelineLayout(*m_PipelineLayout);
-        NRI.DestroyDescriptorPool(*m_DescriptorPool);
-        NRI.DestroyFence(*m_FrameFence);
+        NRI.DestroyDescriptor(m_Sampler);
+        NRI.DestroyDescriptor(m_DepthTextureView);
+        NRI.DestroyDescriptor(m_TransformConstantBufferView);
+        NRI.DestroyDescriptor(m_ViewConstantBufferView);
+        NRI.DestroyTexture(m_DepthTexture);
+        NRI.DestroyBuffer(m_TransformConstantBuffer);
+        NRI.DestroyBuffer(m_ViewConstantBuffer);
+        NRI.DestroyBuffer(m_FakeConstantBuffer);
+        NRI.DestroyBuffer(m_VertexBuffer);
+        NRI.DestroyBuffer(m_IndexBuffer);
+        NRI.DestroyPipelineLayout(m_PipelineLayout);
+        NRI.DestroyDescriptorPool(m_DescriptorPool);
+        NRI.DestroyFence(m_FrameFence);
 
         for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
-            NRI.FreeMemory(*m_MemoryAllocations[i]);
+            NRI.FreeMemory(m_MemoryAllocations[i]);
     }
 
     if (NRI.HasSwapChain())
-        NRI.DestroySwapChain(*m_SwapChain);
+        NRI.DestroySwapChain(m_SwapChain);
 
     if (NRI.HasStreamer())
-        NRI.DestroyStreamer(*m_Streamer);
+        NRI.DestroyStreamer(m_Streamer);
 
     DestroyImgui();
 
-    nri::nriDestroyDevice(*m_Device);
+    nri::nriDestroyDevice(m_Device);
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
@@ -883,7 +883,7 @@ void Sample::CreateTransformConstantBuffer() {
     constantBufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
     constantBufferViewDesc.buffer = m_TransformConstantBuffer;
     constantBufferViewDesc.size = alignedMatrixSize;
-    NRI.CreateBufferView(constantBufferViewDesc, m_TransformConstantBufferView);
+    NRI_ABORT_ON_FAILURE(NRI.CreateBufferView(constantBufferViewDesc, m_TransformConstantBufferView));
 
     uint32_t dynamicConstantBufferOffset = 0;
 
@@ -1058,7 +1058,7 @@ void Sample::CreateFakeConstantBuffers() {
 
     m_FakeConstantBufferViews.resize(fakeConstantBufferRangeNum);
     for (size_t i = 0; i < m_FakeConstantBufferViews.size(); i++) {
-        NRI.CreateBufferView(constantBufferViewDesc, m_FakeConstantBufferViews[i]);
+        NRI_ABORT_ON_FAILURE(NRI.CreateBufferView(constantBufferViewDesc, m_FakeConstantBufferViews[i]));
         constantBufferViewDesc.offset += constantRangeSize;
     }
 
@@ -1094,7 +1094,7 @@ void Sample::CreateViewConstantBuffer() {
     constantBufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
     constantBufferViewDesc.buffer = m_ViewConstantBuffer;
     constantBufferViewDesc.size = constantRangeSize;
-    NRI.CreateBufferView(constantBufferViewDesc, m_ViewConstantBufferView);
+    NRI_ABORT_ON_FAILURE(NRI.CreateBufferView(constantBufferViewDesc, m_ViewConstantBufferView));
 
     std::vector<uint8_t> bufferContent((size_t)bufferDesc.size, 0);
     SetupProjViewMatrix(*(float4x4*)(bufferContent.data()));

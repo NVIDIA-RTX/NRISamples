@@ -217,52 +217,52 @@ private:
 
 Sample::~Sample() {
     if (NRI.HasCore()) {
-        NRI.DeviceWaitIdle(*m_Device);
+        NRI.DeviceWaitIdle(m_Device);
 
         if (NRI.HasRayTracing()) {
-            NRI.DestroyAccelerationStructure(*m_BLAS);
-            NRI.DestroyAccelerationStructure(*m_TLAS);
+            NRI.DestroyAccelerationStructure(m_BLAS);
+            NRI.DestroyAccelerationStructure(m_TLAS);
         }
 
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {
-            NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
-            NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+            NRI.DestroyCommandBuffer(queuedFrame.commandBuffer);
+            NRI.DestroyCommandAllocator(queuedFrame.commandAllocator);
         }
 
         for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-            NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-            NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-            NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+            NRI.DestroyFence(swapChainTexture.acquireSemaphore);
+            NRI.DestroyFence(swapChainTexture.releaseSemaphore);
+            NRI.DestroyDescriptor(swapChainTexture.colorAttachment);
         }
 
-        NRI.DestroyDescriptor(*m_RayTracingOutputView);
-        NRI.DestroyDescriptor(*m_TexCoordBufferView);
-        NRI.DestroyDescriptor(*m_IndexBufferView);
-        NRI.DestroyDescriptor(*m_TLASDescriptor);
+        NRI.DestroyDescriptor(m_RayTracingOutputView);
+        NRI.DestroyDescriptor(m_TexCoordBufferView);
+        NRI.DestroyDescriptor(m_IndexBufferView);
+        NRI.DestroyDescriptor(m_TLASDescriptor);
 
-        NRI.DestroyTexture(*m_RayTracingOutput);
+        NRI.DestroyTexture(m_RayTracingOutput);
 
-        NRI.DestroyDescriptorPool(*m_DescriptorPool);
+        NRI.DestroyDescriptorPool(m_DescriptorPool);
 
-        NRI.DestroyBuffer(*m_ShaderTable);
-        NRI.DestroyBuffer(*m_TexCoordBuffer);
-        NRI.DestroyBuffer(*m_IndexBuffer);
+        NRI.DestroyBuffer(m_ShaderTable);
+        NRI.DestroyBuffer(m_TexCoordBuffer);
+        NRI.DestroyBuffer(m_IndexBuffer);
 
-        NRI.DestroyPipeline(*m_Pipeline);
-        NRI.DestroyPipelineLayout(*m_PipelineLayout);
+        NRI.DestroyPipeline(m_Pipeline);
+        NRI.DestroyPipelineLayout(m_PipelineLayout);
 
-        NRI.DestroyFence(*m_FrameFence);
+        NRI.DestroyFence(m_FrameFence);
 
         for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
-            NRI.FreeMemory(*m_MemoryAllocations[i]);
+            NRI.FreeMemory(m_MemoryAllocations[i]);
     }
 
     if (NRI.HasSwapChain())
-        NRI.DestroySwapChain(*m_SwapChain);
+        NRI.DestroySwapChain(m_SwapChain);
 
     DestroyImgui();
 
-    nri::nriDestroyDevice(*m_Device);
+    nri::nriDestroyDevice(m_Device);
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
@@ -678,8 +678,8 @@ void Sample::CreateBottomLevelAccelerationStructure() {
 
     BuildBottomLevelAccelerationStructure(*m_BLAS, &object, 1);
 
-    NRI.DestroyBuffer(*buffer);
-    NRI.FreeMemory(*memory);
+    NRI.DestroyBuffer(buffer);
+    NRI.FreeMemory(memory);
 }
 
 void Sample::CreateTopLevelAccelerationStructure() {
@@ -733,10 +733,10 @@ void Sample::CreateTopLevelAccelerationStructure() {
 
     BuildTopLevelAccelerationStructure(*m_TLAS, (uint32_t)geometryObjectInstances.size(), *buffer);
 
-    NRI.DestroyBuffer(*buffer);
-    NRI.FreeMemory(*memory);
+    NRI.DestroyBuffer(buffer);
+    NRI.FreeMemory(memory);
 
-    NRI.CreateAccelerationStructureDescriptor(*m_TLAS, m_TLASDescriptor);
+    NRI_ABORT_ON_FAILURE(NRI.CreateAccelerationStructureDescriptor(*m_TLAS, m_TLASDescriptor));
 
     const nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc = {&m_TLASDescriptor, 1, 0};
     NRI.UpdateDescriptorRanges(*m_DescriptorSets[0], 1, 1, &descriptorRangeUpdateDesc);
@@ -782,9 +782,10 @@ void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& a
     CreateScratchBuffer(accelerationStructure, scratchBuffer, scratchBufferMemory);
 
     nri::CommandAllocator* commandAllocator = nullptr;
+    NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, commandAllocator));
+
     nri::CommandBuffer* commandBuffer = nullptr;
-    NRI.CreateCommandAllocator(*m_GraphicsQueue, commandAllocator);
-    NRI.CreateCommandBuffer(*commandAllocator, commandBuffer);
+    NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*commandAllocator, commandBuffer));
 
     nri::QueueSubmitDesc queueSubmitDesc = {};
     queueSubmitDesc.commandBuffers = &commandBuffer;
@@ -803,13 +804,13 @@ void Sample::BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& a
     NRI.EndCommandBuffer(*commandBuffer);
 
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
-    NRI.QueueWaitIdle(*m_GraphicsQueue);
+    NRI.QueueWaitIdle(m_GraphicsQueue);
 
-    NRI.DestroyCommandBuffer(*commandBuffer);
-    NRI.DestroyCommandAllocator(*commandAllocator);
+    NRI.DestroyCommandBuffer(commandBuffer);
+    NRI.DestroyCommandAllocator(commandAllocator);
 
-    NRI.DestroyBuffer(*scratchBuffer);
-    NRI.FreeMemory(*scratchBufferMemory);
+    NRI.DestroyBuffer(scratchBuffer);
+    NRI.FreeMemory(scratchBufferMemory);
 }
 
 void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, uint32_t instanceNum, nri::Buffer& instanceBuffer) {
@@ -818,9 +819,10 @@ void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& acce
     CreateScratchBuffer(accelerationStructure, scratchBuffer, scratchBufferMemory);
 
     nri::CommandAllocator* commandAllocator = nullptr;
+    NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_GraphicsQueue, commandAllocator));
+
     nri::CommandBuffer* commandBuffer = nullptr;
-    NRI.CreateCommandAllocator(*m_GraphicsQueue, commandAllocator);
-    NRI.CreateCommandBuffer(*commandAllocator, commandBuffer);
+    NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*commandAllocator, commandBuffer));
 
     nri::QueueSubmitDesc queueSubmitDesc = {};
     queueSubmitDesc.commandBuffers = &commandBuffer;
@@ -839,13 +841,13 @@ void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& acce
     NRI.EndCommandBuffer(*commandBuffer);
 
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
-    NRI.QueueWaitIdle(*m_GraphicsQueue);
+    NRI.QueueWaitIdle(m_GraphicsQueue);
 
-    NRI.DestroyCommandBuffer(*commandBuffer);
-    NRI.DestroyCommandAllocator(*commandAllocator);
+    NRI.DestroyCommandBuffer(commandBuffer);
+    NRI.DestroyCommandAllocator(commandAllocator);
 
-    NRI.DestroyBuffer(*scratchBuffer);
-    NRI.FreeMemory(*scratchBufferMemory);
+    NRI.DestroyBuffer(scratchBuffer);
+    NRI.FreeMemory(scratchBufferMemory);
 }
 
 void Sample::CreateShaderTable() {

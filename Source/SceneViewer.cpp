@@ -67,49 +67,49 @@ private:
 
 Sample::~Sample() {
     if (NRI.HasCore()) {
-        NRI.DeviceWaitIdle(*m_Device);
+        NRI.DeviceWaitIdle(m_Device);
 
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {
-            NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
-            NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+            NRI.DestroyCommandBuffer(queuedFrame.commandBuffer);
+            NRI.DestroyCommandAllocator(queuedFrame.commandAllocator);
         }
 
         for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-            NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-            NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-            NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+            NRI.DestroyFence(swapChainTexture.acquireSemaphore);
+            NRI.DestroyFence(swapChainTexture.releaseSemaphore);
+            NRI.DestroyDescriptor(swapChainTexture.colorAttachment);
         }
 
         for (size_t i = 0; i < m_Descriptors.size(); i++)
-            NRI.DestroyDescriptor(*m_Descriptors[i]);
+            NRI.DestroyDescriptor(m_Descriptors[i]);
 
         for (size_t i = 0; i < m_Textures.size(); i++)
-            NRI.DestroyTexture(*m_Textures[i]);
+            NRI.DestroyTexture(m_Textures[i]);
 
         for (size_t i = 0; i < m_Buffers.size(); i++)
-            NRI.DestroyBuffer(*m_Buffers[i]);
+            NRI.DestroyBuffer(m_Buffers[i]);
 
         for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
-            NRI.FreeMemory(*m_MemoryAllocations[i]);
+            NRI.FreeMemory(m_MemoryAllocations[i]);
 
         for (size_t i = 0; i < m_Pipelines.size(); i++)
-            NRI.DestroyPipeline(*m_Pipelines[i]);
+            NRI.DestroyPipeline(m_Pipelines[i]);
 
-        NRI.DestroyQueryPool(*m_QueryPool);
-        NRI.DestroyPipelineLayout(*m_PipelineLayout);
-        NRI.DestroyDescriptorPool(*m_DescriptorPool);
-        NRI.DestroyFence(*m_FrameFence);
+        NRI.DestroyQueryPool(m_QueryPool);
+        NRI.DestroyPipelineLayout(m_PipelineLayout);
+        NRI.DestroyDescriptorPool(m_DescriptorPool);
+        NRI.DestroyFence(m_FrameFence);
     }
 
     if (NRI.HasSwapChain())
-        NRI.DestroySwapChain(*m_SwapChain);
+        NRI.DestroySwapChain(m_SwapChain);
 
     if (NRI.HasStreamer())
-        NRI.DestroyStreamer(*m_Streamer);
+        NRI.DestroyStreamer(m_Streamer);
 
     DestroyImgui();
 
-    nri::nriDestroyDevice(*m_Device);
+    nri::nriDestroyDevice(m_Device);
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {

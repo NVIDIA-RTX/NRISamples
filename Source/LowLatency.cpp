@@ -58,38 +58,38 @@ private:
 
 Sample::~Sample() {
     if (NRI.HasCore()) {
-        NRI.DeviceWaitIdle(*m_Device);
+        NRI.DeviceWaitIdle(m_Device);
 
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {
-            NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
-            NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+            NRI.DestroyCommandBuffer(queuedFrame.commandBuffer);
+            NRI.DestroyCommandAllocator(queuedFrame.commandAllocator);
         }
 
         for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-            NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-            NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-            NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+            NRI.DestroyFence(swapChainTexture.acquireSemaphore);
+            NRI.DestroyFence(swapChainTexture.releaseSemaphore);
+            NRI.DestroyDescriptor(swapChainTexture.colorAttachment);
         }
 
-        NRI.DestroyDescriptorPool(*m_DescriptorPool);
-        NRI.DestroyDescriptor(*m_BufferStorage);
-        NRI.DestroyBuffer(*m_Buffer);
-        NRI.DestroyPipeline(*m_Pipeline);
-        NRI.DestroyPipelineLayout(*m_PipelineLayout);
-        NRI.DestroyFence(*m_FrameFence);
+        NRI.DestroyDescriptorPool(m_DescriptorPool);
+        NRI.DestroyDescriptor(m_BufferStorage);
+        NRI.DestroyBuffer(m_Buffer);
+        NRI.DestroyPipeline(m_Pipeline);
+        NRI.DestroyPipelineLayout(m_PipelineLayout);
+        NRI.DestroyFence(m_FrameFence);
 
-        NRI.FreeMemory(*m_Memory);
+        NRI.FreeMemory(m_Memory);
     }
 
     if (NRI.HasSwapChain())
-        NRI.DestroySwapChain(*m_SwapChain);
+        NRI.DestroySwapChain(m_SwapChain);
 
     if (NRI.HasStreamer())
-        NRI.DestroyStreamer(*m_Streamer);
+        NRI.DestroyStreamer(m_Streamer);
 
     DestroyImgui();
 
-    nri::nriDestroyDevice(*m_Device);
+    nri::nriDestroyDevice(m_Device);
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
@@ -355,7 +355,7 @@ void Sample::PrepareFrame(uint32_t) {
     }
 
     if (queuedFrameNumPrev != m_QueuedFrameNum)
-        NRI.QueueWaitIdle(*m_GraphicsQueue);
+        NRI.QueueWaitIdle(m_GraphicsQueue);
 
     // Marker
     if (m_AllowLowLatency)

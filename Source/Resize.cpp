@@ -43,34 +43,34 @@ private:
 
 Sample::~Sample() {
     if (NRI.HasCore()) {
-        NRI.DeviceWaitIdle(*m_Device);
+        NRI.DeviceWaitIdle(m_Device);
 
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {
-            NRI.DestroyCommandBuffer(*queuedFrame.commandBuffer);
-            NRI.DestroyCommandAllocator(*queuedFrame.commandAllocator);
+            NRI.DestroyCommandBuffer(queuedFrame.commandBuffer);
+            NRI.DestroyCommandAllocator(queuedFrame.commandAllocator);
         }
 
         for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-            NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-            NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-            NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+            NRI.DestroyFence(swapChainTexture.acquireSemaphore);
+            NRI.DestroyFence(swapChainTexture.releaseSemaphore);
+            NRI.DestroyDescriptor(swapChainTexture.colorAttachment);
         }
 
-        NRI.DestroyFence(*m_FrameFence);
+        NRI.DestroyFence(m_FrameFence);
 
         for (size_t i = 0; i < m_MemoryAllocations.size(); i++)
-            NRI.FreeMemory(*m_MemoryAllocations[i]);
+            NRI.FreeMemory(m_MemoryAllocations[i]);
     }
 
     if (NRI.HasSwapChain())
-        NRI.DestroySwapChain(*m_SwapChain);
+        NRI.DestroySwapChain(m_SwapChain);
 
     if (NRI.HasStreamer())
-        NRI.DestroyStreamer(*m_Streamer);
+        NRI.DestroyStreamer(m_Streamer);
 
     DestroyImgui();
 
-    nri::nriDestroyDevice(*m_Device);
+    nri::nriDestroyDevice(m_Device);
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
@@ -230,16 +230,16 @@ void Sample::PrepareFrame(uint32_t) {
 
 void Sample::ResizeSwapChain() {
     // Wait for idle
-    NRI.QueueWaitIdle(*m_GraphicsQueue);
+    NRI.QueueWaitIdle(m_GraphicsQueue);
 
     // Destroy old swapchain
     for (SwapChainTexture& swapChainTexture : m_SwapChainTextures) {
-        NRI.DestroyFence(*swapChainTexture.acquireSemaphore);
-        NRI.DestroyFence(*swapChainTexture.releaseSemaphore);
-        NRI.DestroyDescriptor(*swapChainTexture.colorAttachment);
+        NRI.DestroyFence(swapChainTexture.acquireSemaphore);
+        NRI.DestroyFence(swapChainTexture.releaseSemaphore);
+        NRI.DestroyDescriptor(swapChainTexture.colorAttachment);
     }
 
-    NRI.DestroySwapChain(*m_SwapChain);
+    NRI.DestroySwapChain(m_SwapChain);
 
     // Create new swapchain
     nri::SwapChainDesc swapChainDesc = {};
