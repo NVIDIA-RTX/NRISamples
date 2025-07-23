@@ -11,6 +11,10 @@
 #include "Extensions/NRIHelper.h"
 #include "Extensions/NRIResourceAllocator.h"
 
+#if NRI_ENABLE_AGILITY_SDK_SUPPORT
+#    include "NRIAgilitySDK.h"
+#endif
+
 #define NRI_ABORT_ON_FAILURE(result) \
     if (result != NriResult_SUCCESS) \
         exit(1);
@@ -44,8 +48,7 @@ int main(int argc, char** argv) {
     {
         NriAdapterDesc adapterDescs[2] = {0};
         uint32_t adapterDescsNum = 2;
-        NRI_ABORT_ON_FAILURE(nriEnumerateAdapters(
-            adapterDescs, &adapterDescsNum));
+        NRI_ABORT_ON_FAILURE(nriEnumerateAdapters(adapterDescs, &adapterDescsNum));
 
         NRI_ABORT_ON_FAILURE(nriCreateDevice(
             &(NriDeviceCreationDesc){
@@ -62,14 +65,9 @@ int main(int argc, char** argv) {
     NriHelperInterface iHelper = {0};
     NriResourceAllocatorInterface iResourceAllocator = {0};
     {
-        NRI_ABORT_ON_FAILURE(nriGetInterface(
-            device, NRI_INTERFACE(NriCoreInterface), &iCore));
-
-        NRI_ABORT_ON_FAILURE(nriGetInterface(
-            device, NRI_INTERFACE(NriHelperInterface), &iHelper));
-
-        NRI_ABORT_ON_FAILURE(nriGetInterface(
-            device, NRI_INTERFACE(NriResourceAllocatorInterface), &iResourceAllocator));
+        NRI_ABORT_ON_FAILURE(nriGetInterface(device, NRI_INTERFACE(NriCoreInterface), &iCore));
+        NRI_ABORT_ON_FAILURE(nriGetInterface(device, NRI_INTERFACE(NriHelperInterface), &iHelper));
+        NRI_ABORT_ON_FAILURE(nriGetInterface(device, NRI_INTERFACE(NriResourceAllocatorInterface), &iResourceAllocator));
 
         const NriDeviceDesc* deviceDesc = iCore.GetDeviceDesc(device);
         if (deviceDesc->graphicsAPI == NriGraphicsAPI_D3D11 || !deviceDesc->features.enhancedBarriers)
@@ -77,38 +75,38 @@ int main(int argc, char** argv) {
     }
 
     // Create buffers
-    NriBuffer* bufferZero;
-    NriBuffer* bufferOne;
-    NriBuffer* bufferReadback;
+    NriBuffer* bufferZero = NULL;
+    NriBuffer* bufferOne = NULL;
+    NriBuffer* bufferReadback = NULL;
     {
-        NRI_ABORT_ON_FAILURE(iResourceAllocator.AllocateBuffer(
-            device, &(NriAllocateBufferDesc){
-                        .memoryLocation = NriMemoryLocation_DEVICE,
-                        .desc = (NriBufferDesc){
-                            .size = bufferZeroSize,
-                            .usage = NriBufferUsageBits_NONE,
-                        },
-                    },
+        NRI_ABORT_ON_FAILURE(iResourceAllocator.AllocateBuffer(device,
+            &(NriAllocateBufferDesc){
+                .memoryLocation = NriMemoryLocation_DEVICE,
+                .desc = (NriBufferDesc){
+                    .size = bufferZeroSize,
+                    .usage = NriBufferUsageBits_NONE,
+                },
+            },
             &bufferZero));
 
-        NRI_ABORT_ON_FAILURE(iResourceAllocator.AllocateBuffer(
-            device, &(NriAllocateBufferDesc){
-                        .memoryLocation = NriMemoryLocation_DEVICE,
-                        .desc = (NriBufferDesc){
-                            .size = bufferOneSize,
-                            .usage = NriBufferUsageBits_NONE,
-                        },
-                    },
+        NRI_ABORT_ON_FAILURE(iResourceAllocator.AllocateBuffer(device,
+            &(NriAllocateBufferDesc){
+                .memoryLocation = NriMemoryLocation_DEVICE,
+                .desc = (NriBufferDesc){
+                    .size = bufferOneSize,
+                    .usage = NriBufferUsageBits_NONE,
+                },
+            },
             &bufferOne));
 
-        NRI_ABORT_ON_FAILURE(iResourceAllocator.AllocateBuffer(
-            device, &(NriAllocateBufferDesc){
-                        .memoryLocation = NriMemoryLocation_HOST_READBACK,
-                        .desc = (NriBufferDesc){
-                            .size = bufferOneSize,
-                            .usage = NriBufferUsageBits_NONE,
-                        },
-                    },
+        NRI_ABORT_ON_FAILURE(iResourceAllocator.AllocateBuffer(device,
+            &(NriAllocateBufferDesc){
+                .memoryLocation = NriMemoryLocation_HOST_READBACK,
+                .desc = (NriBufferDesc){
+                    .size = bufferOneSize,
+                    .usage = NriBufferUsageBits_NONE,
+                },
+            },
             &bufferReadback));
     }
 
@@ -257,7 +255,6 @@ int main(int argc, char** argv) {
     { // Cleanup
         iCore.DestroyCommandBuffer(commandBuffer);
         iCore.DestroyCommandAllocator(commandAllocator);
-
         iCore.DestroyBuffer(bufferZero);
         iCore.DestroyBuffer(bufferOne);
         iCore.DestroyBuffer(bufferReadback);
