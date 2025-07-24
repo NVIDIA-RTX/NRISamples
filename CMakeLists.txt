@@ -88,7 +88,7 @@ function(fix_folders _DIRECTORY _FOLDER)
 
     foreach(_TARGET IN LISTS _TARGETS)
         get_property(_FOLDER_ORIGINAL TARGET ${_TARGET} PROPERTY FOLDER)
-        set_property(TARGET ${_TARGET} PROPERTY FOLDER "${_FOLDER}/${_FOLDER_ORIGINAL}")
+        set_target_properties(${_TARGET} PROPERTIES FOLDER "${_FOLDER}/${_FOLDER_ORIGINAL}")
     endforeach()
 
     get_property(SUBDIRS DIRECTORY "${_DIRECTORY}" PROPERTY SUBDIRECTORIES)
@@ -146,7 +146,7 @@ add_custom_target(${PROJECT_NAME}Shaders ALL
     SOURCES ${SHADERS}
 )
 
-set_property(TARGET ${PROJECT_NAME}Shaders PROPERTY FOLDER ${PROJECT_NAME})
+set_target_properties(${PROJECT_NAME}Shaders PROPERTIES FOLDER ${PROJECT_NAME})
 
 # Samples
 function(add_sample NAME EXT)
@@ -158,8 +158,8 @@ function(add_sample NAME EXT)
     target_compile_options(${NAME} PRIVATE ${COMPILE_OPTIONS})
     target_link_libraries(${NAME} PRIVATE NRIFramework NRI)
 
-    set_property(TARGET ${NAME} PROPERTY FOLDER ${PROJECT_NAME})
-    set_property(TARGET ${NAME} PROPERTY VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+    set_target_properties(${NAME} PROPERTIES FOLDER ${PROJECT_NAME})
+    set_target_properties(${NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
 
     # Copy arguments for Visual Studio Smart Command Line Arguments extension
     if(WIN32 AND MSVC)
