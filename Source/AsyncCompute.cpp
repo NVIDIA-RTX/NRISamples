@@ -433,11 +433,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         const uint32_t ny = (windowHeight + 15) / 16;
 
         NRI.CmdSetPipelineLayout(commandBuffer0, nri::BindPoint::COMPUTE, *m_SharedPipelineLayout);
-        NRI.CmdSetPipeline(commandBuffer0, *m_ComputePipeline);
 
         nri::DescriptorSetBindingDesc descriptorSet0 = {0, m_DescriptorSet};
         NRI.CmdSetDescriptorSet(commandBuffer0, descriptorSet0);
 
+        NRI.CmdSetPipeline(commandBuffer0, *m_ComputePipeline);
         NRI.CmdDispatch(commandBuffer0, {nx, ny, 1});
     }
     NRI.EndCommandBuffer(commandBuffer0);
@@ -460,8 +460,9 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdBeginRendering(commandBuffer1, attachmentsDesc);
         {
             const nri::Viewport viewport = {0.0f, 0.0f, (float)windowWidth, (float)windowHeight, 0.0f, 1.0f};
-            const nri::Rect scissorRect = {0, 0, (nri::Dim_t)windowWidth, (nri::Dim_t)windowHeight};
             NRI.CmdSetViewports(commandBuffer1, &viewport, 1);
+
+            const nri::Rect scissorRect = {0, 0, (nri::Dim_t)windowWidth, (nri::Dim_t)windowHeight};
             NRI.CmdSetScissors(commandBuffer1, &scissorRect, 1);
 
             nri::ClearDesc clearDesc = {};
@@ -470,8 +471,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.CmdClearAttachments(commandBuffer1, &clearDesc, 1, nullptr, 0);
 
             NRI.CmdSetPipelineLayout(commandBuffer1, nri::BindPoint::GRAPHICS, *m_SharedPipelineLayout);
-            NRI.CmdSetPipeline(commandBuffer1, *m_GraphicsPipeline);
-            NRI.CmdSetIndexBuffer(commandBuffer1, *m_GeometryBuffer, 0, nri::IndexType::UINT16);
 
             nri::VertexBufferDesc vertexBufferDesc = {};
             vertexBufferDesc.buffer = m_GeometryBuffer;
@@ -479,6 +478,9 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             vertexBufferDesc.stride = sizeof(Vertex);
             NRI.CmdSetVertexBuffers(commandBuffer1, 0, &vertexBufferDesc, 1);
 
+            NRI.CmdSetIndexBuffer(commandBuffer1, *m_GeometryBuffer, 0, nri::IndexType::UINT16);
+
+            NRI.CmdSetPipeline(commandBuffer1, *m_GraphicsPipeline);
             NRI.CmdDraw(commandBuffer1, {VERTEX_NUM, 1, 0, 0});
 
             CmdDrawImgui(commandBuffer1, swapChainTexture.attachmentFormat, 1.0f, true);
