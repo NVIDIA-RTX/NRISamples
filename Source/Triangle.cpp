@@ -538,9 +538,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             {
                 helper::Annotation annotation(NRI, *commandBuffer, "Triangle");
 
-                NRI.CmdSetPipelineLayout(*commandBuffer, *m_PipelineLayout);
+                NRI.CmdSetPipelineLayout(*commandBuffer, nri::BindPoint::GRAPHICS, *m_PipelineLayout);
                 NRI.CmdSetPipeline(*commandBuffer, m_Multiview ? *m_PipelineMultiview : *m_Pipeline);
-                NRI.CmdSetRootConstants(*commandBuffer, 0, &m_Transparency, 4);
+                
+                nri::RootConstantBindingDesc rootConstants = {0, &m_Transparency, 4};
+                NRI.CmdSetRootConstants(*commandBuffer, rootConstants);
+
                 NRI.CmdSetIndexBuffer(*commandBuffer, *m_GeometryBuffer, 0, nri::IndexType::UINT16);
 
                 nri::VertexBufferDesc vertexBufferDesc = {};
@@ -549,8 +552,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 vertexBufferDesc.stride = sizeof(Vertex);
                 NRI.CmdSetVertexBuffers(*commandBuffer, 0, &vertexBufferDesc, 1);
 
-                NRI.CmdSetDescriptorSet(*commandBuffer, 0, *queuedFrame.constantBufferDescriptorSet, nullptr);
-                NRI.CmdSetDescriptorSet(*commandBuffer, 1, *m_TextureDescriptorSet, nullptr);
+                nri::DescriptorSetBindingDesc descriptorSet0 = {0, queuedFrame.constantBufferDescriptorSet};
+                NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet0);
+
+                nri::DescriptorSetBindingDesc descriptorSet1 = {1, m_TextureDescriptorSet};
+                NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet1);
 
                 if (m_Multiview) {
                     const nri::Viewport viewports[2] = {

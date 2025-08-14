@@ -556,27 +556,26 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     const uint64_t indexDataAlignedSize = helper::Align(indexDataSize, 16);
     const uint64_t vertexDataSize = sizeof(g_VertexData);
     {
-        // Texture
-        nri::TextureDesc textureDesc = {};
-        textureDesc.type = nri::TextureType::TEXTURE_2D;
-        textureDesc.usage = nri::TextureUsageBits::SHADER_RESOURCE;
-        textureDesc.format = texture.GetFormat();
-        textureDesc.width = texture.GetWidth();
-        textureDesc.height = texture.GetHeight();
-        textureDesc.mipNum = texture.GetMipNum();
+        { // Read-only texture
+            nri::TextureDesc textureDesc = {};
+            textureDesc.type = nri::TextureType::TEXTURE_2D;
+            textureDesc.usage = nri::TextureUsageBits::SHADER_RESOURCE;
+            textureDesc.format = texture.GetFormat();
+            textureDesc.width = texture.GetWidth();
+            textureDesc.height = texture.GetHeight();
+            textureDesc.mipNum = texture.GetMipNum();
 
-        NRI_ABORT_ON_FAILURE(NRI.CreateTexture(*m_Device, textureDesc, m_Texture));
+            NRI_ABORT_ON_FAILURE(NRI.CreateTexture(*m_Device, textureDesc, m_Texture));
+        }
 
-        // Constant buffer
-        {
+        { // Constant buffer
             nri::BufferDesc bufferDesc = {};
             bufferDesc.size = constantBufferSize * GetQueuedFrameNum();
             bufferDesc.usage = nri::BufferUsageBits::CONSTANT_BUFFER;
             NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_ConstantBuffer));
         }
 
-        // Geometry buffer
-        {
+        { // Geometry buffer
             nri::BufferDesc bufferDesc = {};
             bufferDesc.size = indexDataAlignedSize + vertexDataSize;
             bufferDesc.usage = nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER;
@@ -602,19 +601,20 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     m_MemoryAllocations.resize(1 + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
     NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + 1));
 
-    // Descriptors
-    {
-        // Texture
-        nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
-        NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureShaderResource));
+    {     // Descriptors
+        { // Read-only texture
+            nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
+            NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureShaderResource));
+        }
 
-        // Sampler
-        nri::SamplerDesc samplerDesc = {};
-        samplerDesc.addressModes = {nri::AddressMode::MIRRORED_REPEAT, nri::AddressMode::MIRRORED_REPEAT};
-        samplerDesc.filters = {nri::Filter::LINEAR, nri::Filter::LINEAR, nri::Filter::LINEAR};
-        samplerDesc.anisotropy = 4;
-        samplerDesc.mipMax = 16.0f;
-        NRI_ABORT_ON_FAILURE(NRI.CreateSampler(*m_Device, samplerDesc, m_Sampler));
+        { // Sampler
+            nri::SamplerDesc samplerDesc = {};
+            samplerDesc.addressModes = {nri::AddressMode::MIRRORED_REPEAT, nri::AddressMode::MIRRORED_REPEAT};
+            samplerDesc.filters = {nri::Filter::LINEAR, nri::Filter::LINEAR, nri::Filter::LINEAR};
+            samplerDesc.anisotropy = 4;
+            samplerDesc.mipMax = 16.0f;
+            NRI_ABORT_ON_FAILURE(NRI.CreateSampler(*m_Device, samplerDesc, m_Sampler));
+        }
 
         // Constant buffer
         for (uint32_t i = 0; i < GetQueuedFrameNum(); i++) {
@@ -629,8 +629,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         }
     }
 
-    // Descriptor sets
-    {
+    { // Descriptor sets
         // Texture
         NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 1, &m_TextureDescriptorSet, 1, 0));
 
@@ -651,8 +650,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         }
     }
 
-    // Upload data
-    {
+    { // Upload data
         std::vector<uint8_t> geometryBufferData(indexDataAlignedSize + vertexDataSize);
         memcpy(&geometryBufferData[0], g_IndexData, indexDataSize);
         memcpy(&geometryBufferData[indexDataAlignedSize], g_VertexData, vertexDataSize);
@@ -780,9 +778,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 const nri::Viewport viewport = {0.0f, 0.0f, (float)windowWidth, (float)windowHeight, 0.0f, 1.0f};
                 NRI.CmdSetViewports(*commandBuffer, &viewport, 1);
 
-                NRI.CmdSetPipelineLayout(*commandBuffer, *m_PipelineLayout);
+                NRI.CmdSetPipelineLayout(*commandBuffer, nri::BindPoint::GRAPHICS, *m_PipelineLayout);
                 NRI.CmdSetPipeline(*commandBuffer, *m_Pipeline);
-                NRI.CmdSetRootConstants(*commandBuffer, 0, &m_Transparency, 4);
+
+                nri::RootConstantBindingDesc rootConstants = {0, &m_Transparency, 4};
+                NRI.CmdSetRootConstants(*commandBuffer, rootConstants);
+
                 NRI.CmdSetIndexBuffer(*commandBuffer, *m_GeometryBuffer, 0, nri::IndexType::UINT16);
 
                 nri::VertexBufferDesc vertexBufferDesc = {};
@@ -791,8 +792,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 vertexBufferDesc.stride = sizeof(Vertex);
                 NRI.CmdSetVertexBuffers(*commandBuffer, 0, &vertexBufferDesc, 1);
 
-                NRI.CmdSetDescriptorSet(*commandBuffer, 0, *queuedFrame.constantBufferDescriptorSet, nullptr);
-                NRI.CmdSetDescriptorSet(*commandBuffer, 1, *m_TextureDescriptorSet, nullptr);
+                nri::DescriptorSetBindingDesc descriptorSet0 = {0, queuedFrame.constantBufferDescriptorSet};
+                NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet0);
+
+                nri::DescriptorSetBindingDesc descriptorSet1 = {1, m_TextureDescriptorSet};
+                NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet1);
 
                 nri::Rect scissor = {0, 0, halfWidth, windowHeight};
                 NRI.CmdSetScissors(*commandBuffer, &scissor, 1);

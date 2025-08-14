@@ -522,7 +522,7 @@ void Sample::RenderBoxes(nri::CommandBuffer& commandBuffer, uint32_t offset, uin
     const nri::Viewport viewport = {0.0f, 0.0f, (float)scissorRect.width, (float)scissorRect.height, 0.0f, 1.0f};
     NRI.CmdSetViewports(commandBuffer, &viewport, 1);
     NRI.CmdSetScissors(commandBuffer, &scissorRect, 1);
-    NRI.CmdSetPipelineLayout(commandBuffer, *m_PipelineLayout);
+    NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::GRAPHICS, *m_PipelineLayout);
 
     nri::VertexBufferDesc vertexBufferDesc = {};
     vertexBufferDesc.buffer = m_VertexBuffer;
@@ -533,8 +533,13 @@ void Sample::RenderBoxes(nri::CommandBuffer& commandBuffer, uint32_t offset, uin
         const Box& box = m_Boxes[offset + i];
 
         NRI.CmdSetPipeline(commandBuffer, *box.pipeline);
-        NRI.CmdSetDescriptorSet(commandBuffer, 0, *box.descriptorSet, &box.dynamicConstantBufferOffset);
-        NRI.CmdSetDescriptorSet(commandBuffer, 1, *m_DescriptorSetWithSharedSampler, nullptr);
+        
+        nri::DescriptorSetBindingDesc descriptorSet0 = {0, box.descriptorSet, &box.dynamicConstantBufferOffset};
+        NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
+        
+        nri::DescriptorSetBindingDesc descriptorSet1 = {1, m_DescriptorSetWithSharedSampler};
+        NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet1);
+
         NRI.CmdSetIndexBuffer(commandBuffer, *m_IndexBuffer, 0, nri::IndexType::UINT16);
         NRI.CmdSetVertexBuffers(commandBuffer, 0, &vertexBufferDesc, 1);
 

@@ -222,10 +222,15 @@ int main(int argc, char** argv) {
                 });
 
             // A corresponding pipeline layout must be bound
-            iCore.CmdSetPipelineLayout(commandBuffer, pipelineLayout);
+            iCore.CmdSetPipelineLayout(commandBuffer, NriBindPoint_GRAPHICS, pipelineLayout);
 
             // A set with the resources must be bound
-            iCore.CmdSetDescriptorSet(commandBuffer, 0, descriptorSet, NULL);
+            iCore.CmdSetDescriptorSet(commandBuffer,
+                &(NriDescriptorSetBindingDesc){
+                    0,
+                    descriptorSet,
+                    NULL,
+                });
 
             // Clear buffer storage
             iCore.CmdClearStorage(commandBuffer,

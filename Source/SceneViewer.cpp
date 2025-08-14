@@ -660,6 +660,12 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
         }
         ImGui::End();
 
+        float2 screenDim = float2(GetWindowResolution());
+        screenDim.x *= 0.5f;
+
+        ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+        drawList->AddLine(ImVec2(screenDim.x, 0.0f), ImVec2(screenDim.x, screenDim.y), IM_COL32_BLACK, 3.0f);
+
         NRI.UnmapBuffer(*m_Buffers[READBACK_BUFFER]);
     }
     ImGui::EndFrame();
@@ -778,8 +784,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
                 NRI.CmdSetIndexBuffer(commandBuffer, *m_Buffers[INDEX_BUFFER], 0, sizeof(utils::Index) == 2 ? nri::IndexType::UINT16 : nri::IndexType::UINT32);
 
-                NRI.CmdSetPipelineLayout(commandBuffer, *m_PipelineLayout);
-                NRI.CmdSetDescriptorSet(commandBuffer, GLOBAL_DESCRIPTOR_SET, *m_DescriptorSets[queuedFrameIndex], nullptr);
+                NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::GRAPHICS, *m_PipelineLayout);
+
+                nri::DescriptorSetBindingDesc globalSet = {GLOBAL_DESCRIPTOR_SET, m_DescriptorSets[queuedFrameIndex]};
+                NRI.CmdSetDescriptorSet(commandBuffer, globalSet);
 
                 // TODO: no sorting per pipeline / material, transparency is not last
                 for (const utils::Instance& instance : m_Scene.instances) {
@@ -794,7 +802,9 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                     NRI.CmdSetVertexBuffers(commandBuffer, 0, &vertexBufferDesc, 1);
 
                     nri::DescriptorSet* descriptorSet = m_DescriptorSets[GetQueuedFrameNum() + instance.materialIndex];
-                    NRI.CmdSetDescriptorSet(commandBuffer, MATERIAL_DESCRIPTOR_SET, *descriptorSet, nullptr);
+
+                    nri::DescriptorSetBindingDesc materialSet = {MATERIAL_DESCRIPTOR_SET, descriptorSet};
+                    NRI.CmdSetDescriptorSet(commandBuffer, materialSet);
 
                     const utils::Mesh& mesh = m_Scene.meshes[instance.meshInstanceIndex];
                     NRI.CmdDrawIndexed(commandBuffer, {mesh.indexNum, 1, mesh.indexOffset, (int32_t)mesh.vertexOffset, 0});

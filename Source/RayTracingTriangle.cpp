@@ -204,9 +204,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         barrierGroupDesc.textureNum = 2;
 
         NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
-        NRI.CmdSetPipelineLayout(commandBuffer, *m_PipelineLayout);
+        NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::RAY_TRACING, *m_PipelineLayout);
         NRI.CmdSetPipeline(commandBuffer, *m_Pipeline);
-        NRI.CmdSetDescriptorSet(commandBuffer, 0, *m_DescriptorSet, nullptr);
+
+        nri::DescriptorSetBindingDesc descriptorSet0 = {0, m_DescriptorSet};
+        NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
 
         nri::DispatchRaysDesc dispatchRaysDesc = {};
         dispatchRaysDesc.raygenShader = {m_ShaderTable, 0, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};

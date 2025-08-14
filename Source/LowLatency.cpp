@@ -405,9 +405,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         // Compute workload (main, resolution independent)
-        NRI.CmdSetPipelineLayout(commandBuffer, *m_PipelineLayout);
+        NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::COMPUTE, *m_PipelineLayout);
         NRI.CmdSetPipeline(commandBuffer, *m_Pipeline);
-        NRI.CmdSetDescriptorSet(commandBuffer, 0, *m_DescriptorSet, nullptr);
+
+        nri::DescriptorSetBindingDesc descriptorSet0 = {0, m_DescriptorSet};
+        NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
 
         for (uint32_t i = 0; i < m_GpuWorkload; i++) {
             NRI.CmdDispatch(commandBuffer, {CTA_NUM, 1, 1});
