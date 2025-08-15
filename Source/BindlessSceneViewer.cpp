@@ -164,7 +164,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
     deviceCreationDesc.graphicsAPI = graphicsAPI;
     deviceCreationDesc.enableGraphicsAPIValidation = m_DebugAPI;
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
-    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
+    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_ENABLE_COMMAND_BUFFER_EMULATION;
+    deviceCreationDesc.disableD3D12EnhancedBarriers = D3D12_DISABLE_ENHANCED_BARRIERS;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
@@ -873,20 +874,20 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         bufferBarriers[1].before = {nri::AccessBits::ARGUMENT_BUFFER, nri::StageBits::INDIRECT};
         bufferBarriers[1].after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
 
-        nri::BarrierGroupDesc computeBarrierGroupDesc = {};
+        nri::BarrierDesc computeBarrierGroupDesc = {};
         computeBarrierGroupDesc.bufferNum = helper::GetCountOf(bufferBarriers);
         computeBarrierGroupDesc.buffers = bufferBarriers;
 
-        nri::BarrierGroupDesc barrierGroupDesc = {};
-        barrierGroupDesc.textureNum = 1;
-        barrierGroupDesc.textures = &textureBarrier;
+        nri::BarrierDesc barrierDesc = {};
+        barrierDesc.textureNum = 1;
+        barrierDesc.textures = &textureBarrier;
 
         if (m_UseGPUDrawGeneration) {
-            barrierGroupDesc.bufferNum = helper::GetCountOf(bufferBarriers);
-            barrierGroupDesc.buffers = bufferBarriers;
+            barrierDesc.bufferNum = helper::GetCountOf(bufferBarriers);
+            barrierDesc.buffers = bufferBarriers;
         }
 
-        NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
+        NRI.CmdBarrier(commandBuffer, barrierDesc);
 
         // Simple culling (actually no culling)
         if (m_UseGPUDrawGeneration) {
@@ -895,10 +896,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::COMPUTE, *m_ComputePipelineLayout);
             
-            nri::DescriptorSetBindingDesc descriptorSet0 = {0, m_DescriptorSets[GetQueuedFrameNum() + 1]};
+            nri::SetDescriptorSetDesc descriptorSet0 = {0, m_DescriptorSets[GetQueuedFrameNum() + 1]};
             NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
 
-            nri::RootConstantBindingDesc rootConstants = {0, &cullingConstants, sizeof(cullingConstants)};
+            nri::SetRootConstantsDesc rootConstants = {0, &cullingConstants, sizeof(cullingConstants)};
             NRI.CmdSetRootConstants(commandBuffer, rootConstants);
 
             NRI.CmdSetPipeline(commandBuffer, *m_ComputePipeline);
@@ -939,10 +940,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
                 NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::GRAPHICS, *m_GraphicsPipelineLayout);
                 
-                nri::DescriptorSetBindingDesc globalSet = {GLOBAL_DESCRIPTOR_SET, m_DescriptorSets[queuedFrameIndex]};
+                nri::SetDescriptorSetDesc globalSet = {GLOBAL_DESCRIPTOR_SET, m_DescriptorSets[queuedFrameIndex]};
                 NRI.CmdSetDescriptorSet(commandBuffer, globalSet);
                 
-                nri::DescriptorSetBindingDesc materialSet = {MATERIAL_DESCRIPTOR_SET, m_DescriptorSets[GetQueuedFrameNum()]};
+                nri::SetDescriptorSetDesc materialSet = {MATERIAL_DESCRIPTOR_SET, m_DescriptorSets[GetQueuedFrameNum()]};
                 NRI.CmdSetDescriptorSet(commandBuffer, materialSet);
 
                 NRI.CmdSetPipeline(commandBuffer, *m_Pipeline);
@@ -988,8 +989,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         textureBarrier.before = textureBarrier.after;
         textureBarrier.after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
 
-        barrierGroupDesc.bufferNum = 0;
-        NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
+        barrierDesc.bufferNum = 0;
+        NRI.CmdBarrier(commandBuffer, barrierDesc);
     }
     NRI.EndCommandBuffer(commandBuffer);
 

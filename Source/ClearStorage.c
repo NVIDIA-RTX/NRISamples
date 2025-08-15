@@ -190,7 +190,7 @@ int main(int argc, char** argv) {
             // Variant 1: "SHADER_RESOURCE_STORAGE" access/layout and "CLEAR_STORAGE" + any shader stage (or "ALL")
             // Variant 2: "CLEAR_STORAGE" access/layout and "CLEAR_STORAGE" stage
             iCore.CmdBarrier(commandBuffer,
-                &(NriBarrierGroupDesc){
+                &(NriBarrierDesc){
                     .buffers = &(NriBufferBarrierDesc){
                         .before = (NriAccessStage){
                             .access = NriAccessBits_NONE,
@@ -226,7 +226,7 @@ int main(int argc, char** argv) {
 
             // A set with the resources must be bound
             iCore.CmdSetDescriptorSet(commandBuffer,
-                &(NriDescriptorSetBindingDesc){
+                &(NriSetDescriptorSetDesc){
                     0,
                     descriptorSet,
                     NULL,

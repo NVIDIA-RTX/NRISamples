@@ -741,10 +741,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     nri::CommandBuffer* commandBuffer = queuedFrame.commandBuffer;
     NRI.BeginCommandBuffer(*commandBuffer, m_DescriptorPool);
     {
-        nri::BarrierGroupDesc barrierGroupDesc = {};
-        barrierGroupDesc.textureNum = 1;
-        barrierGroupDesc.textures = &textureBarriers;
-        NRI.CmdBarrier(*commandBuffer, barrierGroupDesc);
+        nri::BarrierDesc barrierDesc = {};
+        barrierDesc.textureNum = 1;
+        barrierDesc.textures = &textureBarriers;
+        NRI.CmdBarrier(*commandBuffer, barrierDesc);
 
         nri::AttachmentsDesc attachmentsDesc = {};
         attachmentsDesc.colorNum = 1;
@@ -781,7 +781,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 NRI.CmdSetPipelineLayout(*commandBuffer, nri::BindPoint::GRAPHICS, *m_PipelineLayout);
                 NRI.CmdSetPipeline(*commandBuffer, *m_Pipeline);
 
-                nri::RootConstantBindingDesc rootConstants = {0, &m_Transparency, 4};
+                nri::SetRootConstantsDesc rootConstants = {0, &m_Transparency, 4};
                 NRI.CmdSetRootConstants(*commandBuffer, rootConstants);
 
                 NRI.CmdSetIndexBuffer(*commandBuffer, *m_GeometryBuffer, 0, nri::IndexType::UINT16);
@@ -792,10 +792,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 vertexBufferDesc.stride = sizeof(Vertex);
                 NRI.CmdSetVertexBuffers(*commandBuffer, 0, &vertexBufferDesc, 1);
 
-                nri::DescriptorSetBindingDesc descriptorSet0 = {0, queuedFrame.constantBufferDescriptorSet};
+                nri::SetDescriptorSetDesc descriptorSet0 = {0, queuedFrame.constantBufferDescriptorSet};
                 NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet0);
 
-                nri::DescriptorSetBindingDesc descriptorSet1 = {1, m_TextureDescriptorSet};
+                nri::SetDescriptorSetDesc descriptorSet1 = {1, m_TextureDescriptorSet};
                 NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet1);
 
                 nri::Rect scissor = {0, 0, halfWidth, windowHeight};
@@ -818,7 +818,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         textureBarriers.before = textureBarriers.after;
         textureBarriers.after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
 
-        NRI.CmdBarrier(*commandBuffer, barrierGroupDesc);
+        NRI.CmdBarrier(*commandBuffer, barrierDesc);
     }
     NRI.EndCommandBuffer(*commandBuffer);
 

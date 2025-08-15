@@ -120,7 +120,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.graphicsAPI = graphicsAPI;
     deviceCreationDesc.enableGraphicsAPIValidation = m_DebugAPI;
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
-    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
+    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_ENABLE_COMMAND_BUFFER_EMULATION;
+    deviceCreationDesc.disableD3D12EnhancedBarriers = D3D12_DISABLE_ENHANCED_BARRIERS;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
@@ -539,7 +540,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             textureBarriers[1].texture = swapChainTexture.texture;
             textureBarriers[1].after = {nri::AccessBits::RESOLVE_DESTINATION, nri::Layout::RESOLVE_DESTINATION};
 
-            nri::BarrierGroupDesc barrierGroup = {};
+            nri::BarrierDesc barrierGroup = {};
             barrierGroup.textureNum = helper::GetCountOf(textureBarriers);
             barrierGroup.textures = textureBarriers;
 
@@ -570,7 +571,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                     NRI.CmdSetPipeline(*commandBuffer, *m_Pipeline);
 
                     const float transparency = 1.0f;
-                    nri::RootConstantBindingDesc rootConstant = {0, &transparency, 4};
+                    nri::SetRootConstantsDesc rootConstant = {0, &transparency, 4};
                     NRI.CmdSetRootConstants(*commandBuffer, rootConstant);
 
                     NRI.CmdSetIndexBuffer(*commandBuffer, *m_GeometryBuffer, 0, nri::IndexType::UINT16);
@@ -581,10 +582,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                     vertexBufferDesc.stride = sizeof(Vertex);
                     NRI.CmdSetVertexBuffers(*commandBuffer, 0, &vertexBufferDesc, 1);
 
-                    nri::DescriptorSetBindingDesc descriptorSet0 = {0, queuedFrame.constantBufferDescriptorSet};
+                    nri::SetDescriptorSetDesc descriptorSet0 = {0, queuedFrame.constantBufferDescriptorSet};
                     NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet0);
 
-                    nri::DescriptorSetBindingDesc descriptorSet1 = {1, m_TextureDescriptorSet};
+                    nri::SetDescriptorSetDesc descriptorSet1 = {1, m_TextureDescriptorSet};
                     NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet1);
 
                     const nri::Viewport viewport = {0.0f, 0.0f, (float)w, (float)h, 0.0f, 1.0f};
@@ -605,7 +606,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             textureBarrier.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
             textureBarrier.after = {nri::AccessBits::RESOLVE_SOURCE, nri::Layout::RESOLVE_SOURCE};
 
-            nri::BarrierGroupDesc barrierGroup = {};
+            nri::BarrierDesc barrierGroup = {};
             barrierGroup.textureNum = 1;
             barrierGroup.textures = &textureBarrier;
 
@@ -622,7 +623,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             textureBarrier.before = {nri::AccessBits::RESOLVE_DESTINATION, nri::Layout::RESOLVE_DESTINATION};
             textureBarrier.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
 
-            nri::BarrierGroupDesc barrierGroup = {};
+            nri::BarrierDesc barrierGroup = {};
             barrierGroup.textureNum = 1;
             barrierGroup.textures = &textureBarrier;
 
@@ -651,7 +652,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             textureBarrier.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
             textureBarrier.after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
 
-            nri::BarrierGroupDesc barrierGroup = {};
+            nri::BarrierDesc barrierGroup = {};
             barrierGroup.textureNum = 1;
             barrierGroup.textures = &textureBarrier;
 

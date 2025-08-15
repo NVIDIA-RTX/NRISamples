@@ -103,7 +103,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.graphicsAPI = graphicsAPI;
     deviceCreationDesc.enableGraphicsAPIValidation = m_DebugAPI;
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
-    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
+    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_ENABLE_COMMAND_BUFFER_EMULATION;
+    deviceCreationDesc.disableD3D12EnhancedBarriers = D3D12_DISABLE_ENHANCED_BARRIERS;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
@@ -397,7 +398,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         swapchainBarrier.mipNum = 1;
 
         { // Barrier
-            nri::BarrierGroupDesc barriers = {};
+            nri::BarrierDesc barriers = {};
             barriers.textureNum = 1;
             barriers.textures = &swapchainBarrier;
 
@@ -408,7 +409,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::COMPUTE, *m_PipelineLayout);
         NRI.CmdSetPipeline(commandBuffer, *m_Pipeline);
 
-        nri::DescriptorSetBindingDesc descriptorSet0 = {0, m_DescriptorSet};
+        nri::SetDescriptorSetDesc descriptorSet0 = {0, m_DescriptorSet};
         NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
 
         for (uint32_t i = 0; i < m_GpuWorkload; i++) {
@@ -419,7 +420,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 storageBarrier.before = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
                 storageBarrier.after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
 
-                nri::BarrierGroupDesc barriers = {};
+                nri::BarrierDesc barriers = {};
                 barriers.globalNum = 1;
                 barriers.globals = &storageBarrier;
 
@@ -451,7 +452,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             swapchainBarrier.before = swapchainBarrier.after;
             swapchainBarrier.after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
 
-            nri::BarrierGroupDesc barriers = {};
+            nri::BarrierDesc barriers = {};
             barriers.textureNum = 1;
             barriers.textures = &swapchainBarrier;
 
@@ -487,11 +488,14 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.QueueAnnotation(*m_GraphicsQueue, "Submit", COLOR_RENDER);
 
         if (m_AllowLowLatency) {
+            queueSubmitDesc.swapChain = m_SwapChain;
             NRI.SetLatencyMarker(*m_SwapChain, nri::LatencyMarker::RENDER_SUBMIT_START);
-            NRI.QueueSubmitTrackable(*m_GraphicsQueue, queueSubmitDesc, *m_SwapChain);
+        }
+
+        NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
+
+        if (m_AllowLowLatency)
             NRI.SetLatencyMarker(*m_SwapChain, nri::LatencyMarker::RENDER_SUBMIT_END);
-        } else
-            NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
     }
 
     NRI.EndStreamerFrame(*m_Streamer);

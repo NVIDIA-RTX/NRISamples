@@ -172,7 +172,7 @@ int main(int argc, char** argv) {
                 while (size >= blockSize) {
                     if (useBarriersBetweenSelfCopies) {
                         iCore.CmdBarrier(commandBuffer,
-                            &(NriBarrierGroupDesc){
+                            &(NriBarrierDesc){
                                 .bufferNum = 1,
                                 .buffers = &(NriBufferBarrierDesc){
                                     .buffer = bufferOne,
@@ -212,7 +212,7 @@ int main(int argc, char** argv) {
 
             // Copy to readback
             iCore.CmdBarrier(commandBuffer,
-                &(NriBarrierGroupDesc){
+                &(NriBarrierDesc){
                     .bufferNum = 1,
                     .buffers = &(NriBufferBarrierDesc){
                         .buffer = bufferOne,

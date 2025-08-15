@@ -116,7 +116,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.queueFamilyNum = helper::GetCountOf(queueFamilies);
     deviceCreationDesc.enableGraphicsAPIValidation = m_DebugAPI;
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
-    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
+    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_ENABLE_COMMAND_BUFFER_EMULATION;
+    deviceCreationDesc.disableD3D12EnhancedBarriers = D3D12_DISABLE_ENHANCED_BARRIERS;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
@@ -421,8 +422,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     textureBarriers[1].layerNum = 1;
     textureBarriers[1].mipNum = 1;
 
-    nri::BarrierGroupDesc barrierGroupDesc = {};
-    barrierGroupDesc.textures = textureBarriers;
+    nri::BarrierDesc barrierDesc = {};
+    barrierDesc.textures = textureBarriers;
 
     nri::CommandBuffer& commandBuffer0 = m_IsAsyncMode ? *queuedFrame.commandBufferCompute : *queuedFrame.commandBufferGraphics[0];
     NRI.BeginCommandBuffer(commandBuffer0, m_DescriptorPool);
@@ -434,7 +435,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         NRI.CmdSetPipelineLayout(commandBuffer0, nri::BindPoint::COMPUTE, *m_SharedPipelineLayout);
 
-        nri::DescriptorSetBindingDesc descriptorSet0 = {0, m_DescriptorSet};
+        nri::SetDescriptorSetDesc descriptorSet0 = {0, m_DescriptorSet};
         NRI.CmdSetDescriptorSet(commandBuffer0, descriptorSet0);
 
         NRI.CmdSetPipeline(commandBuffer0, *m_ComputePipeline);
@@ -448,8 +449,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     {
         helper::Annotation annotation(NRI, commandBuffer1, "Graphics");
 
-        barrierGroupDesc.textureNum = 1;
-        NRI.CmdBarrier(commandBuffer1, barrierGroupDesc);
+        barrierDesc.textureNum = 1;
+        NRI.CmdBarrier(commandBuffer1, barrierDesc);
 
         nri::AttachmentsDesc attachmentsDesc = {};
         attachmentsDesc.colorNum = 1;
@@ -502,8 +503,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         textureBarriers[1].before = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::Layout::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
         textureBarriers[1].after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
 
-        barrierGroupDesc.textureNum = 2;
-        NRI.CmdBarrier(commandBuffer2, barrierGroupDesc);
+        barrierDesc.textureNum = 2;
+        NRI.CmdBarrier(commandBuffer2, barrierDesc);
 
         // Copy texture produced by compute to back buffer
         nri::TextureRegionDesc dstRegion = {};
@@ -523,8 +524,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         textureBarriers[1].before = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
         textureBarriers[1].after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::Layout::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
 
-        barrierGroupDesc.textureNum = 2;
-        NRI.CmdBarrier(commandBuffer2, barrierGroupDesc);
+        barrierDesc.textureNum = 2;
+        NRI.CmdBarrier(commandBuffer2, barrierDesc);
     }
     NRI.EndCommandBuffer(commandBuffer2);
 

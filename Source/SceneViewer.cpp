@@ -123,7 +123,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.graphicsAPI = graphicsAPI;
     deviceCreationDesc.enableGraphicsAPIValidation = m_DebugAPI;
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
-    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
+    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_ENABLE_COMMAND_BUFFER_EMULATION;
+    deviceCreationDesc.disableD3D12EnhancedBarriers = D3D12_DISABLE_ENHANCED_BARRIERS;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
@@ -720,11 +721,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         textureBarriers.layerNum = 1;
         textureBarriers.mipNum = 1;
 
-        nri::BarrierGroupDesc barrierGroupDesc = {};
-        barrierGroupDesc.textureNum = 1;
-        barrierGroupDesc.textures = &textureBarriers;
+        nri::BarrierDesc barrierDesc = {};
+        barrierDesc.textureNum = 1;
+        barrierDesc.textures = &textureBarriers;
 
-        NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
+        NRI.CmdBarrier(commandBuffer, barrierDesc);
 
         // Test PSL // TODO: D3D11 gets DEVICE_REMOVED if VRS is used with PSL...
         if (deviceDesc.tiers.sampleLocations >= 2 && deviceDesc.graphicsAPI != nri::GraphicsAPI::D3D11) {
@@ -786,7 +787,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
                 NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::GRAPHICS, *m_PipelineLayout);
 
-                nri::DescriptorSetBindingDesc globalSet = {GLOBAL_DESCRIPTOR_SET, m_DescriptorSets[queuedFrameIndex]};
+                nri::SetDescriptorSetDesc globalSet = {GLOBAL_DESCRIPTOR_SET, m_DescriptorSets[queuedFrameIndex]};
                 NRI.CmdSetDescriptorSet(commandBuffer, globalSet);
 
                 // TODO: no sorting per pipeline / material, transparency is not last
@@ -803,7 +804,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
                     nri::DescriptorSet* descriptorSet = m_DescriptorSets[GetQueuedFrameNum() + instance.materialIndex];
 
-                    nri::DescriptorSetBindingDesc materialSet = {MATERIAL_DESCRIPTOR_SET, descriptorSet};
+                    nri::SetDescriptorSetDesc materialSet = {MATERIAL_DESCRIPTOR_SET, descriptorSet};
                     NRI.CmdSetDescriptorSet(commandBuffer, materialSet);
 
                     const utils::Mesh& mesh = m_Scene.meshes[instance.meshInstanceIndex];
@@ -847,7 +848,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         textureBarriers.before = textureBarriers.after;
         textureBarriers.after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
 
-        NRI.CmdBarrier(commandBuffer, barrierGroupDesc);
+        NRI.CmdBarrier(commandBuffer, barrierDesc);
     }
     NRI.EndCommandBuffer(commandBuffer);
 

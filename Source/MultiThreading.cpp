@@ -210,7 +210,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.graphicsAPI = graphicsAPI;
     deviceCreationDesc.enableGraphicsAPIValidation = m_DebugAPI;
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
-    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_COMMANDBUFFER_EMULATION;
+    deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_ENABLE_COMMAND_BUFFER_EMULATION;
+    deviceCreationDesc.disableD3D12EnhancedBarriers = D3D12_DISABLE_ENHANCED_BARRIERS;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
@@ -332,11 +333,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             swapChainTextureTransition.texture = m_BackBuffer->texture;
             swapChainTextureTransition.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
 
-            nri::BarrierGroupDesc barrierGroupDesc = {};
-            barrierGroupDesc.textures = &swapChainTextureTransition;
-            barrierGroupDesc.textureNum = 1;
+            nri::BarrierDesc barrierDesc = {};
+            barrierDesc.textures = &swapChainTextureTransition;
+            barrierDesc.textureNum = 1;
 
-            NRI.CmdBarrier(commandBufferPre, barrierGroupDesc);
+            NRI.CmdBarrier(commandBufferPre, barrierDesc);
 
             nri::AttachmentsDesc attachmentsDesc = {};
             attachmentsDesc.colorNum = 1;
@@ -444,11 +445,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             swapChainTextureTransition.layerNum = 1;
             swapChainTextureTransition.mipNum = 1;
 
-            nri::BarrierGroupDesc barrierGroupDesc = {};
-            barrierGroupDesc.textures = &swapChainTextureTransition;
-            barrierGroupDesc.textureNum = 1;
+            nri::BarrierDesc barrierDesc = {};
+            barrierDesc.textures = &swapChainTextureTransition;
+            barrierDesc.textureNum = 1;
 
-            NRI.CmdBarrier(commandBufferPost, barrierGroupDesc);
+            NRI.CmdBarrier(commandBufferPost, barrierDesc);
         }
         NRI.EndCommandBuffer(commandBufferPost);
 
@@ -534,10 +535,10 @@ void Sample::RenderBoxes(nri::CommandBuffer& commandBuffer, uint32_t offset, uin
 
         NRI.CmdSetPipeline(commandBuffer, *box.pipeline);
         
-        nri::DescriptorSetBindingDesc descriptorSet0 = {0, box.descriptorSet, &box.dynamicConstantBufferOffset};
+        nri::SetDescriptorSetDesc descriptorSet0 = {0, box.descriptorSet, &box.dynamicConstantBufferOffset};
         NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
         
-        nri::DescriptorSetBindingDesc descriptorSet1 = {1, m_DescriptorSetWithSharedSampler};
+        nri::SetDescriptorSetDesc descriptorSet1 = {1, m_DescriptorSetWithSharedSampler};
         NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet1);
 
         NRI.CmdSetIndexBuffer(commandBuffer, *m_IndexBuffer, 0, nri::IndexType::UINT16);
