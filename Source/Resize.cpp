@@ -4,7 +4,7 @@
 
 #define SWITCH_TIME 2.5f
 #define NOT_ALLOW_TEARING nri::SwapChainBits::NONE // no "ALLOW_TEARING" to avoid getting a VIDMODE switch caused by the VK driver
-#define SCALING nri::Scaling::STRETCH
+#define SCALING nri::Scaling::ONE_TO_ONE // looks nicer
 
 struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;

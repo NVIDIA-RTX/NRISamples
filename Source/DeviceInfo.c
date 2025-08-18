@@ -73,7 +73,8 @@ int main(int argc, char** argv) {
         printf("\tShared system memory : %" PRIu64 " Mb\n", adapterDesc->sharedSystemMemorySize >> 20);
         printf("\tQueues               : {%u, %u, %u}\n", adapterDesc->queueNum[0], adapterDesc->queueNum[1], adapterDesc->queueNum[2]);
         printf("\tID                   : 0x%08X\n", adapterDesc->deviceId);
-        printf("\tLUID                 : 0x%016" PRIX64 "\n", adapterDesc->luid);
+        printf("\tUID.low              : 0x%016" PRIX64 "\n", adapterDesc->uid.low);
+        printf("\tUID.high             : 0x%016" PRIX64 "\n", adapterDesc->uid.high);
 
         // Print formats info
         NriDevice* device = NULL;
