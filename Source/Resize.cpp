@@ -4,6 +4,7 @@
 
 #define SWITCH_TIME 2.5f
 #define NOT_ALLOW_TEARING nri::SwapChainBits::NONE // no "ALLOW_TEARING" to avoid getting a VIDMODE switch caused by the VK driver
+#define SCALING nri::Scaling::STRETCH
 
 struct QueuedFrame {
     nri::CommandAllocator* commandAllocator;
@@ -13,6 +14,7 @@ struct QueuedFrame {
 class Sample : public SampleBase {
 public:
     Sample() {
+        m_Resizable = true;
     }
 
     ~Sample();
@@ -123,6 +125,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         swapChainDesc.height = (uint16_t)m_WindowResolution.y;
         swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
         swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
+        swapChainDesc.scaling = SCALING;
         NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
 
         uint32_t swapChainTextureNum;
@@ -252,6 +255,7 @@ void Sample::ResizeSwapChain() {
     swapChainDesc.height = (uint16_t)m_WindowResolution.y;
     swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
     swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
+    swapChainDesc.scaling = SCALING;
     NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
 
     uint32_t swapChainTextureNum;
