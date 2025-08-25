@@ -8,15 +8,15 @@ NRI_RESOURCE( cbuffer, CommonConstants, b, 0, 0 )
     float scale;
 };
 
+NRI_RESOURCE( Texture2D, g_DiffuseTexture, t, 0, 1 );
+
 struct PushConstants
 {
     float transparency;
 };
 
-NRI_ROOT_CONSTANTS( PushConstants, g_PushConstants, 1, 0 );
-
-NRI_RESOURCE( Texture2D, g_DiffuseTexture, t, 0, 1 );
-NRI_RESOURCE( SamplerState, g_Sampler, s, 0, 1 );
+NRI_ROOT_CONSTANTS( PushConstants, g_PushConstants, 1, 2 );
+NRI_RESOURCE( SamplerState, g_Sampler, s, 0, 2 );
 
 struct outputVS
 {
