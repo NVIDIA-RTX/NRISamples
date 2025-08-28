@@ -14,7 +14,7 @@ struct OutputVS
     float2 texCoords : TEXCOORD0;
 };
 
-NRI_RESOURCE( cbuffer, GeometryConstants, b, 0, 0 )
+NRI_RESOURCE( cbuffer, GeometryConstants, b, 0, 2 )
 {
     float4x4 transform;
 };

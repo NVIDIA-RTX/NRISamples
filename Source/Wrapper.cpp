@@ -104,7 +104,6 @@ private:
     nri::Pipeline* m_Pipeline = nullptr;
     nri::DescriptorSet* m_TextureDescriptorSet = nullptr;
     nri::Descriptor* m_TextureShaderResource = nullptr;
-    nri::Descriptor* m_Sampler = nullptr;
     nri::Buffer* m_ConstantBuffer = nullptr;
     nri::Buffer* m_GeometryBuffer = nullptr;
     nri::Texture* m_Texture = nullptr;
@@ -145,7 +144,6 @@ Sample::~Sample() {
         NRI.DestroyPipeline(m_Pipeline);
         NRI.DestroyPipelineLayout(m_PipelineLayout);
         NRI.DestroyDescriptor(m_TextureShaderResource);
-        NRI.DestroyDescriptor(m_Sampler);
         NRI.DestroyBuffer(m_ConstantBuffer);
         NRI.DestroyBuffer(m_GeometryBuffer);
         NRI.DestroyTexture(m_Texture);
@@ -262,7 +260,8 @@ void Sample::CreateVulkanDevice() {
     };
     const char* deviceExtensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
-#if (defined(__APPLE__) || VK_MINOR_VERSION == 2)
+        VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+#if (defined(__APPLE__) || VK_MINOR_VERSION < 3)
         VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
         VK_KHR_COPY_COMMANDS_2_EXTENSION_NAME,
@@ -308,7 +307,7 @@ void Sample::CreateVulkanDevice() {
     VkPhysicalDeviceVulkan12Features featuresVulkan12 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_2_FEATURES};
     featuresVulkan11.pNext = &featuresVulkan12;
 
-#if (VK_MINOR_VERSION == 2)
+#if (VK_MINOR_VERSION < 3)
     VkPhysicalDeviceSynchronization2Features synchronization2features = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_SYNCHRONIZATION_2_FEATURES};
     featuresVulkan12.pNext = &synchronization2features;
 
@@ -320,6 +319,11 @@ void Sample::CreateVulkanDevice() {
 #else
     VkPhysicalDeviceVulkan13Features featuresVulkan13 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_3_FEATURES};
     featuresVulkan12.pNext = &featuresVulkan13;
+#endif
+
+#if (VK_MINOR_VERSION > 3)
+    VkPhysicalDeviceVulkan14Features featuresVulkan14 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_4_FEATURES};
+    featuresVulkan13.pNext = &featuresVulkan14;
 #endif
 
     vkGetPhysicalDeviceFeatures2(physicalDevice, &deviceFeatures2);
@@ -448,33 +452,40 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));
     }
 
+    { // Pipeline layout
+        nri::SamplerDesc samplerDesc = {};
+        samplerDesc.addressModes = {nri::AddressMode::MIRRORED_REPEAT, nri::AddressMode::MIRRORED_REPEAT};
+        samplerDesc.filters = {nri::Filter::LINEAR, nri::Filter::LINEAR, nri::Filter::LINEAR};
+        samplerDesc.anisotropy = 4;
+        samplerDesc.mipMax = 16.0f;
+
+        nri::RootConstantDesc rootConstant = {1, sizeof(float), nri::StageBits::FRAGMENT_SHADER};
+        nri::RootSamplerDesc rootSampler = {0, samplerDesc, nri::StageBits::FRAGMENT_SHADER};
+        nri::DescriptorRangeDesc setConstantBuffer = {0, 1, nri::DescriptorType::CONSTANT_BUFFER, nri::StageBits::ALL};
+        nri::DescriptorRangeDesc setTexture = {0, 1, nri::DescriptorType::TEXTURE, nri::StageBits::FRAGMENT_SHADER};
+
+        nri::DescriptorSetDesc descriptorSetDescs[] = {
+            {0, &setConstantBuffer, 1},
+            {1, &setTexture, 1},
+        };
+
+        nri::PipelineLayoutDesc pipelineLayoutDesc = {};
+        pipelineLayoutDesc.rootRegisterSpace = 2; // see shader
+        pipelineLayoutDesc.rootConstantNum = 1;
+        pipelineLayoutDesc.rootConstants = &rootConstant;
+        pipelineLayoutDesc.rootSamplerNum = 1;
+        pipelineLayoutDesc.rootSamplers = &rootSampler;
+        pipelineLayoutDesc.descriptorSetNum = helper::GetCountOf(descriptorSetDescs);
+        pipelineLayoutDesc.descriptorSets = descriptorSetDescs;
+        pipelineLayoutDesc.shaderStages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER;
+
+        NRI_ABORT_ON_FAILURE(NRI.CreatePipelineLayout(*m_Device, pipelineLayoutDesc, m_PipelineLayout));
+    }
+
     // Pipeline
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
     utils::ShaderCodeStorage shaderCodeStorage;
     {
-        nri::DescriptorRangeDesc descriptorRangeConstant[1];
-        descriptorRangeConstant[0] = {0, 1, nri::DescriptorType::CONSTANT_BUFFER, nri::StageBits::ALL};
-
-        nri::DescriptorRangeDesc descriptorRangeTexture[2];
-        descriptorRangeTexture[0] = {0, 1, nri::DescriptorType::TEXTURE, nri::StageBits::FRAGMENT_SHADER};
-        descriptorRangeTexture[1] = {0, 1, nri::DescriptorType::SAMPLER, nri::StageBits::FRAGMENT_SHADER};
-
-        nri::DescriptorSetDesc descriptorSetDescs[] = {
-            {0, descriptorRangeConstant, helper::GetCountOf(descriptorRangeConstant)},
-            {1, descriptorRangeTexture, helper::GetCountOf(descriptorRangeTexture)},
-        };
-
-        nri::RootConstantDesc rootConstant = {1, sizeof(float), nri::StageBits::FRAGMENT_SHADER};
-
-        nri::PipelineLayoutDesc pipelineLayoutDesc = {};
-        pipelineLayoutDesc.descriptorSetNum = helper::GetCountOf(descriptorSetDescs);
-        pipelineLayoutDesc.descriptorSets = descriptorSetDescs;
-        pipelineLayoutDesc.rootConstantNum = 1;
-        pipelineLayoutDesc.rootConstants = &rootConstant;
-        pipelineLayoutDesc.shaderStages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER;
-
-        NRI_ABORT_ON_FAILURE(NRI.CreatePipelineLayout(*m_Device, pipelineLayoutDesc, m_PipelineLayout));
-
         nri::VertexStreamDesc vertexStreamDesc = {};
         vertexStreamDesc.bindingSlot = 0;
 
@@ -533,13 +544,11 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         NRI_ABORT_ON_FAILURE(NRI.CreateGraphicsPipeline(*m_Device, graphicsPipelineDesc, m_Pipeline));
     }
 
-    // Descriptor pool
-    {
+    { // Descriptor pool
         nri::DescriptorPoolDesc descriptorPoolDesc = {};
         descriptorPoolDesc.descriptorSetMaxNum = GetQueuedFrameNum() + 1;
         descriptorPoolDesc.constantBufferMaxNum = GetQueuedFrameNum();
         descriptorPoolDesc.textureMaxNum = 1;
-        descriptorPoolDesc.samplerMaxNum = 1;
 
         NRI_ABORT_ON_FAILURE(NRI.CreateDescriptorPool(*m_Device, descriptorPoolDesc, m_DescriptorPool));
     }
@@ -601,20 +610,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     m_MemoryAllocations.resize(1 + NRI.CalculateAllocationNumber(*m_Device, resourceGroupDesc), nullptr);
     NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + 1));
 
-    {     // Descriptors
-        { // Read-only texture
-            nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
-            NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureShaderResource));
-        }
-
-        { // Sampler
-            nri::SamplerDesc samplerDesc = {};
-            samplerDesc.addressModes = {nri::AddressMode::MIRRORED_REPEAT, nri::AddressMode::MIRRORED_REPEAT};
-            samplerDesc.filters = {nri::Filter::LINEAR, nri::Filter::LINEAR, nri::Filter::LINEAR};
-            samplerDesc.anisotropy = 4;
-            samplerDesc.mipMax = 16.0f;
-            NRI_ABORT_ON_FAILURE(NRI.CreateSampler(*m_Device, samplerDesc, m_Sampler));
-        }
+    { // Descriptors
+        // Read-only texture
+        nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
+        NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureShaderResource));
 
         // Constant buffer
         for (uint32_t i = 0; i < GetQueuedFrameNum(); i++) {
@@ -633,13 +632,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         // Texture
         NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 1, &m_TextureDescriptorSet, 1, 0));
 
-        nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDescs[2] = {};
-        descriptorRangeUpdateDescs[0].descriptorNum = 1;
-        descriptorRangeUpdateDescs[0].descriptors = &m_TextureShaderResource;
-
-        descriptorRangeUpdateDescs[1].descriptorNum = 1;
-        descriptorRangeUpdateDescs[1].descriptors = &m_Sampler;
-        NRI.UpdateDescriptorRanges(*m_TextureDescriptorSet, 0, helper::GetCountOf(descriptorRangeUpdateDescs), descriptorRangeUpdateDescs);
+        nri::DescriptorRangeUpdateDesc updateTexture = {&m_TextureShaderResource, 1};
+        NRI.UpdateDescriptorRanges(*m_TextureDescriptorSet, 0, 1, &updateTexture);
 
         // Constant buffer
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {

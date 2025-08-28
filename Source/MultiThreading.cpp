@@ -520,9 +520,11 @@ void Sample::RenderBoxes(nri::CommandBuffer& commandBuffer, uint32_t offset, uin
     helper::Annotation annotation(NRI, commandBuffer, "RenderBoxes");
 
     const nri::Rect scissorRect = {0, 0, (nri::Dim_t)GetWindowResolution().x, (nri::Dim_t)GetWindowResolution().y};
+    NRI.CmdSetScissors(commandBuffer, &scissorRect, 1);
+
     const nri::Viewport viewport = {0.0f, 0.0f, (float)scissorRect.width, (float)scissorRect.height, 0.0f, 1.0f};
     NRI.CmdSetViewports(commandBuffer, &viewport, 1);
-    NRI.CmdSetScissors(commandBuffer, &scissorRect, 1);
+
     NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::GRAPHICS, *m_PipelineLayout);
 
     nri::VertexBufferDesc vertexBufferDesc = {};
@@ -530,19 +532,22 @@ void Sample::RenderBoxes(nri::CommandBuffer& commandBuffer, uint32_t offset, uin
     vertexBufferDesc.offset = 0;
     vertexBufferDesc.stride = sizeof(Vertex);
 
+    NRI.CmdSetIndexBuffer(commandBuffer, *m_IndexBuffer, 0, nri::IndexType::UINT16);
+    NRI.CmdSetVertexBuffers(commandBuffer, 0, &vertexBufferDesc, 1);
+
+    nri::SetDescriptorSetDesc descriptorSet1 = {1, m_DescriptorSetWithSharedSampler};
+    NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet1);
+
     for (uint32_t i = 0; i < number; i++) {
         const Box& box = m_Boxes[offset + i];
 
         NRI.CmdSetPipeline(commandBuffer, *box.pipeline);
-        
-        nri::SetDescriptorSetDesc descriptorSet0 = {0, box.descriptorSet, &box.dynamicConstantBufferOffset};
-        NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
-        
-        nri::SetDescriptorSetDesc descriptorSet1 = {1, m_DescriptorSetWithSharedSampler};
-        NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet1);
 
-        NRI.CmdSetIndexBuffer(commandBuffer, *m_IndexBuffer, 0, nri::IndexType::UINT16);
-        NRI.CmdSetVertexBuffers(commandBuffer, 0, &vertexBufferDesc, 1);
+        nri::SetDescriptorSetDesc descriptorSet0 = {0, box.descriptorSet};
+        NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
+
+        nri::SetRootDescriptorDesc dynamicConstantBuffer = {0, m_TransformConstantBufferView, box.dynamicConstantBufferOffset};
+        NRI.CmdSetRootDescriptor(commandBuffer, dynamicConstantBuffer);
 
         NRI.CmdDrawIndexed(commandBuffer, {m_IndexNum, 1, 0, 0, 0});
     }
@@ -674,14 +679,17 @@ void Sample::CreatePipeline(nri::Format swapChainFormat) {
 
     NRI_ABORT_ON_FAILURE(NRI.CreateSampler(*m_Device, samplerDesc, m_Sampler));
 
-    nri::DynamicConstantBufferDesc dynamicConstantBufferDesc = {0, nri::StageBits::VERTEX_SHADER};
+    nri::RootDescriptorDesc dynamicConstantBuffer = {0, nri::DescriptorType::CONSTANT_BUFFER, nri::StageBits::VERTEX_SHADER};
 
     nri::DescriptorSetDesc descriptorSetDescs[] = {
-        {0, descriptorRanges0, helper::GetCountOf(descriptorRanges0), &dynamicConstantBufferDesc, 1},
+        {0, descriptorRanges0, helper::GetCountOf(descriptorRanges0)},
         {1, descriptorRanges1, helper::GetCountOf(descriptorRanges1)},
     };
 
     nri::PipelineLayoutDesc pipelineLayoutDesc = {};
+    pipelineLayoutDesc.rootRegisterSpace = 2;
+    pipelineLayoutDesc.rootDescriptors = &dynamicConstantBuffer;
+    pipelineLayoutDesc.rootDescriptorNum = 1;
     pipelineLayoutDesc.descriptorSets = descriptorSetDescs;
     pipelineLayoutDesc.descriptorSetNum = helper::GetCountOf(descriptorSetDescs);
     pipelineLayoutDesc.shaderStages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER;
@@ -946,7 +954,6 @@ void Sample::CreateDescriptorSets() {
             box.descriptorSet = descriptorSets[i];
 
             NRI.UpdateDescriptorRanges(*box.descriptorSet, 0, helper::GetCountOf(rangeUpdates), rangeUpdates);
-            NRI.UpdateDynamicConstantBuffers(*box.descriptorSet, 0, 1, &m_TransformConstantBufferView);
         }
     }
 
@@ -964,7 +971,6 @@ void Sample::CreateDescriptorPool() {
 
     nri::DescriptorPoolDesc descriptorPoolDesc = {};
     descriptorPoolDesc.constantBufferMaxNum = 3 * boxNum;
-    descriptorPoolDesc.dynamicConstantBufferMaxNum = 1 * boxNum;
     descriptorPoolDesc.textureMaxNum = 3 * boxNum;
     descriptorPoolDesc.descriptorSetMaxNum = boxNum + 1;
     descriptorPoolDesc.samplerMaxNum = 1;

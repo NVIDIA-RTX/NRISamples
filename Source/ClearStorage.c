@@ -229,7 +229,6 @@ int main(int argc, char** argv) {
                 &(NriSetDescriptorSetDesc){
                     0,
                     descriptorSet,
-                    NULL,
                 });
 
             // Clear buffer storage

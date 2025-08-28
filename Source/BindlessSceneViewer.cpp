@@ -234,7 +234,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
 
             nri::DescriptorSetDesc descriptorSetDescs[] = {
                 {0, globalDescriptorRange, helper::GetCountOf(globalDescriptorRange)},
-                {1, textureDescriptorRange, helper::GetCountOf(textureDescriptorRange), nullptr, 0},
+                {1, textureDescriptorRange, helper::GetCountOf(textureDescriptorRange)},
             };
 
             nri::PipelineLayoutDesc pipelineLayoutDesc = {};

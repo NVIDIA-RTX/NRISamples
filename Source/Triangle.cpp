@@ -382,17 +382,12 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         }
     }
 
-    // Descriptor sets
-    {
-        { // Texture
-            NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 1, &m_TextureDescriptorSet, 1, 0));
+    { // Descriptor sets
+        // Texture
+        NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 1, &m_TextureDescriptorSet, 1, 0));
 
-            nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc = {};
-            descriptorRangeUpdateDesc.descriptorNum = 1;
-            descriptorRangeUpdateDesc.descriptors = &m_TextureShaderResource;
-
-            NRI.UpdateDescriptorRanges(*m_TextureDescriptorSet, 0, 1, &descriptorRangeUpdateDesc);
-        }
+        nri::DescriptorRangeUpdateDesc updateTexture = {&m_TextureShaderResource, 1};
+        NRI.UpdateDescriptorRanges(*m_TextureDescriptorSet, 0, 1, &updateTexture);
 
         // Constant buffer
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {
