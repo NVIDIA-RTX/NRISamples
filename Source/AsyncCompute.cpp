@@ -325,8 +325,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     { // Descriptor set
         NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_SharedPipelineLayout, 0, &m_DescriptorSet, 1, 0));
 
-        nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc = {&m_Descriptor, 1, 0};
-        NRI.UpdateDescriptorRanges(*m_DescriptorSet, 0, 1, &descriptorRangeUpdateDesc);
+        nri::UpdateDescriptorRangeDesc updateDescriptorRangeDesc = {m_DescriptorSet, 0, 0, &m_Descriptor, 1};
+        NRI.UpdateDescriptorRanges(&updateDescriptorRangeDesc, 1);
     }
 
     Rng::Hash::Initialize(m_RngState, 567, 57);

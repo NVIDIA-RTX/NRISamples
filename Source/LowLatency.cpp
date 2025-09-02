@@ -234,8 +234,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         NRI_ABORT_ON_FAILURE(NRI.CreateDescriptorPool(*m_Device, descriptorPoolDesc, m_DescriptorPool));
         NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 0, &m_DescriptorSet, 1, 0));
 
-        nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc = {&m_BufferStorage, 1, 0};
-        NRI.UpdateDescriptorRanges(*m_DescriptorSet, 0, 1, &descriptorRangeUpdateDesc);
+        nri::UpdateDescriptorRangeDesc updateDescriptorRangeDesc = {m_DescriptorSet, 0, 0, &m_BufferStorage, 1};
+        NRI.UpdateDescriptorRanges(&updateDescriptorRangeDesc, 1);
     }
 
     // Queued frames

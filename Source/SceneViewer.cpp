@@ -245,7 +245,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
         nri::MultisampleDesc multisampleDesc = {};
         multisampleDesc.sampleNum = 1;
-        multisampleDesc.sampleMask = nri::ALL_SAMPLES;
+        multisampleDesc.sampleMask = nri::ALL;
         multisampleDesc.sampleLocations = deviceDesc.tiers.sampleLocations >= 2;
 
         nri::ColorAttachmentDesc colorAttachmentDesc = {};
@@ -527,13 +527,12 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, GLOBAL_DESCRIPTOR_SET, &m_DescriptorSets[0], GetQueuedFrameNum(), 0));
 
         for (uint32_t i = 0; i < GetQueuedFrameNum(); i++) {
-            nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDescs[2] = {};
-            descriptorRangeUpdateDescs[0].descriptorNum = 1;
-            descriptorRangeUpdateDescs[0].descriptors = &constantBufferViews[i];
-            descriptorRangeUpdateDescs[1].descriptorNum = 1;
-            descriptorRangeUpdateDescs[1].descriptors = &anisotropicSampler;
+            nri::UpdateDescriptorRangeDesc updateDescriptorRangeDescs[2] = {
+                {m_DescriptorSets[i], 0, 0, &constantBufferViews[i], 1},
+                {m_DescriptorSets[i], 1, 0, &anisotropicSampler, 1},
+            };
 
-            NRI.UpdateDescriptorRanges(*m_DescriptorSets[i], 0, helper::GetCountOf(descriptorRangeUpdateDescs), descriptorRangeUpdateDescs);
+            NRI.UpdateDescriptorRanges(updateDescriptorRangeDescs, helper::GetCountOf(updateDescriptorRangeDescs));
         }
 
         // Material
@@ -549,10 +548,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
                 m_Descriptors[material.emissiveTexIndex],
             };
 
-            nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDescs = {};
-            descriptorRangeUpdateDescs.descriptorNum = helper::GetCountOf(materialTextures);
-            descriptorRangeUpdateDescs.descriptors = materialTextures;
-            NRI.UpdateDescriptorRanges(*m_DescriptorSets[GetQueuedFrameNum() + i], 0, 1, &descriptorRangeUpdateDescs);
+            nri::UpdateDescriptorRangeDesc updateDescriptorRangeDescs = {m_DescriptorSets[GetQueuedFrameNum() + i], 0, 0, materialTextures, helper::GetCountOf(materialTextures)};
+            NRI.UpdateDescriptorRanges(&updateDescriptorRangeDescs, 1);
         }
     }
 

@@ -936,6 +936,9 @@ void Sample::CreateDescriptorSets() {
         for (size_t i = 0; i < m_Boxes.size(); i++) {
             Box& box = m_Boxes[i];
 
+            box.pipeline = m_Pipelines[(i / DRAW_CALLS_PER_PIPELINE) % m_Pipelines.size()];
+            box.descriptorSet = descriptorSets[i];
+
             nri::Descriptor* constantBuffers[] = {
                 m_FakeConstantBufferViews[0],
                 m_ViewConstantBufferView,
@@ -946,23 +949,20 @@ void Sample::CreateDescriptorSets() {
             for (size_t j = 0; j < helper::GetCountOf(textureViews); j++)
                 textureViews[j] = m_TextureViews[rand() % m_TextureViews.size()];
 
-            const nri::DescriptorRangeUpdateDesc rangeUpdates[] = {
-                {constantBuffers, helper::GetCountOf(constantBuffers)},
-                {textureViews, helper::GetCountOf(textureViews)}};
+            const nri::UpdateDescriptorRangeDesc rangeUpdates[] = {
+                {box.descriptorSet, 0, 0, constantBuffers, helper::GetCountOf(constantBuffers)},
+                {box.descriptorSet, 1, 0, textureViews, helper::GetCountOf(textureViews)},
+            };
 
-            box.pipeline = m_Pipelines[(i / DRAW_CALLS_PER_PIPELINE) % m_Pipelines.size()];
-            box.descriptorSet = descriptorSets[i];
-
-            NRI.UpdateDescriptorRanges(*box.descriptorSet, 0, helper::GetCountOf(rangeUpdates), rangeUpdates);
+            NRI.UpdateDescriptorRanges(rangeUpdates, helper::GetCountOf(rangeUpdates));
         }
     }
 
     { // DescriptorSet 1 (shared)
-        const nri::DescriptorRangeUpdateDesc rangeUpdates[] = {
-            {&m_Sampler, 1}};
-
         NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 1, &m_DescriptorSetWithSharedSampler, 1, 0);
-        NRI.UpdateDescriptorRanges(*m_DescriptorSetWithSharedSampler, 0, helper::GetCountOf(rangeUpdates), rangeUpdates);
+
+        const nri::UpdateDescriptorRangeDesc rangeUpdate = {m_DescriptorSetWithSharedSampler, 0, 0, &m_Sampler, 1};
+        NRI.UpdateDescriptorRanges(&rangeUpdate, 1);
     }
 }
 

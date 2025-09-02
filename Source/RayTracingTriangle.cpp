@@ -136,6 +136,13 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI));
+
+    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
+    if (!deviceDesc.features.rayTracing) {
+        printf("Ray tracing is not supported!\n");
+        exit(0);
+    }
+
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI));
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::RayTracingInterface), (nri::RayTracingInterface*)&NRI));
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI));
@@ -396,8 +403,8 @@ void Sample::CreateRayTracingOutput(nri::Format swapChainFormat) {
     nri::Texture2DViewDesc textureViewDesc = {m_RayTracingOutput, nri::Texture2DViewType::SHADER_RESOURCE_STORAGE_2D, swapChainFormat};
     NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, m_RayTracingOutputView));
 
-    const nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc = {&m_RayTracingOutputView, 1, 0};
-    NRI.UpdateDescriptorRanges(*m_DescriptorSet, 0, 1, &descriptorRangeUpdateDesc);
+    const nri::UpdateDescriptorRangeDesc updateDescriptorRangeDesc = {m_DescriptorSet, 0, 0, &m_RayTracingOutputView, 1};
+    NRI.UpdateDescriptorRanges(&updateDescriptorRangeDesc, 1);
 }
 
 void Sample::CreateDescriptorSet() {
@@ -504,8 +511,8 @@ void Sample::CreateTopLevelAccelerationStructure() {
 
     NRI_ABORT_ON_FAILURE(NRI.CreateAccelerationStructureDescriptor(*m_TLAS, m_TLASDescriptor));
 
-    const nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc = {&m_TLASDescriptor, 1, 0};
-    NRI.UpdateDescriptorRanges(*m_DescriptorSet, 1, 1, &descriptorRangeUpdateDesc);
+    const nri::UpdateDescriptorRangeDesc updateDescriptorRangeDesc = {m_DescriptorSet, 1, 0, &m_TLASDescriptor, 1};
+    NRI.UpdateDescriptorRanges(&updateDescriptorRangeDesc, 1);
 }
 
 void Sample::CreateUploadBuffer(uint64_t size, nri::BufferUsageBits usage, nri::Buffer*& buffer, nri::Memory*& memory) {

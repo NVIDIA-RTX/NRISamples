@@ -151,7 +151,7 @@ void Sample::Destroy() {
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
     if (graphicsAPI == nri::GraphicsAPI::D3D11) {
         printf("This sample supports only D3D12 and Vulkan\n");
-        return false;
+        exit(0);
     }
 
     // Adapters
@@ -312,7 +312,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
 
         nri::MultisampleDesc multisampleDesc = {};
         multisampleDesc.sampleNum = 1;
-        multisampleDesc.sampleMask = nri::ALL_SAMPLES;
+        multisampleDesc.sampleMask = nri::ALL;
 
         nri::ColorAttachmentDesc colorAttachmentDesc = {};
         colorAttachmentDesc.format = swapChainFormat;
@@ -613,36 +613,31 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
             &m_DescriptorSets[0], GetQueuedFrameNum(), 0));
 
         for (uint32_t i = 0; i < GetQueuedFrameNum(); i++) {
-            nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDescs[3] = {};
-            descriptorRangeUpdateDescs[0].descriptorNum = 1;
-            descriptorRangeUpdateDescs[0].descriptors = &constantBufferViews[i];
-            descriptorRangeUpdateDescs[1].descriptorNum = 1;
-            descriptorRangeUpdateDescs[1].descriptors = &anisotropicSampler;
-            descriptorRangeUpdateDescs[2].descriptorNum = BUFFER_COUNT;
-            descriptorRangeUpdateDescs[2].descriptors = resourceViews;
+            nri::UpdateDescriptorRangeDesc updateDescriptorRangeDescs[] = {
+                {m_DescriptorSets[i], 0, 0, &constantBufferViews[i], 1},
+                {m_DescriptorSets[i], 1, 0, &anisotropicSampler, 1},
+                {m_DescriptorSets[i], 2, 0, resourceViews, BUFFER_COUNT},
+            };
 
-            NRI.UpdateDescriptorRanges(*m_DescriptorSets[i], 0, helper::GetCountOf(descriptorRangeUpdateDescs), descriptorRangeUpdateDescs);
+            NRI.UpdateDescriptorRanges(updateDescriptorRangeDescs, helper::GetCountOf(updateDescriptorRangeDescs));
         }
 
         // Material
         NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_GraphicsPipelineLayout, MATERIAL_DESCRIPTOR_SET, &m_DescriptorSets[GetQueuedFrameNum()], 1, textureNum));
 
-        nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc = {};
-        descriptorRangeUpdateDesc.descriptorNum = textureNum;
-        descriptorRangeUpdateDesc.descriptors = m_Descriptors.data();
-        NRI.UpdateDescriptorRanges(*m_DescriptorSets[GetQueuedFrameNum()], 0, 1, &descriptorRangeUpdateDesc);
+        nri::UpdateDescriptorRangeDesc updateDescriptorRangeDesc = {m_DescriptorSets[GetQueuedFrameNum()], 0, 0, m_Descriptors.data(), textureNum};
+        NRI.UpdateDescriptorRanges(&updateDescriptorRangeDesc, 1);
 
         // Culling
         NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_ComputePipelineLayout, 0, &m_DescriptorSets[GetQueuedFrameNum() + 1], 1, 0));
 
         nri::Descriptor* storageDescriptors[2] = {m_IndirectBufferCountShaderStorage, m_IndirectBufferShaderStorage};
 
-        nri::DescriptorRangeUpdateDesc rangeUpdateDescs[2] = {};
-        rangeUpdateDescs[0].descriptorNum = helper::GetCountOf(rangeUpdateDescs);
-        rangeUpdateDescs[0].descriptors = storageDescriptors;
-        rangeUpdateDescs[1].descriptorNum = BUFFER_COUNT;
-        rangeUpdateDescs[1].descriptors = resourceViews;
-        NRI.UpdateDescriptorRanges(*m_DescriptorSets[GetQueuedFrameNum() + 1], 0, 2, rangeUpdateDescs);
+        nri::UpdateDescriptorRangeDesc rangeUpdateDescs[] = {
+            {m_DescriptorSets[GetQueuedFrameNum() + 1], 0, 0, storageDescriptors, helper::GetCountOf(storageDescriptors)},
+            {m_DescriptorSets[GetQueuedFrameNum() + 1], 1, 0, resourceViews, BUFFER_COUNT},
+        };
+        NRI.UpdateDescriptorRanges(rangeUpdateDescs, helper::GetCountOf(rangeUpdateDescs));
     }
 
     { // Upload data
@@ -895,7 +890,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             cullingConstants.DrawCount = (uint32_t)m_Scene.instances.size();
 
             NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::COMPUTE, *m_ComputePipelineLayout);
-            
+
             nri::SetDescriptorSetDesc descriptorSet0 = {0, m_DescriptorSets[GetQueuedFrameNum() + 1]};
             NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
 
@@ -939,10 +934,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 NRI.CmdSetScissors(commandBuffer, &scissor, 1);
 
                 NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::GRAPHICS, *m_GraphicsPipelineLayout);
-                
+
                 nri::SetDescriptorSetDesc globalSet = {GLOBAL_DESCRIPTOR_SET, m_DescriptorSets[queuedFrameIndex]};
                 NRI.CmdSetDescriptorSet(commandBuffer, globalSet);
-                
+
                 nri::SetDescriptorSetDesc materialSet = {MATERIAL_DESCRIPTOR_SET, m_DescriptorSets[GetQueuedFrameNum()]};
                 NRI.CmdSetDescriptorSet(commandBuffer, materialSet);
 

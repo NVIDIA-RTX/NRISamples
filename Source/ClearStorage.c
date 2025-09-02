@@ -161,17 +161,24 @@ int main(int argc, char** argv) {
     NRI_ABORT_ON_FAILURE(iCore.AllocateDescriptorSets(descriptorPool, pipelineLayout, 0, &descriptorSet, 1, 0));
 
     // Finally put storage descriptors into this set
-    iCore.UpdateDescriptorRanges(descriptorSet, 0, 2,
-        (NriDescriptorRangeUpdateDesc[2]){
+    iCore.UpdateDescriptorRanges(
+        (NriUpdateDescriptorRangeDesc[2]){
             {
+                .descriptorSet = descriptorSet,
+                .rangeIndex = 0,
+                .baseDescriptor = 0,
                 .descriptors = &storageBuffer,
                 .descriptorNum = 1,
             },
             {
+                .descriptorSet = descriptorSet,
+                .rangeIndex = 1,
+                .baseDescriptor = 0,
                 .descriptors = &storageTexture,
                 .descriptorNum = 1,
             },
-        });
+        },
+        2);
 
     // Get queue
     NriQueue* queue = NULL;

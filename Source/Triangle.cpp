@@ -386,15 +386,15 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         // Texture
         NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 1, &m_TextureDescriptorSet, 1, 0));
 
-        nri::DescriptorRangeUpdateDesc updateTexture = {&m_TextureShaderResource, 1};
-        NRI.UpdateDescriptorRanges(*m_TextureDescriptorSet, 0, 1, &updateTexture);
+        nri::UpdateDescriptorRangeDesc updateTexture = {m_TextureDescriptorSet, 0, 0, &m_TextureShaderResource, 1};
+        NRI.UpdateDescriptorRanges(&updateTexture, 1);
 
         // Constant buffer
         for (QueuedFrame& queuedFrame : m_QueuedFrames) {
             NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 0, &queuedFrame.constantBufferDescriptorSet, 1, 0));
 
-            nri::DescriptorRangeUpdateDesc descriptorRangeUpdateDesc = {&queuedFrame.constantBufferView, 1};
-            NRI.UpdateDescriptorRanges(*queuedFrame.constantBufferDescriptorSet, 0, 1, &descriptorRangeUpdateDesc);
+            nri::UpdateDescriptorRangeDesc updateDescriptorRangeDesc = {queuedFrame.constantBufferDescriptorSet, 0, 0, &queuedFrame.constantBufferView, 1};
+            NRI.UpdateDescriptorRanges(&updateDescriptorRangeDesc, 1);
         }
     }
 

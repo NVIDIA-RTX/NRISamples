@@ -31,7 +31,9 @@ int main(int argc, char** argv) {
     bool debugNRI = false;
     uint32_t adapterIndex = 0;
     for (int i = 0; i < argc; i++) {
-        if (!strcmp(argv[i], "--api=D3D12"))
+        if (!strcmp(argv[i], "--api=D3D11"))
+            graphicsAPI = NriGraphicsAPI_D3D11;
+        else if (!strcmp(argv[i], "--api=D3D12"))
             graphicsAPI = NriGraphicsAPI_D3D12;
         else if (!strcmp(argv[i], "--api=VULKAN"))
             graphicsAPI = NriGraphicsAPI_VK;
