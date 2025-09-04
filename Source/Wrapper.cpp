@@ -3,7 +3,7 @@
 #include "NRIFramework.h"
 #undef APIENTRY // defined in GLFW
 
-#define VK_MINOR_VERSION 3
+#define VK_MINOR_VERSION 4
 
 #define VK_NO_PROTOTYPES 1
 #include "vulkan/vulkan.h"
@@ -258,16 +258,23 @@ void Sample::CreateVulkanDevice() {
         VK_KHR_GET_SURFACE_CAPABILITIES_2_EXTENSION_NAME,
         VK_KHR_SURFACE_EXTENSION_NAME,
     };
+
     const char* deviceExtensions[] = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
+        VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
+#if (defined(__APPLE__) || VK_MINOR_VERSION < 4)
         VK_KHR_PUSH_DESCRIPTOR_EXTENSION_NAME,
+        VK_KHR_MAINTENANCE_6_EXTENSION_NAME,
+        VK_KHR_MAINTENANCE_5_EXTENSION_NAME,
+#endif
 #if (defined(__APPLE__) || VK_MINOR_VERSION < 3)
         VK_KHR_SYNCHRONIZATION_2_EXTENSION_NAME,
         VK_KHR_DYNAMIC_RENDERING_EXTENSION_NAME,
         VK_KHR_COPY_COMMANDS_2_EXTENSION_NAME,
-        VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
+        VK_KHR_MAINTENANCE_4_EXTENSION_NAME,
 #endif
     };
+
     const char* layers[] = {"VK_LAYER_KHRONOS_validation"};
 
     VkInstanceCreateInfo instanceCreateInfo = {};
