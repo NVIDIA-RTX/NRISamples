@@ -209,7 +209,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         nri::RootConstantDesc rootConstant = {1, sizeof(float), nri::StageBits::FRAGMENT_SHADER};
         nri::RootSamplerDesc rootSampler = {0, samplerDesc, nri::StageBits::FRAGMENT_SHADER};
         nri::DescriptorRangeDesc setConstantBuffer = {0, 1, nri::DescriptorType::CONSTANT_BUFFER, nri::StageBits::ALL};
-        nri::DescriptorRangeDesc setTexture = {0, 1, nri::DescriptorType::TEXTURE, nri::StageBits::FRAGMENT_SHADER, nri::DescriptorRangeBits::MUTABLE};
+        nri::DescriptorRangeDesc setTexture = {0, 1, nri::DescriptorType::TEXTURE, nri::StageBits::FRAGMENT_SHADER};
 
         nri::DescriptorSetDesc descriptorSetDescs[] = {
             {0, &setConstantBuffer, 1},
@@ -303,7 +303,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         nri::DescriptorPoolDesc descriptorPoolDesc = {};
         descriptorPoolDesc.descriptorSetMaxNum = GetQueuedFrameNum() + 1;
         descriptorPoolDesc.constantBufferMaxNum = GetQueuedFrameNum();
-        descriptorPoolDesc.mutableMaxNum = 1;
+        descriptorPoolDesc.textureMaxNum = 1;
 
         NRI_ABORT_ON_FAILURE(NRI.CreateDescriptorPool(*m_Device, descriptorPoolDesc, m_DescriptorPool));
     }
