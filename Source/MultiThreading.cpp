@@ -713,15 +713,16 @@ void Sample::CreatePipeline(nri::Format swapChainFormat) {
         {
             {"POSITION", 0},
             {0},
-            helper::GetOffsetOf(&Vertex::position),
+            offsetof(Vertex, position),
             nri::Format::RGB32_SFLOAT,
         },
         {
             {"TEXCOORD", 0},
             {1},
-            helper::GetOffsetOf(&Vertex::texCoords),
+            offsetof(Vertex, texCoords),
             nri::Format::RG32_SFLOAT,
-        }};
+        },
+    };
 
     nri::VertexInputDesc vertexInputDesc = {};
     vertexInputDesc.attributes = vertexAttributeDesc;

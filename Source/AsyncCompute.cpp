@@ -230,7 +230,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         {
             vertexAttributeDesc[0].format = nri::Format::RGB32_SFLOAT;
             vertexAttributeDesc[0].streamIndex = 0;
-            vertexAttributeDesc[0].offset = helper::GetOffsetOf(&Vertex::position);
+            vertexAttributeDesc[0].offset = offsetof(Vertex, position);
             vertexAttributeDesc[0].d3d = {"POSITION", 0};
             vertexAttributeDesc[0].vk.location = {0};
         }

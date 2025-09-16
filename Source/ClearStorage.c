@@ -167,14 +167,14 @@ int main(int argc, char** argv) {
                 .descriptorSet = descriptorSet,
                 .rangeIndex = 0,
                 .baseDescriptor = 0,
-                .descriptors = &storageBuffer,
+                .descriptors = (const NriDescriptor* const*)&storageBuffer,
                 .descriptorNum = 1,
             },
             {
                 .descriptorSet = descriptorSet,
                 .rangeIndex = 1,
                 .baseDescriptor = 0,
-                .descriptors = &storageTexture,
+                .descriptors = (const NriDescriptor* const*)&storageTexture,
                 .descriptorNum = 1,
             },
         },
@@ -268,7 +268,7 @@ int main(int argc, char** argv) {
         iCore.QueueSubmit(queue,
             &(NriQueueSubmitDesc){
                 .commandBufferNum = 1,
-                .commandBuffers = &commandBuffer,
+                .commandBuffers = (const NriCommandBuffer* const*)&commandBuffer,
             });
 
         // Wait for idle

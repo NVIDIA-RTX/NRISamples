@@ -208,22 +208,22 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         nri::VertexAttributeDesc vertexAttributeDesc[4] = {};
         {
             vertexAttributeDesc[0].format = nri::Format::RGB32_SFLOAT;
-            vertexAttributeDesc[0].offset = helper::GetOffsetOf(&utils::Vertex::pos);
+            vertexAttributeDesc[0].offset = offsetof(utils::Vertex, pos);
             vertexAttributeDesc[0].d3d = {"POSITION", 0};
             vertexAttributeDesc[0].vk = {0};
 
             vertexAttributeDesc[1].format = nri::Format::RG16_SFLOAT;
-            vertexAttributeDesc[1].offset = helper::GetOffsetOf(&utils::Vertex::uv);
+            vertexAttributeDesc[1].offset = offsetof(utils::Vertex, uv);
             vertexAttributeDesc[1].d3d = {"TEXCOORD", 0};
             vertexAttributeDesc[1].vk = {1};
 
             vertexAttributeDesc[2].format = nri::Format::R10_G10_B10_A2_UNORM;
-            vertexAttributeDesc[2].offset = helper::GetOffsetOf(&utils::Vertex::N);
+            vertexAttributeDesc[2].offset = offsetof(utils::Vertex, N);
             vertexAttributeDesc[2].d3d = {"NORMAL", 0};
             vertexAttributeDesc[2].vk = {2};
 
             vertexAttributeDesc[3].format = nri::Format::R10_G10_B10_A2_UNORM;
-            vertexAttributeDesc[3].offset = helper::GetOffsetOf(&utils::Vertex::T);
+            vertexAttributeDesc[3].offset = offsetof(utils::Vertex, T);
             vertexAttributeDesc[3].d3d = {"TANGENT", 0};
             vertexAttributeDesc[3].vk = {3};
         }

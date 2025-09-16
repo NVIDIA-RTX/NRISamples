@@ -62,9 +62,10 @@ struct Vertex {
 };
 
 static const Vertex g_VertexData[] = {
-    {-0.71f, -0.50f, 0.0f, 0.0f},
-    {0.00f, 0.71f, 1.0f, 1.0f},
-    {0.71f, -0.50f, 0.0f, 1.0f}};
+    {{-0.71f, -0.50f}, {0.0f, 0.0f}},
+    {{0.00f, 0.71f}, {1.0f, 1.0f}},
+    {{0.71f, -0.50f}, {0.0f, 1.0f}},
+};
 
 static const uint16_t g_IndexData[] = {0, 1, 2};
 
@@ -379,14 +380,14 @@ void Sample::CreateVulkanDevice() {
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     switch (graphicsAPI) {
-        case nri::GraphicsAPI::D3D11:
-            CreateD3D11Device();
+        case nri::GraphicsAPI::VK:
+            CreateVulkanDevice();
             break;
         case nri::GraphicsAPI::D3D12:
             CreateD3D12Device();
             break;
-        case nri::GraphicsAPI::VK:
-            CreateVulkanDevice();
+        default:
+            CreateD3D11Device();
             break;
     }
 
@@ -500,13 +501,13 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         {
             vertexAttributeDesc[0].format = nri::Format::RG32_SFLOAT;
             vertexAttributeDesc[0].streamIndex = 0;
-            vertexAttributeDesc[0].offset = helper::GetOffsetOf(&Vertex::position);
+            vertexAttributeDesc[0].offset = offsetof(Vertex, position);
             vertexAttributeDesc[0].d3d = {"POSITION", 0};
             vertexAttributeDesc[0].vk.location = {0};
 
             vertexAttributeDesc[1].format = nri::Format::RG32_SFLOAT;
             vertexAttributeDesc[1].streamIndex = 0;
-            vertexAttributeDesc[1].offset = helper::GetOffsetOf(&Vertex::uv);
+            vertexAttributeDesc[1].offset = offsetof(Vertex, uv);
             vertexAttributeDesc[1].d3d = {"TEXCOORD", 0};
             vertexAttributeDesc[1].vk.location = {1};
         }

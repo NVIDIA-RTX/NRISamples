@@ -35,7 +35,11 @@ static const char* architectures[] = {
         exit(1);
 
 void SilencePlease(NriMessage messageType, const char* file, uint32_t line, const char* message, void* userArg) {
-    (void)messageType, file, line, message, userArg;
+    (void)messageType;
+    (void)file;
+    (void)line;
+    (void)message;
+    (void)userArg;
 }
 
 int main(int argc, char** argv) {

@@ -17,9 +17,10 @@ struct Vertex {
 };
 
 static const Vertex g_VertexData[] = {
-    {-0.71f, -0.50f, 0.0f, 0.0f},
-    {0.00f, 0.71f, 1.0f, 1.0f},
-    {0.71f, -0.50f, 0.0f, 1.0f}};
+    {{-0.71f, -0.50f}, {0.0f, 0.0f}},
+    {{0.00f, 0.71f}, {1.0f, 1.0f}},
+    {{0.71f, -0.50f}, {0.0f, 1.0f}},
+};
 
 static const uint16_t g_IndexData[] = {0, 1, 2};
 
@@ -208,7 +209,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         nri::RootConstantDesc rootConstant = {1, sizeof(float), nri::StageBits::FRAGMENT_SHADER};
         nri::RootSamplerDesc rootSampler = {0, samplerDesc, nri::StageBits::FRAGMENT_SHADER};
         nri::DescriptorRangeDesc setConstantBuffer = {0, 1, nri::DescriptorType::CONSTANT_BUFFER, nri::StageBits::ALL};
-        nri::DescriptorRangeDesc setTexture = {0, 1, nri::DescriptorType::TEXTURE, nri::StageBits::FRAGMENT_SHADER};
+        nri::DescriptorRangeDesc setTexture = {0, 1, nri::DescriptorType::TEXTURE, nri::StageBits::FRAGMENT_SHADER, nri::DescriptorRangeBits::MUTABLE};
 
         nri::DescriptorSetDesc descriptorSetDescs[] = {
             {0, &setConstantBuffer, 1},
@@ -239,13 +240,13 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         {
             vertexAttributeDesc[0].format = nri::Format::RG32_SFLOAT;
             vertexAttributeDesc[0].streamIndex = 0;
-            vertexAttributeDesc[0].offset = helper::GetOffsetOf(&Vertex::position);
+            vertexAttributeDesc[0].offset = offsetof(Vertex, position);
             vertexAttributeDesc[0].d3d = {"POSITION", 0};
             vertexAttributeDesc[0].vk.location = {0};
 
             vertexAttributeDesc[1].format = nri::Format::RG32_SFLOAT;
             vertexAttributeDesc[1].streamIndex = 0;
-            vertexAttributeDesc[1].offset = helper::GetOffsetOf(&Vertex::uv);
+            vertexAttributeDesc[1].offset = offsetof(Vertex, uv);
             vertexAttributeDesc[1].d3d = {"TEXCOORD", 0};
             vertexAttributeDesc[1].vk.location = {1};
         }
@@ -302,7 +303,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         nri::DescriptorPoolDesc descriptorPoolDesc = {};
         descriptorPoolDesc.descriptorSetMaxNum = GetQueuedFrameNum() + 1;
         descriptorPoolDesc.constantBufferMaxNum = GetQueuedFrameNum();
-        descriptorPoolDesc.textureMaxNum = 1;
+        descriptorPoolDesc.mutableMaxNum = 1;
 
         NRI_ABORT_ON_FAILURE(NRI.CreateDescriptorPool(*m_Device, descriptorPoolDesc, m_DescriptorPool));
     }

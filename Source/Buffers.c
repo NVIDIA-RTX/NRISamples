@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
         iCore.QueueSubmit(queue,
             &(NriQueueSubmitDesc){
                 .commandBufferNum = 1,
-                .commandBuffers = &commandBuffer,
+                .commandBuffers = (const NriCommandBuffer* const*)&commandBuffer,
             });
 
         // Wait for idle
