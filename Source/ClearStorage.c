@@ -8,7 +8,6 @@
 #include "NRI.h"
 
 #include "Extensions/NRIDeviceCreation.h"
-#include "Extensions/NRIResourceAllocator.h"
 
 #if NRI_ENABLE_AGILITY_SDK_SUPPORT
 #    include "NRIAgilitySDK.h"
@@ -62,36 +61,28 @@ int main(int argc, char** argv) {
 
     // Query interfaces
     NriCoreInterface iCore = {0};
-    NriResourceAllocatorInterface iResourceAllocator = {0};
-    {
-        NRI_ABORT_ON_FAILURE(nriGetInterface(device, NRI_INTERFACE(NriCoreInterface), &iCore));
-        NRI_ABORT_ON_FAILURE(nriGetInterface(device, NRI_INTERFACE(NriResourceAllocatorInterface), &iResourceAllocator));
-    }
+    NRI_ABORT_ON_FAILURE(nriGetInterface(device, NRI_INTERFACE(NriCoreInterface), &iCore));
 
     // Create resources
     NriBuffer* buffer = NULL;
     NriTexture* texture = NULL;
     {
-        NRI_ABORT_ON_FAILURE(iResourceAllocator.AllocateBuffer(device,
-            &(NriAllocateBufferDesc){
-                .memoryLocation = NriMemoryLocation_DEVICE,
-                .desc = (NriBufferDesc){
-                    .size = width * sizeof(float),
-                    .usage = NriBufferUsageBits_SHADER_RESOURCE_STORAGE,
-                },
+        NRI_ABORT_ON_FAILURE(iCore.CreateCommittedBuffer(device,
+            NriMemoryLocation_DEVICE, 0.0f,
+            &(NriBufferDesc){
+                .size = width * sizeof(float),
+                .usage = NriBufferUsageBits_SHADER_RESOURCE_STORAGE,
             },
             &buffer));
         iCore.SetDebugName(buffer, "Buffer");
 
-        NRI_ABORT_ON_FAILURE(iResourceAllocator.AllocateTexture(device,
-            &(NriAllocateTextureDesc){
-                .memoryLocation = NriMemoryLocation_DEVICE,
-                .desc = (NriTextureDesc){
-                    .type = NriTextureType_TEXTURE_1D,
-                    .usage = NriBufferUsageBits_SHADER_RESOURCE_STORAGE,
-                    .format = NriFormat_R32_SFLOAT,
-                    .width = width,
-                },
+        NRI_ABORT_ON_FAILURE(iCore.CreateCommittedTexture(device,
+            NriMemoryLocation_DEVICE, 0.0f,
+            &(NriTextureDesc){
+                .type = NriTextureType_TEXTURE_1D,
+                .usage = NriBufferUsageBits_SHADER_RESOURCE_STORAGE,
+                .format = NriFormat_R32_SFLOAT,
+                .width = width,
             },
             &texture));
         iCore.SetDebugName(texture, "Texture");
