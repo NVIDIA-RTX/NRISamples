@@ -17,6 +17,7 @@ echo Running samples from '%DIR_BIN%'...
 echo.
 
 :: API independent samples
+
 "%DIR_BIN%\DeviceInfo.exe"
 if %ERRORLEVEL% equ 0 (
     echo =^> OK
@@ -26,13 +27,16 @@ if %ERRORLEVEL% equ 0 (
 echo.
 
 :: API dependent samples
+
 call :TestSample AsyncCompute
 call :TestSample BindlessSceneViewer
 call :TestSample Buffers
+call :TestSample Clear
+call :TestSample ClearStorage
 call :TestSample LowLatency
+call :TestSample Multisample
 call :TestSample MultiThreading
 call :TestSample Multiview
-call :TestSample Multisample
 call :TestSample RayTracingBoxes
 call :TestSample RayTracingTriangle
 call :TestSample Readback
