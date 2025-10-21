@@ -181,6 +181,7 @@ add_sample(RayTracingTriangle cpp)
 add_sample(RayTracingBoxes cpp)
 add_sample(Readback cpp)
 add_sample(Resize cpp)
+add_sample(Resources c)
 add_sample(SceneViewer cpp)
 add_sample(Triangle cpp)
 
