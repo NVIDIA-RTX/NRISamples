@@ -162,8 +162,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         swapChainDesc.queue = m_GraphicsQueue;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
         swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | nri::SwapChainBits::ALLOW_TEARING;
-        swapChainDesc.width = (uint16_t)GetWindowResolution().x;
-        swapChainDesc.height = (uint16_t)GetWindowResolution().y;
+        swapChainDesc.width = (uint16_t)GetOutputResolution().x;
+        swapChainDesc.height = (uint16_t)GetOutputResolution().y;
         swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
         swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
         NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
@@ -284,8 +284,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         textureDesc.type = nri::TextureType::TEXTURE_2D;
         textureDesc.usage = nri::TextureUsageBits::SHADER_RESOURCE_STORAGE;
         textureDesc.format = swapChainFormat;
-        textureDesc.width = (uint16_t)GetWindowResolution().x / 2;
-        textureDesc.height = (uint16_t)GetWindowResolution().y;
+        textureDesc.width = (uint16_t)GetOutputResolution().x / 2;
+        textureDesc.height = (uint16_t)GetOutputResolution().y;
         textureDesc.mipNum = 1;
 
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture(*m_Device, textureDesc, m_Texture));
@@ -396,8 +396,8 @@ void Sample::PrepareFrame(uint32_t) {
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
-    const uint32_t windowWidth = GetWindowResolution().x;
-    const uint32_t windowHeight = GetWindowResolution().y;
+    const uint32_t windowWidth = GetOutputResolution().x;
+    const uint32_t windowHeight = GetOutputResolution().y;
     uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
     const QueuedFrame& queuedFrame = m_QueuedFrames[queuedFrameIndex];
 

@@ -378,8 +378,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         dispatchRaysDesc.raygenShader = {m_ShaderTable, 0, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
         dispatchRaysDesc.missShaders = {m_ShaderTable, m_MissShaderOffset, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
         dispatchRaysDesc.hitShaderGroups = {m_ShaderTable, m_HitShaderGroupOffset, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
-        dispatchRaysDesc.x = (uint16_t)GetWindowResolution().x;
-        dispatchRaysDesc.y = (uint16_t)GetWindowResolution().y;
+        dispatchRaysDesc.x = (uint16_t)GetOutputResolution().x;
+        dispatchRaysDesc.y = (uint16_t)GetOutputResolution().y;
         dispatchRaysDesc.z = 1;
         NRI.CmdDispatchRays(commandBuffer, dispatchRaysDesc);
 
@@ -440,8 +440,8 @@ void Sample::CreateSwapChain(nri::Format& swapChainFormat) {
     swapChainDesc.queue = m_GraphicsQueue;
     swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
     swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | nri::SwapChainBits::ALLOW_TEARING;
-    swapChainDesc.width = (uint16_t)GetWindowResolution().x;
-    swapChainDesc.height = (uint16_t)GetWindowResolution().y;
+    swapChainDesc.width = (uint16_t)GetOutputResolution().x;
+    swapChainDesc.height = (uint16_t)GetOutputResolution().y;
     swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
     swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
 
@@ -534,8 +534,8 @@ void Sample::CreateRayTracingOutput(nri::Format swapChainFormat) {
     nri::TextureDesc rayTracingOutputDesc = {};
     rayTracingOutputDesc.type = nri::TextureType::TEXTURE_2D;
     rayTracingOutputDesc.format = swapChainFormat;
-    rayTracingOutputDesc.width = (uint16_t)GetWindowResolution().x;
-    rayTracingOutputDesc.height = (uint16_t)GetWindowResolution().y;
+    rayTracingOutputDesc.width = (uint16_t)GetOutputResolution().x;
+    rayTracingOutputDesc.height = (uint16_t)GetOutputResolution().y;
     rayTracingOutputDesc.depth = 1;
     rayTracingOutputDesc.layerNum = 1;
     rayTracingOutputDesc.mipNum = 1;

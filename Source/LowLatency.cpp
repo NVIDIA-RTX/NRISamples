@@ -144,8 +144,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         swapChainDesc.queue = m_GraphicsQueue;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
         swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | nri::SwapChainBits::ALLOW_TEARING;
-        swapChainDesc.width = (uint16_t)GetWindowResolution().x;
-        swapChainDesc.height = (uint16_t)GetWindowResolution().y;
+        swapChainDesc.width = (uint16_t)GetOutputResolution().x;
+        swapChainDesc.height = (uint16_t)GetOutputResolution().y;
         swapChainDesc.textureNum = QUEUED_FRAMES_MAX_NUM + 1;
         swapChainDesc.queuedFrameNum = WAITABLE_SWAP_CHAIN ? WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY : QUEUED_FRAMES_MAX_NUM;
 

@@ -158,8 +158,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         swapChainDesc.queue = m_GraphicsQueue;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_10BIT;
         swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | nri::SwapChainBits::ALLOW_TEARING;
-        swapChainDesc.width = (uint16_t)GetWindowResolution().x;
-        swapChainDesc.height = (uint16_t)GetWindowResolution().y;
+        swapChainDesc.width = (uint16_t)GetOutputResolution().x;
+        swapChainDesc.height = (uint16_t)GetOutputResolution().y;
         swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
         swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
         NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
@@ -336,8 +336,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         textureDesc.type = nri::TextureType::TEXTURE_2D;
         textureDesc.usage = nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT;
         textureDesc.format = m_DepthFormat;
-        textureDesc.width = (uint16_t)GetWindowResolution().x;
-        textureDesc.height = (uint16_t)GetWindowResolution().y;
+        textureDesc.width = (uint16_t)GetOutputResolution().x;
+        textureDesc.height = (uint16_t)GetOutputResolution().y;
         textureDesc.mipNum = 1;
 
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture(*m_Device, textureDesc, depthTexture));
@@ -350,8 +350,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     uint32_t shadingRateTexWidth = 0;
     uint32_t shadingRateTexHeight = 0;
     if (deviceDesc.tiers.shadingRate >= 2) {
-        shadingRateTexWidth = (GetWindowResolution().x + deviceDesc.other.shadingRateAttachmentTileSize - 1) / deviceDesc.other.shadingRateAttachmentTileSize;
-        shadingRateTexHeight = (GetWindowResolution().y + deviceDesc.other.shadingRateAttachmentTileSize - 1) / deviceDesc.other.shadingRateAttachmentTileSize;
+        shadingRateTexWidth = (GetOutputResolution().x + deviceDesc.other.shadingRateAttachmentTileSize - 1) / deviceDesc.other.shadingRateAttachmentTileSize;
+        shadingRateTexHeight = (GetOutputResolution().y + deviceDesc.other.shadingRateAttachmentTileSize - 1) / deviceDesc.other.shadingRateAttachmentTileSize;
 
         nri::TextureDesc textureDesc = {};
         textureDesc.type = nri::TextureType::TEXTURE_2D;
@@ -658,7 +658,7 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
         }
         ImGui::End();
 
-        float2 screenDim = float2(GetWindowResolution());
+        float2 screenDim = float2(GetOutputResolution());
         screenDim.x *= 0.5f;
 
         ImDrawList* drawList = ImGui::GetBackgroundDrawList();
@@ -670,7 +670,7 @@ void Sample::PrepareFrame(uint32_t frameIndex) {
     ImGui::Render();
 
     CameraDesc desc = {};
-    desc.aspectRatio = float(GetWindowResolution().x) / float(GetWindowResolution().y);
+    desc.aspectRatio = float(GetOutputResolution().x) / float(GetOutputResolution().y);
     desc.horizontalFov = 90.0f;
     desc.nearZ = 0.1f;
     desc.isReversedZ = (CLEAR_DEPTH == 0.0f);
@@ -683,8 +683,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     uint32_t queuedFrameIndex = frameIndex % GetQueuedFrameNum();
     const uint32_t nextQueuedFrameIndex = (frameIndex + 1) % GetQueuedFrameNum();
     const QueuedFrame& queuedFrame = m_QueuedFrames[queuedFrameIndex];
-    const uint32_t windowWidth = GetWindowResolution().x;
-    const uint32_t windowHeight = GetWindowResolution().y;
+    const uint32_t windowWidth = GetOutputResolution().x;
+    const uint32_t windowHeight = GetOutputResolution().y;
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
 
     // Acquire a swap chain texture

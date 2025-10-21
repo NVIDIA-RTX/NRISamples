@@ -76,7 +76,7 @@ Sample::~Sample() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
-    m_PrevWindowResolution = m_WindowResolution;
+    m_PrevWindowResolution = m_OutputResolution;
 
     // Adapters
     nri::AdapterDesc adapterDesc[2] = {};
@@ -121,8 +121,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         swapChainDesc.queue = m_GraphicsQueue;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
         swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | NOT_ALLOW_TEARING;
-        swapChainDesc.width = (uint16_t)m_WindowResolution.x;
-        swapChainDesc.height = (uint16_t)m_WindowResolution.y;
+        swapChainDesc.width = (uint16_t)m_OutputResolution.x;
+        swapChainDesc.height = (uint16_t)m_OutputResolution.y;
         swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
         swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
         swapChainDesc.scaling = SCALING;
@@ -196,18 +196,18 @@ void Sample::PrepareFrame(uint32_t) {
         uint32_t h = (uint32_t)vidmode->height;
 
         if (m_IsFullscreen)
-            m_WindowResolution = uint2(w, h);
+            m_OutputResolution = uint2(w, h);
         else
-            m_WindowResolution = m_PrevWindowResolution;
+            m_OutputResolution = m_PrevWindowResolution;
 
-        uint32_t x = (w - m_WindowResolution.x) >> 1;
-        uint32_t y = (h - m_WindowResolution.y) >> 1;
+        uint32_t x = (w - m_OutputResolution.x) >> 1;
+        uint32_t y = (h - m_OutputResolution.y) >> 1;
 
         glfwSetWindowAttrib(m_Window, GLFW_DECORATED, m_IsFullscreen ? 0 : 1);
 #if (NRIF_PLATFORM != NRIF_WAYLAND)
         glfwSetWindowPos(m_Window, x, y);
 #endif
-        glfwSetWindowSize(m_Window, m_WindowResolution.x, m_WindowResolution.y);
+        glfwSetWindowSize(m_Window, m_OutputResolution.x, m_OutputResolution.y);
 
         ResizeSwapChain();
     }
@@ -218,8 +218,8 @@ void Sample::PrepareFrame(uint32_t) {
         ImVec2 dims = ImGui::CalcTextSize(s);
 
         ImVec2 p;
-        p.x = ((float)m_WindowResolution.x - dims.x) * 0.5f;
-        p.y = ((float)m_WindowResolution.y - dims.y) * 0.5f;
+        p.x = ((float)m_OutputResolution.x - dims.x) * 0.5f;
+        p.y = ((float)m_OutputResolution.y - dims.y) * 0.5f;
 
         ImGui::SetNextWindowPos(p);
         ImGui::Begin("Color", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize);
@@ -251,8 +251,8 @@ void Sample::ResizeSwapChain() {
     swapChainDesc.queue = m_GraphicsQueue;
     swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
     swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | NOT_ALLOW_TEARING;
-    swapChainDesc.width = (uint16_t)m_WindowResolution.x;
-    swapChainDesc.height = (uint16_t)m_WindowResolution.y;
+    swapChainDesc.width = (uint16_t)m_OutputResolution.x;
+    swapChainDesc.height = (uint16_t)m_OutputResolution.y;
     swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
     swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
     swapChainDesc.scaling = SCALING;

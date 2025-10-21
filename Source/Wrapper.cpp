@@ -419,8 +419,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         swapChainDesc.queue = m_GraphicsQueue;
         swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
         swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | nri::SwapChainBits::ALLOW_TEARING;
-        swapChainDesc.width = (uint16_t)GetWindowResolution().x;
-        swapChainDesc.height = (uint16_t)GetWindowResolution().y;
+        swapChainDesc.width = (uint16_t)GetOutputResolution().x;
+        swapChainDesc.height = (uint16_t)GetOutputResolution().y;
         swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
         swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
         NRI_ABORT_ON_FAILURE(NRI.CreateSwapChain(*m_Device, swapChainDesc, m_SwapChain));
@@ -705,8 +705,8 @@ void Sample::PrepareFrame(uint32_t) {
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
-    nri::Dim_t windowWidth = (nri::Dim_t)GetWindowResolution().x;
-    nri::Dim_t windowHeight = (nri::Dim_t)GetWindowResolution().y;
+    nri::Dim_t windowWidth = (nri::Dim_t)GetOutputResolution().x;
+    nri::Dim_t windowHeight = (nri::Dim_t)GetOutputResolution().y;
     nri::Dim_t halfWidth = windowWidth / 2;
     nri::Dim_t halfHeight = windowHeight / 2;
 

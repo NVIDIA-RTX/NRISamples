@@ -519,7 +519,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 void Sample::RenderBoxes(nri::CommandBuffer& commandBuffer, uint32_t offset, uint32_t number) {
     helper::Annotation annotation(NRI, commandBuffer, "RenderBoxes");
 
-    const nri::Rect scissorRect = {0, 0, (nri::Dim_t)GetWindowResolution().x, (nri::Dim_t)GetWindowResolution().y};
+    const nri::Rect scissorRect = {0, 0, (nri::Dim_t)GetOutputResolution().x, (nri::Dim_t)GetOutputResolution().y};
     NRI.CmdSetScissors(commandBuffer, &scissorRect, 1);
 
     const nri::Viewport viewport = {0.0f, 0.0f, (float)scissorRect.width, (float)scissorRect.height, 0.0f, 1.0f};
@@ -607,8 +607,8 @@ nri::Format Sample::CreateSwapChain() {
     swapChainDesc.queue = m_GraphicsQueue;
     swapChainDesc.format = nri::SwapChainFormat::BT709_G22_8BIT;
     swapChainDesc.flags = (m_Vsync ? nri::SwapChainBits::VSYNC : nri::SwapChainBits::NONE) | nri::SwapChainBits::ALLOW_TEARING;
-    swapChainDesc.width = (uint16_t)GetWindowResolution().x;
-    swapChainDesc.height = (uint16_t)GetWindowResolution().y;
+    swapChainDesc.width = (uint16_t)GetOutputResolution().x;
+    swapChainDesc.height = (uint16_t)GetOutputResolution().y;
     swapChainDesc.textureNum = GetOptimalSwapChainTextureNum();
     swapChainDesc.queuedFrameNum = GetQueuedFrameNum();
 
@@ -776,8 +776,8 @@ void Sample::CreateDepthTexture() {
     textureDesc.type = nri::TextureType::TEXTURE_2D;
     textureDesc.usage = nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT;
     textureDesc.format = m_DepthFormat;
-    textureDesc.width = (uint16_t)GetWindowResolution().x;
-    textureDesc.height = (uint16_t)GetWindowResolution().y;
+    textureDesc.width = (uint16_t)GetOutputResolution().x;
+    textureDesc.height = (uint16_t)GetOutputResolution().y;
     textureDesc.mipNum = 1;
 
     NRI_ABORT_ON_FAILURE(NRI.CreateTexture(*m_Device, textureDesc, m_DepthTexture));
@@ -1120,7 +1120,7 @@ void Sample::CreateViewConstantBuffer() {
 }
 
 void Sample::SetupProjViewMatrix(float4x4& projViewMatrix) {
-    const float aspect = float(GetWindowResolution().x) / float(GetWindowResolution().y);
+    const float aspect = float(GetOutputResolution().x) / float(GetOutputResolution().y);
 
     float4x4 projectionMatrix;
     projectionMatrix.SetupByHalfFovxInf(radians(45.0f), aspect, 0.1f, 0);
