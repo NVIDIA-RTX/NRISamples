@@ -238,7 +238,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         // Present
         textureTransitions[0].before = textureTransitions[0].after;
-        textureTransitions[0].after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
+        textureTransitions[0].after = {nri::AccessBits::NONE, nri::Layout::PRESENT, nri::StageBits::NONE};
 
         barrierDesc.textures = textureTransitions;
         barrierDesc.textureNum = 1;

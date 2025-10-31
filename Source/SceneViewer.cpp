@@ -843,7 +843,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         textureBarriers.before = textureBarriers.after;
-        textureBarriers.after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
+        textureBarriers.after = {nri::AccessBits::NONE, nri::Layout::PRESENT, nri::StageBits::NONE};
 
         NRI.CmdBarrier(commandBuffer, barrierDesc);
     }

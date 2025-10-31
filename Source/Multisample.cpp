@@ -641,7 +641,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             nri::TextureBarrierDesc textureBarrier = {};
             textureBarrier.texture = swapChainTexture.texture;
             textureBarrier.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-            textureBarrier.after = {nri::AccessBits::NONE, nri::Layout::PRESENT};
+            textureBarrier.after = {nri::AccessBits::NONE, nri::Layout::PRESENT, nri::StageBits::NONE};
 
             nri::BarrierDesc barrierGroup = {};
             barrierGroup.textureNum = 1;
