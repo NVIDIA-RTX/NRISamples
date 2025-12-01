@@ -150,7 +150,7 @@ void Sample::Destroy() {
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
     if (graphicsAPI == nri::GraphicsAPI::D3D11) {
-        printf("This sample supports only D3D12 and Vulkan\n");
+        printf("This sample is not supported by D3D11\n");
         exit(0);
     }
 
