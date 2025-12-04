@@ -70,12 +70,13 @@ int main(int argc, char** argv) {
     NriBuffer* placedBuffer = NULL;
     if (deviceDesc->features.getMemoryDesc2) {
         NriBufferDesc bufferDesc = {
-            .size = 100 * 1024 * 1024,
-            .usage = NriBufferUsageBits_INDEX_BUFFER | NriBufferUsageBits_VERTEX_BUFFER,
+            .size = 32 * 1024 * 1024,
+            .usage = NriBufferUsageBits_SHADER_RESOURCE | NriBufferUsageBits_SHADER_RESOURCE_STORAGE,
+            .structureStride = 4,
         };
 
         NriMemoryDesc memoryDesc = {0};
-        iCore.GetBufferMemoryDesc2(device, &bufferDesc, NriMemoryLocation_DEVICE_UPLOAD, &memoryDesc);
+        iCore.GetBufferMemoryDesc2(device, &bufferDesc, NriMemoryLocation_DEVICE, &memoryDesc);
 
         NRI_ABORT_ON_FAILURE(iCore.AllocateMemory(device,
             &(NriAllocateMemoryDesc){
@@ -85,6 +86,59 @@ int main(int argc, char** argv) {
             &placedBufferMemory));
 
         NRI_ABORT_ON_FAILURE(iCore.CreatePlacedBuffer(device, placedBufferMemory, 0, &bufferDesc, &placedBuffer));
+    }
+
+    { // Test views
+        NriDescriptor* bufferView_Typed = NULL;
+        iCore.CreateBufferView(
+            &(NriBufferViewDesc){
+                .buffer = placedBuffer,
+                .viewType = NriBufferViewType_SHADER_RESOURCE,
+                .format = NriFormat_RGBA32_SFLOAT,
+                .offset = 0,
+                .size = 1024,
+            },
+            &bufferView_Typed);
+
+        NriDescriptor* bufferView_TypedStorage = NULL;
+        iCore.CreateBufferView(
+            &(NriBufferViewDesc){
+                .buffer = placedBuffer,
+                .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE,
+                .format = NriFormat_RGBA32_SFLOAT,
+                .offset = 0,
+                .size = 1024,
+            },
+            &bufferView_TypedStorage);
+
+        NriDescriptor* bufferView_Structured = NULL;
+        iCore.CreateBufferView(
+            &(NriBufferViewDesc){
+                .buffer = placedBuffer,
+                .viewType = NriBufferViewType_SHADER_RESOURCE,
+                .format = NriFormat_RGBA32_SFLOAT,
+                .offset = 0,
+                .size = 1024,
+                .structureStride = 32,
+            },
+            &bufferView_Structured);
+
+        NriDescriptor* bufferView_StructuredStorage = NULL;
+        iCore.CreateBufferView(
+            &(NriBufferViewDesc){
+                .buffer = placedBuffer,
+                .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE,
+                .format = NriFormat_RGBA32_SFLOAT,
+                .offset = 0,
+                .size = 1024,
+                .structureStride = 32,
+            },
+            &bufferView_StructuredStorage);
+
+        iCore.DestroyDescriptor(bufferView_Typed);
+        iCore.DestroyDescriptor(bufferView_TypedStorage);
+        iCore.DestroyDescriptor(bufferView_Structured);
+        iCore.DestroyDescriptor(bufferView_StructuredStorage);
     }
 
     { // Cleanup
