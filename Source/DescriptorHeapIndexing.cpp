@@ -328,9 +328,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
         const nri::UpdateDescriptorRangeDesc updateDescriptorRangeDesc[] = {
             // 0 range is "resource heap"
-            {m_DescriptorSet, 0, 0, &m_Output_StorageTexture, 1, nri::DescriptorType::STORAGE_TEXTURE},
-            {m_DescriptorSet, 0, 1, &m_Buffer_Constant, 1, nri::DescriptorType::CONSTANT_BUFFER},
-            {m_DescriptorSet, 0, 2, textures, helper::GetCountOf(textures), nri::DescriptorType::TEXTURE},
+            {m_DescriptorSet, 0, 0, &m_Output_StorageTexture, 1},
+            {m_DescriptorSet, 0, 1, &m_Buffer_Constant, 1},
+            {m_DescriptorSet, 0, 2, textures, helper::GetCountOf(textures)},
 
             // 1 range is "sampler heap"
             {m_DescriptorSet, 1, 0, samplers, helper::GetCountOf(samplers)},
