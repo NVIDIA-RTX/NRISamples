@@ -346,7 +346,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             NRI.CmdBeginRendering(commandBufferPre, attachmentsDesc);
             {
-                nri::ClearDesc clearDescs[2] = {};
+                nri::ClearAttachmentDesc clearDescs[2] = {};
                 clearDescs[0].planes = nri::PlaneBits::COLOR;
                 clearDescs[1].planes = nri::PlaneBits::DEPTH;
                 clearDescs[1].value.depthStencil.depth = 1.0f;

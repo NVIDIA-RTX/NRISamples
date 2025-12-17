@@ -548,7 +548,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 {
                     helper::Annotation annotation(NRI, *commandBuffer, "Clears");
 
-                    nri::ClearDesc clearDesc = {};
+                    nri::ClearAttachmentDesc clearDesc = {};
                     clearDesc.planes = nri::PlaneBits::COLOR;
                     clearDesc.value.color.f = {1.0f, 1.0f, 1.0f, 1.0f};
 
@@ -605,7 +605,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         { // Resolve
-            NRI.CmdResolveTexture(*commandBuffer, *swapChainTexture.texture, nullptr, *m_TextureMsaa, nullptr);
+            NRI.CmdResolveTexture(*commandBuffer, *swapChainTexture.texture, nullptr, *m_TextureMsaa, nullptr, nri::ResolveOp::AVERAGE);
         }
 
         { // Barriers

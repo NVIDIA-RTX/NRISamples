@@ -437,7 +437,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
         {
-            nri::ClearDesc clearDesc = {};
+            nri::ClearAttachmentDesc clearDesc = {};
             clearDesc.colorAttachmentIndex = 0;
             clearDesc.planes = nri::PlaneBits::COLOR;
             clearDesc.value.color.f = {0.0f, 0.1f, 0.0f, 1.0f};

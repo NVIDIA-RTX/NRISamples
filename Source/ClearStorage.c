@@ -232,7 +232,7 @@ int main(int argc, char** argv) {
             // Clear buffer storage
             iCore.CmdClearStorage(commandBuffer,
                 &(NriClearStorageDesc){
-                    .storage = storageBuffer,
+                    .descriptor = storageBuffer,
                     .value = (NriColor){
                         .f = (NriColor32f){0},
                     },
@@ -244,7 +244,7 @@ int main(int argc, char** argv) {
             // Clear texture storage
             iCore.CmdClearStorage(commandBuffer,
                 &(NriClearStorageDesc){
-                    .storage = storageTexture,
+                    .descriptor = storageTexture,
                     .value = (NriColor){
                         .f = (NriColor32f){0},
                     },

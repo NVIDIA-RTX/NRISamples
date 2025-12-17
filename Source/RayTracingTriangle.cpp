@@ -138,7 +138,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI));
 
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-    if (!deviceDesc.features.rayTracing) {
+    if (deviceDesc.tiers.rayTracing == 0) {
         printf("Ray tracing is not supported!\n");
         exit(0);
     }

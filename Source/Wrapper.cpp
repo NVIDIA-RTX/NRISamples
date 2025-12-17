@@ -759,7 +759,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             {
                 helper::Annotation annotation(NRI, *commandBuffer, "Clears");
 
-                nri::ClearDesc clearDesc = {};
+                nri::ClearAttachmentDesc clearDesc = {};
                 clearDesc.planes = nri::PlaneBits::COLOR;
                 clearDesc.value.color.f = COLOR_0;
 

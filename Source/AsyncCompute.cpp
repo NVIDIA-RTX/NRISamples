@@ -466,7 +466,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             const nri::Rect scissorRect = {0, 0, (nri::Dim_t)windowWidth, (nri::Dim_t)windowHeight};
             NRI.CmdSetScissors(commandBuffer1, &scissorRect, 1);
 
-            nri::ClearDesc clearDesc = {};
+            nri::ClearAttachmentDesc clearDesc = {};
             clearDesc.colorAttachmentIndex = 0;
             clearDesc.planes = nri::PlaneBits::COLOR;
             NRI.CmdClearAttachments(commandBuffer1, &clearDesc, 1, nullptr, 0);

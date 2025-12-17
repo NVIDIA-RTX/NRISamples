@@ -332,7 +332,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         {
             helper::Annotation annotation(NRI, commandBuffer, "Clear");
 
-            nri::ClearDesc clearDesc = {};
+            nri::ClearAttachmentDesc clearDesc = {};
             clearDesc.planes = nri::PlaneBits::COLOR;
             if (m_IsFullscreen)
                 clearDesc.value.color.f = {0.0f, 1.0f, 0.0f, 1.0f};
