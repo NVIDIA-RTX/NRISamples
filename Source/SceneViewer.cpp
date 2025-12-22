@@ -445,7 +445,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         for (uint32_t i = 0; i < textureNum; i++) {
             const utils::Texture& texture = *m_Scene.textures[i];
 
-            nri::Texture2DViewDesc texture2DViewDesc = {m_Textures[i], nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
+            nri::Texture2DViewDesc texture2DViewDesc = {m_Textures[i], nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_Descriptors[i]));
         }
 
@@ -756,15 +756,18 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         { // Rendering
-            nri::AttachmentsDesc attachmentsDesc = {};
-            attachmentsDesc.colorNum = 1;
-            attachmentsDesc.colors = &swapChainTexture.colorAttachment;
-            attachmentsDesc.depthStencil = m_DepthAttachment;
+            nri::AttachmentDesc colorAttachmentDesc = {};
+            colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
+
+            nri::RenderingDesc renderingDesc = {};
+            renderingDesc.colorNum = 1;
+            renderingDesc.colors = &colorAttachmentDesc;
+            renderingDesc.depth.descriptor = m_DepthAttachment;
 
             if (deviceDesc.tiers.shadingRate >= 2)
-                attachmentsDesc.shadingRate = m_ShadingRateAttachment;
+                renderingDesc.shadingRate = m_ShadingRateAttachment;
 
-            NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
+            NRI.CmdBeginRendering(commandBuffer, renderingDesc);
             {
                 nri::ClearAttachmentDesc clearDescs[2] = {};
                 clearDescs[0].planes = nri::PlaneBits::COLOR;
@@ -829,13 +832,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         { // UI
-            nri::AttachmentsDesc attachmentsDesc = {};
-            attachmentsDesc.colorNum = 1;
-            attachmentsDesc.colors = &swapChainTexture.colorAttachment;
+            nri::AttachmentDesc colorAttachmentDesc = {};
+            colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
+
+            nri::RenderingDesc renderingDesc = {};
+            renderingDesc.colorNum = 1;
+            renderingDesc.colors = &colorAttachmentDesc;
 
             CmdCopyImguiData(commandBuffer, *m_Streamer);
 
-            NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
+            NRI.CmdBeginRendering(commandBuffer, renderingDesc);
             {
                 CmdDrawImgui(commandBuffer, swapChainTexture.attachmentFormat, 1.0f, true);
             }

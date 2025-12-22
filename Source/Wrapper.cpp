@@ -620,7 +620,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
     { // Descriptors
         // Read-only texture
-        nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
+        nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureShaderResource));
 
         // Constant buffer
@@ -748,13 +748,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         barrierDesc.textures = &textureBarriers;
         NRI.CmdBarrier(*commandBuffer, barrierDesc);
 
-        nri::AttachmentsDesc attachmentsDesc = {};
-        attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &swapChainTexture.colorAttachment;
+        nri::AttachmentDesc colorAttachmentDesc = {};
+        colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
+
+        nri::RenderingDesc renderingDesc = {};
+        renderingDesc.colorNum = 1;
+        renderingDesc.colors = &colorAttachmentDesc;
 
         CmdCopyImguiData(*commandBuffer, *m_Streamer);
 
-        NRI.CmdBeginRendering(*commandBuffer, attachmentsDesc);
+        NRI.CmdBeginRendering(*commandBuffer, renderingDesc);
         {
             {
                 helper::Annotation annotation(NRI, *commandBuffer, "Clears");

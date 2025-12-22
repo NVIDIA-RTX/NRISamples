@@ -382,7 +382,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
     {     // Descriptors
         { // Read-only texture
-            nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
+            nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureShaderResource));
         }
 
@@ -526,12 +526,15 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         // Multiview
-        nri::AttachmentsDesc attachmentsDesc = {};
-        attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &m_MultiviewAttachment;
-        attachmentsDesc.viewMask = (1 << VIEW_NUM) - 1;
+        nri::AttachmentDesc colorAttachmentDesc = {};
+        colorAttachmentDesc.descriptor = m_MultiviewAttachment;
 
-        NRI.CmdBeginRendering(*commandBuffer, attachmentsDesc);
+        nri::RenderingDesc renderingDesc = {};
+        renderingDesc.colorNum = 1;
+        renderingDesc.colors = &colorAttachmentDesc;
+        renderingDesc.viewMask = (1 << VIEW_NUM) - 1;
+
+        NRI.CmdBeginRendering(*commandBuffer, renderingDesc);
         {
             {
                 helper::Annotation annotation(NRI, *commandBuffer, "Clears");
@@ -643,12 +646,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         // Singleview
-        attachmentsDesc.colors = &swapChainTexture.colorAttachment;
-        attachmentsDesc.viewMask = 0;
+        colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
+        renderingDesc.viewMask = 0;
 
         CmdCopyImguiData(*commandBuffer, *m_Streamer);
 
-        NRI.CmdBeginRendering(*commandBuffer, attachmentsDesc);
+        NRI.CmdBeginRendering(*commandBuffer, renderingDesc);
         {
             helper::Annotation annotation(NRI, *commandBuffer, "UI");
 

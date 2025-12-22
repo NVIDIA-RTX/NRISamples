@@ -317,7 +317,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     }
 
     { // Storage descriptor
-        nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE_STORAGE_2D, swapChainFormat};
+        nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE_STORAGE, swapChainFormat};
 
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_Descriptor));
     }
@@ -378,6 +378,9 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 }
 
 void Sample::PrepareFrame(uint32_t) {
+    if(IsHalfTimeLimitReached() && m_HasComputeQueue)
+        m_IsAsyncMode = !m_IsAsyncMode;
+
     ImGui::NewFrame();
     {
         ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
@@ -452,13 +455,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         barrierDesc.textureNum = 1;
         NRI.CmdBarrier(commandBuffer1, barrierDesc);
 
-        nri::AttachmentsDesc attachmentsDesc = {};
-        attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &swapChainTexture.colorAttachment;
+        nri::AttachmentDesc colorAttachmentDesc = {};
+        colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
+
+        nri::RenderingDesc renderingDesc = {};
+        renderingDesc.colorNum = 1;
+        renderingDesc.colors = &colorAttachmentDesc;
 
         CmdCopyImguiData(commandBuffer1, *m_Streamer);
 
-        NRI.CmdBeginRendering(commandBuffer1, attachmentsDesc);
+        NRI.CmdBeginRendering(commandBuffer1, renderingDesc);
         {
             const nri::Viewport viewport = {0.0f, 0.0f, (float)windowWidth, (float)windowHeight, 0.0f, 1.0f};
             NRI.CmdSetViewports(commandBuffer1, &viewport, 1);

@@ -367,7 +367,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
     { // Descriptors
         // Read-only texture
-        nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
+        nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureShaderResource));
 
         // Constant buffer
@@ -436,6 +436,11 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 }
 
 void Sample::PrepareFrame(uint32_t) {
+    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
+
+    if(IsHalfTimeLimitReached() && deviceDesc.features.flexibleMultiview)
+        m_Multiview = !m_Multiview;
+
     ImGui::NewFrame();
     {
         ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
@@ -445,7 +450,6 @@ void Sample::PrepareFrame(uint32_t) {
             ImGui::SliderFloat("Transparency", &m_Transparency, 0.0f, 1.0f);
             ImGui::SliderFloat("Scale", &m_Scale, 0.5f, 50.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
 
-            const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
             ImGui::BeginDisabled(!deviceDesc.features.flexibleMultiview);
             ImGui::Checkbox("Multiview", &m_Multiview);
             ImGui::EndDisabled();
@@ -501,12 +505,15 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdBarrier(*commandBuffer, barrierDesc);
 
         // Single- or multi- view
-        nri::AttachmentsDesc attachmentsDesc = {};
-        attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &swapChainTexture.colorAttachment;
-        attachmentsDesc.viewMask = m_Multiview ? VIEW_MASK : 0;
+        nri::AttachmentDesc colorAttachmentDesc = {};
+        colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
 
-        NRI.CmdBeginRendering(*commandBuffer, attachmentsDesc);
+        nri::RenderingDesc renderingDesc = {};
+        renderingDesc.colorNum = 1;
+        renderingDesc.colors = &colorAttachmentDesc;
+        renderingDesc.viewMask = m_Multiview ? VIEW_MASK : 0;
+
+        NRI.CmdBeginRendering(*commandBuffer, renderingDesc);
         {
             {
                 helper::Annotation annotation(NRI, *commandBuffer, "Clears");
@@ -600,11 +607,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdEndRendering(*commandBuffer);
 
         // Singleview
-        attachmentsDesc.viewMask = 0;
+        renderingDesc.viewMask = 0;
 
         CmdCopyImguiData(*commandBuffer, *m_Streamer);
 
-        NRI.CmdBeginRendering(*commandBuffer, attachmentsDesc);
+        NRI.CmdBeginRendering(*commandBuffer, renderingDesc);
         {
             helper::Annotation annotation(NRI, *commandBuffer, "UI");
 

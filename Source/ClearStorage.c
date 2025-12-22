@@ -101,7 +101,7 @@ int main(int argc, char** argv) {
 
         NRI_ABORT_ON_FAILURE(iCore.CreateTexture1DView(&(NriTexture1DViewDesc){
                                                            .texture = texture,
-                                                           .viewType = NriTexture1DViewType_SHADER_RESOURCE_STORAGE_1D,
+                                                           .viewType = NriTexture1DViewType_SHADER_RESOURCE_STORAGE,
                                                            .format = NriFormat_R32_SFLOAT,
                                                        },
             &storageTexture));

@@ -57,13 +57,15 @@ private:
     nri::Buffer* m_GeometryBuffer = nullptr;
     nri::Texture* m_Texture = nullptr;
     nri::Texture* m_TextureMsaa = nullptr;
+    nri::AccessLayoutStage m_TextureMsaaLastState = {};
 
     std::vector<QueuedFrame> m_QueuedFrames = {};
     std::vector<SwapChainTexture> m_SwapChainTextures;
     std::vector<nri::Memory*> m_MemoryAllocations;
 
     uint64_t m_GeometryOffset = 0;
-    float m_Scale = 1.0f;
+    bool m_RenderPassResolve = false;
+    int m_ResolveMode = 0;
 };
 
 Sample::~Sample() {
@@ -403,7 +405,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         }
 
         { // Read-only texture
-            nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
+            nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
 
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureShaderResource));
         }
@@ -475,13 +477,26 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 }
 
 void Sample::PrepareFrame(uint32_t) {
+    if(IsHalfTimeLimitReached())
+        m_RenderPassResolve = !m_RenderPassResolve;
+
     ImGui::NewFrame();
     {
         ImGui::SetNextWindowPos(ImVec2(30, 30), ImGuiCond_Once);
         ImGui::SetNextWindowSize(ImVec2(0, 0));
         ImGui::Begin("Settings", nullptr, ImGuiWindowFlags_NoResize);
         {
-            ImGui::SliderFloat("Scale", &m_Scale, 0.75f, 1.25f);
+            ImGui::Checkbox("Resolve within render pass", &m_RenderPassResolve);
+
+            const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
+            if (deviceDesc.features.resolveOpMinMax) {
+                static const char* items[] = {
+                    "Average",
+                    "Min",
+                    "Max",
+                };
+                ImGui::Combo("Resolve mode", &m_ResolveMode, items, helper::GetCountOf(items));
+            }
         }
         ImGui::End();
     }
@@ -511,7 +526,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         commonConstants->color[0] = 0.8f;
         commonConstants->color[1] = 0.5f;
         commonConstants->color[2] = 0.1f;
-        commonConstants->scale = m_Scale;
+        commonConstants->scale = 1.0f;
 
         NRI.UnmapBuffer(*m_ConstantBuffer);
     }
@@ -523,89 +538,93 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         { // Barriers
             nri::TextureBarrierDesc textureBarriers[2] = {};
 
-            textureBarriers[0].texture = m_TextureMsaa;
-            if (frameIndex != 0)
-                textureBarriers[0].before = {nri::AccessBits::RESOLVE_SOURCE, nri::Layout::RESOLVE_SOURCE};
-            textureBarriers[0].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+            textureBarriers[0].texture = swapChainTexture.texture;
+            textureBarriers[0].after = {nri::AccessBits::RESOLVE_DESTINATION, nri::Layout::RESOLVE_DESTINATION};
 
-            textureBarriers[1].texture = swapChainTexture.texture;
-            textureBarriers[1].after = {nri::AccessBits::RESOLVE_DESTINATION, nri::Layout::RESOLVE_DESTINATION};
+            textureBarriers[1].texture = m_TextureMsaa;
+            textureBarriers[1].before = m_TextureMsaaLastState;
+            textureBarriers[1].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+
+            bool isAlreadyAttachment = m_TextureMsaaLastState.access == textureBarriers[1].after.access;
+            m_TextureMsaaLastState = textureBarriers[1].after;
 
             nri::BarrierDesc barrierGroup = {};
-            barrierGroup.textureNum = helper::GetCountOf(textureBarriers);
+            barrierGroup.textureNum = isAlreadyAttachment ? 1 : 2;
             barrierGroup.textures = textureBarriers;
 
             NRI.CmdBarrier(*commandBuffer, barrierGroup);
         }
 
         { // Multisampling rendering
-            nri::AttachmentsDesc attachmentsDesc = {};
-            attachmentsDesc.colorNum = 1;
-            attachmentsDesc.colors = &m_AttachmentMsaa;
+            nri::AttachmentDesc colorAttachmentDesc = {};
+            colorAttachmentDesc.descriptor = m_AttachmentMsaa;
+            colorAttachmentDesc.clearValue.color = {1.0f, 1.0f, 1.0f, 1.0f};
+            colorAttachmentDesc.loadOp = nri::LoadOp::CLEAR;
+            colorAttachmentDesc.resolveOp = (nri::ResolveOp)m_ResolveMode;
 
-            NRI.CmdBeginRendering(*commandBuffer, attachmentsDesc);
+            if (m_RenderPassResolve) {
+                colorAttachmentDesc.storeOp = nri::StoreOp::DISCARD;
+                colorAttachmentDesc.resolveDst = swapChainTexture.colorAttachment;
+            } else
+                colorAttachmentDesc.storeOp = nri::StoreOp::STORE;
+
+            nri::RenderingDesc renderingDesc = {};
+            renderingDesc.colorNum = 1;
+            renderingDesc.colors = &colorAttachmentDesc;
+
+            NRI.CmdBeginRendering(*commandBuffer, renderingDesc);
             {
-                {
-                    helper::Annotation annotation(NRI, *commandBuffer, "Clears");
+                helper::Annotation annotation(NRI, *commandBuffer, "Triangle");
 
-                    nri::ClearAttachmentDesc clearDesc = {};
-                    clearDesc.planes = nri::PlaneBits::COLOR;
-                    clearDesc.value.color.f = {1.0f, 1.0f, 1.0f, 1.0f};
+                NRI.CmdSetPipelineLayout(*commandBuffer, nri::BindPoint::GRAPHICS, *m_PipelineLayout);
+                NRI.CmdSetPipeline(*commandBuffer, *m_Pipeline);
 
-                    NRI.CmdClearAttachments(*commandBuffer, &clearDesc, 1, nullptr, 0);
-                }
+                const float transparency = 1.0f;
+                nri::SetRootConstantsDesc rootConstant = {0, &transparency, 4};
+                NRI.CmdSetRootConstants(*commandBuffer, rootConstant);
 
-                {
-                    helper::Annotation annotation(NRI, *commandBuffer, "Triangle");
+                NRI.CmdSetIndexBuffer(*commandBuffer, *m_GeometryBuffer, 0, nri::IndexType::UINT16);
 
-                    NRI.CmdSetPipelineLayout(*commandBuffer, nri::BindPoint::GRAPHICS, *m_PipelineLayout);
-                    NRI.CmdSetPipeline(*commandBuffer, *m_Pipeline);
+                nri::VertexBufferDesc vertexBufferDesc = {};
+                vertexBufferDesc.buffer = m_GeometryBuffer;
+                vertexBufferDesc.offset = m_GeometryOffset;
+                vertexBufferDesc.stride = sizeof(Vertex);
+                NRI.CmdSetVertexBuffers(*commandBuffer, 0, &vertexBufferDesc, 1);
 
-                    const float transparency = 1.0f;
-                    nri::SetRootConstantsDesc rootConstant = {0, &transparency, 4};
-                    NRI.CmdSetRootConstants(*commandBuffer, rootConstant);
+                nri::SetDescriptorSetDesc descriptorSet0 = {0, queuedFrame.constantBufferDescriptorSet};
+                NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet0);
 
-                    NRI.CmdSetIndexBuffer(*commandBuffer, *m_GeometryBuffer, 0, nri::IndexType::UINT16);
+                nri::SetDescriptorSetDesc descriptorSet1 = {1, m_TextureDescriptorSet};
+                NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet1);
 
-                    nri::VertexBufferDesc vertexBufferDesc = {};
-                    vertexBufferDesc.buffer = m_GeometryBuffer;
-                    vertexBufferDesc.offset = m_GeometryOffset;
-                    vertexBufferDesc.stride = sizeof(Vertex);
-                    NRI.CmdSetVertexBuffers(*commandBuffer, 0, &vertexBufferDesc, 1);
+                const nri::Viewport viewport = {0.0f, 0.0f, (float)w, (float)h, 0.0f, 1.0f};
+                NRI.CmdSetViewports(*commandBuffer, &viewport, 1);
 
-                    nri::SetDescriptorSetDesc descriptorSet0 = {0, queuedFrame.constantBufferDescriptorSet};
-                    NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet0);
+                nri::Rect scissor = {0, 0, w, h};
+                NRI.CmdSetScissors(*commandBuffer, &scissor, 1);
 
-                    nri::SetDescriptorSetDesc descriptorSet1 = {1, m_TextureDescriptorSet};
-                    NRI.CmdSetDescriptorSet(*commandBuffer, descriptorSet1);
-
-                    const nri::Viewport viewport = {0.0f, 0.0f, (float)w, (float)h, 0.0f, 1.0f};
-                    NRI.CmdSetViewports(*commandBuffer, &viewport, 1);
-
-                    nri::Rect scissor = {0, 0, w, h};
-                    NRI.CmdSetScissors(*commandBuffer, &scissor, 1);
-
-                    NRI.CmdDrawIndexed(*commandBuffer, {3, 1, 0, 0, 0});
-                }
+                NRI.CmdDrawIndexed(*commandBuffer, {3, 1, 0, 0, 0});
             }
             NRI.CmdEndRendering(*commandBuffer);
         }
 
-        { // Barriers
-            nri::TextureBarrierDesc textureBarrier = {};
-            textureBarrier.texture = m_TextureMsaa;
-            textureBarrier.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-            textureBarrier.after = {nri::AccessBits::RESOLVE_SOURCE, nri::Layout::RESOLVE_SOURCE};
+        if (!m_RenderPassResolve) {
+            { // Barriers
+                nri::TextureBarrierDesc textureBarrier = {};
+                textureBarrier.texture = m_TextureMsaa;
+                textureBarrier.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+                textureBarrier.after = {nri::AccessBits::RESOLVE_SOURCE, nri::Layout::RESOLVE_SOURCE};
+                m_TextureMsaaLastState = textureBarrier.after;
 
-            nri::BarrierDesc barrierGroup = {};
-            barrierGroup.textureNum = 1;
-            barrierGroup.textures = &textureBarrier;
+                nri::BarrierDesc barrierGroup = {};
+                barrierGroup.textureNum = 1;
+                barrierGroup.textures = &textureBarrier;
 
-            NRI.CmdBarrier(*commandBuffer, barrierGroup);
-        }
+                NRI.CmdBarrier(*commandBuffer, barrierGroup);
+            }
 
-        { // Resolve
-            NRI.CmdResolveTexture(*commandBuffer, *swapChainTexture.texture, nullptr, *m_TextureMsaa, nullptr, nri::ResolveOp::AVERAGE);
+            // Resolve (slow, off chip)
+            NRI.CmdResolveTexture(*commandBuffer, *swapChainTexture.texture, nullptr, *m_TextureMsaa, nullptr, (nri::ResolveOp)m_ResolveMode);
         }
 
         { // Barriers
@@ -622,13 +641,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         { // Composition
-            nri::AttachmentsDesc attachmentsDesc = {};
-            attachmentsDesc.colorNum = 1;
-            attachmentsDesc.colors = &swapChainTexture.colorAttachment;
+            nri::AttachmentDesc colorAttachmentDesc = {};
+            colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
+
+            nri::RenderingDesc renderingDesc = {};
+            renderingDesc.colorNum = 1;
+            renderingDesc.colors = &colorAttachmentDesc;
 
             CmdCopyImguiData(*commandBuffer, *m_Streamer);
 
-            NRI.CmdBeginRendering(*commandBuffer, attachmentsDesc);
+            NRI.CmdBeginRendering(*commandBuffer, renderingDesc);
             {
                 helper::Annotation annotation(NRI, *commandBuffer, "UI");
 

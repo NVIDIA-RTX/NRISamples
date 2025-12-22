@@ -270,6 +270,9 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 void Sample::PrepareFrame(uint32_t) {
     bool multiThreadingPrev = m_MultiThreading;
 
+    if(IsHalfTimeLimitReached())
+        m_MultiThreading = !m_MultiThreading;
+
     ImGui::NewFrame();
     {
         ImGui::SetNextWindowSize(ImVec2(0, 0));
@@ -339,12 +342,15 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             NRI.CmdBarrier(commandBufferPre, barrierDesc);
 
-            nri::AttachmentsDesc attachmentsDesc = {};
-            attachmentsDesc.colorNum = 1;
-            attachmentsDesc.colors = &m_BackBuffer->colorAttachment;
-            attachmentsDesc.depthStencil = m_DepthTextureView;
+            nri::AttachmentDesc colorAttachmentDesc = {};
+            colorAttachmentDesc.descriptor = m_BackBuffer->colorAttachment;
 
-            NRI.CmdBeginRendering(commandBufferPre, attachmentsDesc);
+            nri::RenderingDesc renderingDesc = {};
+            renderingDesc.colorNum = 1;
+            renderingDesc.colors = &colorAttachmentDesc;
+            renderingDesc.depth.descriptor = m_DepthTextureView;
+
+            NRI.CmdBeginRendering(commandBufferPre, renderingDesc);
             {
                 nri::ClearAttachmentDesc clearDescs[2] = {};
                 clearDescs[0].planes = nri::PlaneBits::COLOR;
@@ -389,12 +395,15 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         {
             helper::Annotation annotation(NRI, commandBuffer, "Render boxes");
 
-            nri::AttachmentsDesc attachmentsDesc = {};
-            attachmentsDesc.colorNum = 1;
-            attachmentsDesc.colors = &m_BackBuffer->colorAttachment;
-            attachmentsDesc.depthStencil = m_DepthTextureView;
+            nri::AttachmentDesc colorAttachmentDesc = {};
+            colorAttachmentDesc.descriptor = m_BackBuffer->colorAttachment;
 
-            NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
+            nri::RenderingDesc renderingDesc = {};
+            renderingDesc.colorNum = 1;
+            renderingDesc.colors = &colorAttachmentDesc;
+            renderingDesc.depth.descriptor = m_DepthTextureView;
+
+            NRI.CmdBeginRendering(commandBuffer, renderingDesc);
             {
                 uint32_t boxNum = m_MultiThreading ? m_BoxesPerThread : (uint32_t)m_Boxes.size();
 
@@ -426,13 +435,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         {
             helper::Annotation annotation(NRI, commandBufferPost, "Post");
 
-            nri::AttachmentsDesc attachmentsDesc = {};
-            attachmentsDesc.colorNum = 1;
-            attachmentsDesc.colors = &m_BackBuffer->colorAttachment;
+            nri::AttachmentDesc colorAttachmentDesc = {};
+            colorAttachmentDesc.descriptor = m_BackBuffer->colorAttachment;
+
+            nri::RenderingDesc renderingDesc = {};
+            renderingDesc.colorNum = 1;
+            renderingDesc.colors = &colorAttachmentDesc;
 
             CmdCopyImguiData(commandBufferPost, *m_Streamer);
 
-            NRI.CmdBeginRendering(commandBufferPost, attachmentsDesc);
+            NRI.CmdBeginRendering(commandBufferPost, renderingDesc);
             {
                 CmdDrawImgui(commandBufferPost, m_BackBuffer->attachmentFormat, 1.0f, true);
             }
@@ -571,12 +583,15 @@ void Sample::ThreadEntryPoint(uint32_t threadIndex) {
         // Record
         NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
         {
-            nri::AttachmentsDesc attachmentsDesc = {};
-            attachmentsDesc.colorNum = 1;
-            attachmentsDesc.colors = &m_BackBuffer->colorAttachment;
-            attachmentsDesc.depthStencil = m_DepthTextureView;
+            nri::AttachmentDesc colorAttachmentDesc = {};
+            colorAttachmentDesc.descriptor = m_BackBuffer->colorAttachment;
 
-            NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
+            nri::RenderingDesc renderingDesc = {};
+            renderingDesc.colorNum = 1;
+            renderingDesc.colors = &colorAttachmentDesc;
+            renderingDesc.depth.descriptor = m_DepthTextureView;
+
+            NRI.CmdBeginRendering(commandBuffer, renderingDesc);
             {
                 uint32_t baseBoxIndex = threadIndex * m_BoxesPerThread;
                 uint32_t boxNum = std::min(m_BoxesPerThread, (uint32_t)m_Boxes.size() - baseBoxIndex);
@@ -1039,7 +1054,7 @@ void Sample::CreateTextures() {
     for (size_t i = 0; i < m_Textures.size(); i++) {
         const utils::Texture& texture = loadedTextures[i % textureNum];
 
-        nri::Texture2DViewDesc texture2DViewDesc = {m_Textures[i], nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
+        nri::Texture2DViewDesc texture2DViewDesc = {m_Textures[i], nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureViews[i]));
     }
 }

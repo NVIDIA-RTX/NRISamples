@@ -263,13 +263,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         textureBarriers.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
         NRI.CmdBarrier(commandBuffer, barrierDesc);
 
-        nri::AttachmentsDesc attachmentsDesc = {};
-        attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &swapChainTexture.colorAttachment;
+        nri::AttachmentDesc colorAttachmentDesc = {};
+        colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
+
+        nri::RenderingDesc renderingDesc = {};
+        renderingDesc.colorNum = 1;
+        renderingDesc.colors = &colorAttachmentDesc;
 
         CmdCopyImguiData(commandBuffer, *m_Streamer);
 
-        NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
+        NRI.CmdBeginRendering(commandBuffer, renderingDesc);
         {
             helper::Annotation annotation(NRI, commandBuffer, "Clear");
 

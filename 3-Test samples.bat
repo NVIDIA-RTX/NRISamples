@@ -34,6 +34,7 @@ call :TestSample Buffers
 call :TestSample Clear
 call :TestSample ClearStorage
 call :TestSample DescriptorHeapIndexing
+call :TestSample InputAttachment
 call :TestSample LowLatency
 call :TestSample Multisample
 call :TestSample MultiThreading

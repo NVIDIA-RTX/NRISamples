@@ -400,7 +400,7 @@ void Sample::CreateRayTracingOutput(nri::Format swapChainFormat) {
     const nri::BindTextureMemoryDesc memoryBindingDesc = {m_RayTracingOutput, memory};
     NRI_ABORT_ON_FAILURE(NRI.BindTextureMemory(&memoryBindingDesc, 1));
 
-    nri::Texture2DViewDesc textureViewDesc = {m_RayTracingOutput, nri::Texture2DViewType::SHADER_RESOURCE_STORAGE_2D, swapChainFormat};
+    nri::Texture2DViewDesc textureViewDesc = {m_RayTracingOutput, nri::Texture2DViewType::SHADER_RESOURCE_STORAGE, swapChainFormat};
     NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, m_RayTracingOutputView));
 
     const nri::UpdateDescriptorRangeDesc updateDescriptorRangeDesc = {m_DescriptorSet, 0, 0, &m_RayTracingOutputView, 1};

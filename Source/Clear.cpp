@@ -170,11 +170,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         barrierDesc.textures = &textureBarriers;
         NRI.CmdBarrier(commandBuffer, barrierDesc);
 
-        nri::AttachmentsDesc attachmentsDesc = {};
-        attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &swapChainTexture.colorAttachment;
+        nri::AttachmentDesc colorAttachmentDesc = {};
+        colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
+        colorAttachmentDesc.clearValue.color.f = {1.0f, 0.0f, 0.0f, 1.0f};
+        colorAttachmentDesc.loadOp = nri::LoadOp::CLEAR;
 
-        NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
+        nri::RenderingDesc renderingDesc = {};
+        renderingDesc.colorNum = 1;
+        renderingDesc.colors = &colorAttachmentDesc;
+
+        NRI.CmdBeginRendering(commandBuffer, renderingDesc);
         {
             helper::Annotation annotation(NRI, commandBuffer, "Clear");
 
@@ -186,10 +191,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             nri::Dim_t h = (nri::Dim_t)GetOutputResolution().y;
             nri::Dim_t h3 = h / 3;
             int16_t y = (int16_t)h3;
-
-            clearDesc.value.color.f = {1.0f, 0.0f, 0.0f, 1.0f};
-            nri::Rect rect1 = {0, 0, w, h3};
-            NRI.CmdClearAttachments(commandBuffer, &clearDesc, 1, &rect1, 1);
 
             clearDesc.value.color.f = {0.0f, 1.0f, 0.0f, 1.0f};
             nri::Rect rect2 = {0, y, w, h3};

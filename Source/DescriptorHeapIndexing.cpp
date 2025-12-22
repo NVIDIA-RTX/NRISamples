@@ -177,7 +177,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
         NRI_ABORT_ON_FAILURE(NRI.CreatePlacedTexture(*m_Device, NriDeviceHeap, textureDesc, m_Output));
 
-        nri::Texture2DViewDesc textureViewDesc = {m_Output, nri::Texture2DViewType::SHADER_RESOURCE_STORAGE_2D, textureDesc.format};
+        nri::Texture2DViewDesc textureViewDesc = {m_Output, nri::Texture2DViewType::SHADER_RESOURCE_STORAGE, textureDesc.format};
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, m_Output_StorageTexture));
     }
 
@@ -207,7 +207,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
         NRI_ABORT_ON_FAILURE(NRI.CreatePlacedTexture(*m_Device, NriDeviceHeap, textureDesc, m_Tex0));
 
-        nri::Texture2DViewDesc textureViewDesc = {m_Tex0, nri::Texture2DViewType::SHADER_RESOURCE_2D, textureDesc.format};
+        nri::Texture2DViewDesc textureViewDesc = {m_Tex0, nri::Texture2DViewType::SHADER_RESOURCE, textureDesc.format};
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, m_Tex0_Texture));
 
         nri::TextureSubresourceUploadDesc subresource0 = {};
@@ -236,7 +236,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
         NRI_ABORT_ON_FAILURE(NRI.CreatePlacedTexture(*m_Device, NriDeviceHeap, textureDesc, m_Tex1));
 
-        nri::Texture2DViewDesc textureViewDesc = {m_Tex1, nri::Texture2DViewType::SHADER_RESOURCE_2D, textureDesc.format};
+        nri::Texture2DViewDesc textureViewDesc = {m_Tex1, nri::Texture2DViewType::SHADER_RESOURCE, textureDesc.format};
         NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, m_Tex1_Texture));
 
         nri::TextureSubresourceUploadDesc subresource0 = {};

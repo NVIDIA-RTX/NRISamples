@@ -286,6 +286,9 @@ void Sample::PrepareFrame(uint32_t) {
     bool enableLowLatencyPrev = m_EnableLowLatency;
     uint32_t queuedFrameNumPrev = m_QueuedFrameNum;
 
+    if(IsHalfTimeLimitReached() && m_AllowLowLatency)
+        m_EnableLowLatency = !m_EnableLowLatency;
+
     ImGui::NewFrame();
     {
         // Lagometer
@@ -324,13 +327,11 @@ void Sample::PrepareFrame(uint32_t) {
             ImGui::SetNextItemWidth(210.0f);
             ImGui::SliderInt("##Frames", (int32_t*)&m_QueuedFrameNum, 1, QUEUED_FRAMES_MAX_NUM, "%d", ImGuiSliderFlags_NoInput);
 
-            if (!m_AllowLowLatency)
-                ImGui::BeginDisabled();
+            ImGui::BeginDisabled(!m_AllowLowLatency);
             ImGui::Checkbox("Low latency (F1)", &m_EnableLowLatency);
             if (m_AllowLowLatency && IsKeyToggled(Key::F1))
                 m_EnableLowLatency = !m_EnableLowLatency;
-            if (!m_AllowLowLatency)
-                ImGui::EndDisabled();
+            ImGui::EndDisabled();
 
             char s[64];
             snprintf(s, sizeof(s), "Waitable swapchain (%u)", WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY);
@@ -429,13 +430,16 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         // Clear and UI
-        nri::AttachmentsDesc attachmentsDesc = {};
-        attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &swapChainTexture.colorAttachment;
+        nri::AttachmentDesc colorAttachmentDesc = {};
+        colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
+
+        nri::RenderingDesc renderingDesc = {};
+        renderingDesc.colorNum = 1;
+        renderingDesc.colors = &colorAttachmentDesc;
 
         CmdCopyImguiData(commandBuffer, *m_Streamer);
 
-        NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
+        NRI.CmdBeginRendering(commandBuffer, renderingDesc);
         {
             nri::ClearAttachmentDesc clearDesc = {};
             clearDesc.colorAttachmentIndex = 0;

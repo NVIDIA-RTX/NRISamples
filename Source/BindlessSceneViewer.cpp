@@ -495,7 +495,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         m_Descriptors.resize(textureNum);
         for (uint32_t i = 0; i < textureNum; i++) {
             const utils::Texture& texture = *m_Scene.textures[i];
-            nri::Texture2DViewDesc texture2DViewDesc = {m_Textures[i], nri::Texture2DViewType::SHADER_RESOURCE_2D, texture.GetFormat()};
+            nri::Texture2DViewDesc texture2DViewDesc = {m_Textures[i], nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
             NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_Descriptors[i]));
         }
 
@@ -775,6 +775,9 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 void Sample::PrepareFrame(uint32_t frameIndex) {
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
 
+    if(IsHalfTimeLimitReached() && deviceDesc.features.drawIndirectCount)
+        m_UseGPUDrawGeneration = !m_UseGPUDrawGeneration;
+
     ImGui::NewFrame();
     {
         nri::PipelineStatisticsDesc* pipelineStats = (nri::PipelineStatisticsDesc*)NRI.MapBuffer(*m_Buffers[READBACK_BUFFER], 0, sizeof(nri::PipelineStatisticsDesc));
@@ -849,10 +852,13 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     {
         helper::Annotation annotation(NRI, commandBuffer, "Scene");
 
-        nri::AttachmentsDesc attachmentsDesc = {};
-        attachmentsDesc.colorNum = 1;
-        attachmentsDesc.colors = &swapChainTexture.colorAttachment;
-        attachmentsDesc.depthStencil = m_DepthAttachment;
+        nri::AttachmentDesc colorAttachmentDesc = {};
+        colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
+
+        nri::RenderingDesc renderingDesc = {};
+        renderingDesc.colorNum = 1;
+        renderingDesc.colors = &colorAttachmentDesc;
+        renderingDesc.depth.descriptor = m_DepthAttachment;
 
         // Barriers
         nri::TextureBarrierDesc textureBarrier = {};
@@ -917,7 +923,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         { // Rendering
-            NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
+            NRI.CmdBeginRendering(commandBuffer, renderingDesc);
             {
                 nri::ClearAttachmentDesc clearDescs[2] = {};
                 clearDescs[0].planes = nri::PlaneBits::COLOR;
@@ -970,11 +976,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         // UI
-        attachmentsDesc.depthStencil = nullptr;
+        renderingDesc.depth.descriptor = nullptr;
 
         CmdCopyImguiData(commandBuffer, *m_Streamer);
 
-        NRI.CmdBeginRendering(commandBuffer, attachmentsDesc);
+        NRI.CmdBeginRendering(commandBuffer, renderingDesc);
         {
             CmdDrawImgui(commandBuffer, swapChainTexture.attachmentFormat, 1.0f, true);
         }
