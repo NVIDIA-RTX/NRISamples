@@ -1,5 +1,6 @@
 // © 2021 NVIDIA Corporation
 
+#include <inttypes.h>
 #include <memory.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -231,6 +232,12 @@ int main(int argc, char** argv) {
 
         // Wait for idle
         iCore.QueueWaitIdle(queue);
+    }
+
+    {
+        // Print "device address"
+        printf("Device address 1 = 0x%016" PRIX64 "\n", iCore.GetBufferDeviceAddress(bufferZero));
+        printf("Device address 2 = 0x%016" PRIX64 "\n", iCore.GetBufferDeviceAddress(bufferOne));
     }
 
     { // Validate result
