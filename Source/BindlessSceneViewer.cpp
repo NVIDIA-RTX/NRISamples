@@ -509,8 +509,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         m_Descriptors.push_back(anisotropicSampler);
 
         nri::BufferViewDesc bufferViewDesc = {};
-        bufferViewDesc.viewType = nri::BufferViewType::SHADER_RESOURCE;
-        bufferViewDesc.offset = 0;
+        bufferViewDesc.viewType = nri::BufferViewType::SHADER_RESOURCE_STRUCTURED;
 
         // Material buffer
         bufferViewDesc.buffer = m_Buffers[MATERIAL_BUFFER];

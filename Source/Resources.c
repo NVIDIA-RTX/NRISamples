@@ -94,9 +94,9 @@ int main(int argc, char** argv) {
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
                 .viewType = NriBufferViewType_SHADER_RESOURCE,
-                .format = NriFormat_RGBA32_SFLOAT,
                 .offset = 0,
                 .size = 1024,
+                .format = NriFormat_RGBA32_SFLOAT,
             },
             &bufferView_Typed);
 
@@ -105,21 +105,40 @@ int main(int argc, char** argv) {
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
                 .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE,
-                .format = NriFormat_RGBA32_SFLOAT,
+                .offset = 0,
+                .size = 1024,
+                .format = NriFormat_RG32_UINT,
+            },
+            &bufferView_TypedStorage);
+
+        NriDescriptor* bufferView_Raw = NULL;
+        iCore.CreateBufferView(
+            &(NriBufferViewDesc){
+                .buffer = placedBuffer,
+                .viewType = NriBufferViewType_SHADER_RESOURCE_RAW,
                 .offset = 0,
                 .size = 1024,
             },
-            &bufferView_TypedStorage);
+            &bufferView_Raw);
+
+        NriDescriptor* bufferView_RawStorage = NULL;
+        iCore.CreateBufferView(
+            &(NriBufferViewDesc){
+                .buffer = placedBuffer,
+                .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE_RAW,
+                .offset = 0,
+                .size = 1024,
+            },
+            &bufferView_RawStorage);
 
         NriDescriptor* bufferView_Structured = NULL;
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
-                .viewType = NriBufferViewType_SHADER_RESOURCE,
-                .format = NriFormat_RGBA32_SFLOAT,
+                .viewType = NriBufferViewType_SHADER_RESOURCE_STRUCTURED,
                 .offset = 0,
                 .size = 1024,
-                .structureStride = 32,
+                .structureStride = 16,
             },
             &bufferView_Structured);
 
@@ -127,8 +146,7 @@ int main(int argc, char** argv) {
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
-                .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE,
-                .format = NriFormat_RGBA32_SFLOAT,
+                .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE_STRUCTURED,
                 .offset = 0,
                 .size = 1024,
                 .structureStride = 32,
@@ -137,6 +155,8 @@ int main(int argc, char** argv) {
 
         iCore.DestroyDescriptor(bufferView_Typed);
         iCore.DestroyDescriptor(bufferView_TypedStorage);
+        iCore.DestroyDescriptor(bufferView_Raw);
+        iCore.DestroyDescriptor(bufferView_RawStorage);
         iCore.DestroyDescriptor(bufferView_Structured);
         iCore.DestroyDescriptor(bufferView_StructuredStorage);
     }
