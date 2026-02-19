@@ -111,25 +111,25 @@ int main(int argc, char** argv) {
             },
             &bufferView_TypedStorage);
 
-        NriDescriptor* bufferView_Raw = NULL;
+        NriDescriptor* bufferView_ByteAddress = NULL;
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
-                .viewType = NriBufferViewType_SHADER_RESOURCE_RAW,
+                .viewType = NriBufferViewType_SHADER_RESOURCE_BYTE_ADDRESS,
                 .offset = 0,
                 .size = 1024,
             },
-            &bufferView_Raw);
+            &bufferView_ByteAddress);
 
-        NriDescriptor* bufferView_RawStorage = NULL;
+        NriDescriptor* bufferView_ByteAddressStorage = NULL;
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
-                .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE_RAW,
+                .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE_BYTE_ADDRESS,
                 .offset = 0,
                 .size = 1024,
             },
-            &bufferView_RawStorage);
+            &bufferView_ByteAddressStorage);
 
         NriDescriptor* bufferView_Structured = NULL;
         iCore.CreateBufferView(
@@ -155,8 +155,8 @@ int main(int argc, char** argv) {
 
         iCore.DestroyDescriptor(bufferView_Typed);
         iCore.DestroyDescriptor(bufferView_TypedStorage);
-        iCore.DestroyDescriptor(bufferView_Raw);
-        iCore.DestroyDescriptor(bufferView_RawStorage);
+        iCore.DestroyDescriptor(bufferView_ByteAddress);
+        iCore.DestroyDescriptor(bufferView_ByteAddressStorage);
         iCore.DestroyDescriptor(bufferView_Structured);
         iCore.DestroyDescriptor(bufferView_StructuredStorage);
     }
