@@ -134,10 +134,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         nri::Format swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
 
         for (uint32_t i = 0; i < swapChainTextureNum; i++) {
-            nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
+            nri::TextureViewDesc textureViewDesc = {swapChainTextures[i], nri::TextureView::COLOR_ATTACHMENT, swapChainFormat};
 
             nri::Descriptor* colorAttachment = nullptr;
-            NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
+            NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, colorAttachment));
 
             nri::Fence* acquireSemaphore = nullptr;
             NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, acquireSemaphore));
@@ -265,10 +265,10 @@ void Sample::ResizeSwapChain() {
 
     m_SwapChainTextures.clear();
     for (uint32_t i = 0; i < swapChainTextureNum; i++) {
-        nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
+        nri::TextureViewDesc textureViewDesc = {swapChainTextures[i], nri::TextureView::COLOR_ATTACHMENT, swapChainFormat};
 
         nri::Descriptor* colorAttachment = nullptr;
-        NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
+        NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, colorAttachment));
 
         nri::Fence* acquireSemaphore = nullptr;
         NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, acquireSemaphore));

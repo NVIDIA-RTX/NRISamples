@@ -495,8 +495,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         m_Descriptors.resize(textureNum);
         for (uint32_t i = 0; i < textureNum; i++) {
             const utils::Texture& texture = *m_Scene.textures[i];
-            nri::Texture2DViewDesc texture2DViewDesc = {m_Textures[i], nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
-            NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_Descriptors[i]));
+            nri::TextureViewDesc textureViewDesc = {m_Textures[i], nri::TextureView::TEXTURE, texture.GetFormat()};
+            NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_Descriptors[i]));
         }
 
         // Sampler
@@ -509,7 +509,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         m_Descriptors.push_back(anisotropicSampler);
 
         nri::BufferViewDesc bufferViewDesc = {};
-        bufferViewDesc.viewType = nri::BufferViewType::SHADER_RESOURCE_STRUCTURED;
+        bufferViewDesc.type = nri::BufferView::STRUCTURED_BUFFER;
 
         // Material buffer
         bufferViewDesc.buffer = m_Buffers[MATERIAL_BUFFER];
@@ -530,7 +530,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         m_Descriptors.push_back(resourceViews[2]);
 
         // Indirect buffer
-        bufferViewDesc.viewType = nri::BufferViewType::SHADER_RESOURCE_STORAGE;
+        bufferViewDesc.type = nri::BufferView::STORAGE_BUFFER;
         bufferViewDesc.buffer = m_Buffers[INDIRECT_BUFFER];
         bufferViewDesc.size = m_Scene.instances.size() * GetDrawIndexedCommandSize();
         bufferViewDesc.format = nri::Format::R32_UINT;
@@ -538,7 +538,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         m_Descriptors.push_back(m_IndirectBufferShaderStorage);
 
         // Indirect draw count buffer
-        bufferViewDesc.viewType = nri::BufferViewType::SHADER_RESOURCE_STORAGE;
+        bufferViewDesc.type = nri::BufferView::STORAGE_BUFFER;
         bufferViewDesc.buffer = m_Buffers[INDIRECT_COUNT_BUFFER];
         bufferViewDesc.size = sizeof(uint32_t);
         bufferViewDesc.format = nri::Format::R32_UINT;
@@ -551,25 +551,19 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         for (uint32_t i = 0; i < GetQueuedFrameNum(); i++) {
             m_QueuedFrames[i].globalConstantBufferViewOffsets = i * constantBufferSize;
             bufferViewDesc.buffer = m_Buffers[CONSTANT_BUFFER];
-            bufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
+            bufferViewDesc.type = nri::BufferView::CONSTANT_BUFFER;
             bufferViewDesc.offset = i * constantBufferSize;
             bufferViewDesc.size = constantBufferSize;
             NRI_ABORT_ON_FAILURE(NRI.CreateBufferView(bufferViewDesc, constantBufferViews[i]));
             m_Descriptors.push_back(constantBufferViews[i]);
         }
 
-        // Depth buffer
-        nri::Texture2DViewDesc texture2DViewDesc = {depthTexture, nri::Texture2DViewType::DEPTH_STENCIL_ATTACHMENT, m_DepthFormat};
-
-        NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_DepthAttachment));
-        m_Descriptors.push_back(m_DepthAttachment);
-
         // Swap chain
         for (uint32_t i = 0; i < swapChainTextureNum; i++) {
-            nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
+            nri::TextureViewDesc textureViewDesc = {swapChainTextures[i], nri::TextureView::COLOR_ATTACHMENT, swapChainFormat};
 
             nri::Descriptor* colorAttachment = nullptr;
-            NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
+            NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, colorAttachment));
 
             nri::Fence* acquireSemaphore = nullptr;
             NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, acquireSemaphore));
@@ -586,6 +580,12 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
             swapChainTexture.colorAttachment = colorAttachment;
             swapChainTexture.attachmentFormat = swapChainFormat;
         }
+
+        // Depth buffer
+        nri::TextureViewDesc textureViewDesc = {depthTexture, nri::TextureView::DEPTH_STENCIL_ATTACHMENT, m_DepthFormat};
+
+        NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_DepthAttachment));
+        m_Descriptors.push_back(m_DepthAttachment);
     }
 
 #define TEST 100
@@ -774,7 +774,7 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 void Sample::PrepareFrame(uint32_t frameIndex) {
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
 
-    if(IsHalfTimeLimitReached() && deviceDesc.features.drawIndirectCount)
+    if (IsHalfTimeLimitReached() && deviceDesc.features.drawIndirectCount)
         m_UseGPUDrawGeneration = !m_UseGPUDrawGeneration;
 
     ImGui::NewFrame();

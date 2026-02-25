@@ -636,10 +636,10 @@ nri::Format Sample::CreateSwapChain() {
 
     m_SwapChainTextures.clear();
     for (uint32_t i = 0; i < swapChainTextureNum; i++) {
-        nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
+        nri::TextureViewDesc textureViewDesc = {swapChainTextures[i], nri::TextureView::COLOR_ATTACHMENT, swapChainFormat};
 
         nri::Descriptor* colorAttachment = nullptr;
-        NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
+        NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, colorAttachment));
 
         nri::Fence* acquireSemaphore = nullptr;
         NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, acquireSemaphore));
@@ -806,8 +806,8 @@ void Sample::CreateDepthTexture() {
     m_MemoryAllocations.resize(baseAllocation + 1, nullptr);
     NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
-    nri::Texture2DViewDesc texture2DViewDesc = {m_DepthTexture, nri::Texture2DViewType::DEPTH_STENCIL_ATTACHMENT, m_DepthFormat};
-    NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_DepthTextureView));
+    nri::TextureViewDesc textureViewDesc = {m_DepthTexture, nri::TextureView::DEPTH_STENCIL_ATTACHMENT, m_DepthFormat};
+    NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_DepthTextureView));
 
     nri::TextureUploadDesc textureData = {};
     textureData.texture = m_DepthTexture;
@@ -910,7 +910,7 @@ void Sample::CreateTransformConstantBuffer() {
     NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     nri::BufferViewDesc constantBufferViewDesc = {};
-    constantBufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
+    constantBufferViewDesc.type = nri::BufferView::CONSTANT_BUFFER;
     constantBufferViewDesc.buffer = m_TransformConstantBuffer;
     constantBufferViewDesc.size = alignedMatrixSize;
     NRI_ABORT_ON_FAILURE(NRI.CreateBufferView(constantBufferViewDesc, m_TransformConstantBufferView));
@@ -1054,8 +1054,8 @@ void Sample::CreateTextures() {
     for (size_t i = 0; i < m_Textures.size(); i++) {
         const utils::Texture& texture = loadedTextures[i % textureNum];
 
-        nri::Texture2DViewDesc texture2DViewDesc = {m_Textures[i], nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
-        NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureViews[i]));
+        nri::TextureViewDesc textureViewDesc = {m_Textures[i], nri::TextureView::TEXTURE, texture.GetFormat()};
+        NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_TextureViews[i]));
     }
 }
 
@@ -1080,7 +1080,7 @@ void Sample::CreateFakeConstantBuffers() {
     NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     nri::BufferViewDesc constantBufferViewDesc = {};
-    constantBufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
+    constantBufferViewDesc.type = nri::BufferView::CONSTANT_BUFFER;
     constantBufferViewDesc.buffer = m_FakeConstantBuffer;
     constantBufferViewDesc.size = constantRangeSize;
 
@@ -1119,7 +1119,7 @@ void Sample::CreateViewConstantBuffer() {
     NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
     nri::BufferViewDesc constantBufferViewDesc = {};
-    constantBufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
+    constantBufferViewDesc.type = nri::BufferView::CONSTANT_BUFFER;
     constantBufferViewDesc.buffer = m_ViewConstantBuffer;
     constantBufferViewDesc.size = constantRangeSize;
     NRI_ABORT_ON_FAILURE(NRI.CreateBufferView(constantBufferViewDesc, m_ViewConstantBufferView));

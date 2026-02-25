@@ -445,8 +445,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         for (uint32_t i = 0; i < textureNum; i++) {
             const utils::Texture& texture = *m_Scene.textures[i];
 
-            nri::Texture2DViewDesc texture2DViewDesc = {m_Textures[i], nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
-            NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_Descriptors[i]));
+            nri::TextureViewDesc textureViewDesc = {m_Textures[i], nri::TextureView::TEXTURE, texture.GetFormat()};
+            NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_Descriptors[i]));
         }
 
         // Sampler
@@ -464,7 +464,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
             nri::BufferViewDesc bufferViewDesc = {};
             bufferViewDesc.buffer = m_Buffers[CONSTANT_BUFFER];
-            bufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
+            bufferViewDesc.type = nri::BufferView::CONSTANT_BUFFER;
             bufferViewDesc.offset = i * constantBufferSize;
             bufferViewDesc.size = constantBufferSize;
             NRI_ABORT_ON_FAILURE(NRI.CreateBufferView(bufferViewDesc, constantBufferViews[i]));
@@ -472,26 +472,26 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         }
 
         { // Depth buffer
-            nri::Texture2DViewDesc texture2DViewDesc = {depthTexture, nri::Texture2DViewType::DEPTH_STENCIL_ATTACHMENT, m_DepthFormat};
+            nri::TextureViewDesc textureViewDesc = {depthTexture, nri::TextureView::DEPTH_STENCIL_ATTACHMENT, m_DepthFormat};
 
-            NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_DepthAttachment));
+            NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_DepthAttachment));
             m_Descriptors.push_back(m_DepthAttachment);
         }
 
         // Shading rate attachment
         if (shadingRateTexture) {
-            nri::Texture2DViewDesc texture2DViewDesc = {shadingRateTexture, nri::Texture2DViewType::SHADING_RATE_ATTACHMENT, nri::Format::R8_UINT};
+            nri::TextureViewDesc textureViewDesc = {shadingRateTexture, nri::TextureView::SHADING_RATE_ATTACHMENT, nri::Format::R8_UINT};
 
-            NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_ShadingRateAttachment));
+            NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_ShadingRateAttachment));
             m_Descriptors.push_back(m_ShadingRateAttachment);
         }
 
         // Swap chain
         for (uint32_t i = 0; i < swapChainTextureNum; i++) {
-            nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
+            nri::TextureViewDesc textureViewDesc = {swapChainTextures[i], nri::TextureView::COLOR_ATTACHMENT, swapChainFormat};
 
             nri::Descriptor* colorAttachment = nullptr;
-            NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
+            NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, colorAttachment));
 
             nri::Fence* acquireSemaphore = nullptr;
             NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, acquireSemaphore));

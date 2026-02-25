@@ -431,10 +431,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         swapChainFormat = NRI.GetTextureDesc(*swapChainTextures[0]).format;
 
         for (uint32_t i = 0; i < swapChainTextureNum; i++) {
-            nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
+            nri::TextureViewDesc textureViewDesc = {swapChainTextures[i], nri::TextureView::COLOR_ATTACHMENT, swapChainFormat};
 
             nri::Descriptor* colorAttachment = nullptr;
-            NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
+            NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, colorAttachment));
 
             nri::Fence* acquireSemaphore = nullptr;
             NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, acquireSemaphore));
@@ -620,14 +620,14 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
     { // Descriptors
         // Read-only texture
-        nri::Texture2DViewDesc texture2DViewDesc = {m_Texture, nri::Texture2DViewType::SHADER_RESOURCE, texture.GetFormat()};
-        NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(texture2DViewDesc, m_TextureShaderResource));
+        nri::TextureViewDesc textureViewDesc = {m_Texture, nri::TextureView::TEXTURE, texture.GetFormat()};
+        NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_TextureShaderResource));
 
         // Constant buffer
         for (uint32_t i = 0; i < GetQueuedFrameNum(); i++) {
             nri::BufferViewDesc bufferViewDesc = {};
             bufferViewDesc.buffer = m_ConstantBuffer;
-            bufferViewDesc.viewType = nri::BufferViewType::CONSTANT;
+            bufferViewDesc.type = nri::BufferView::CONSTANT_BUFFER;
             bufferViewDesc.offset = i * constantBufferSize;
             bufferViewDesc.size = constantBufferSize;
             NRI_ABORT_ON_FAILURE(NRI.CreateBufferView(bufferViewDesc, m_QueuedFrames[i].constantBufferView));

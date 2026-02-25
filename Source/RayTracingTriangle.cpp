@@ -296,10 +296,10 @@ void Sample::CreateSwapChain(nri::Format& swapChainFormat) {
 
     m_SwapChainTextures.clear();
     for (uint32_t i = 0; i < swapChainTextureNum; i++) {
-        nri::Texture2DViewDesc textureViewDesc = {swapChainTextures[i], nri::Texture2DViewType::COLOR_ATTACHMENT, swapChainFormat};
+        nri::TextureViewDesc textureViewDesc = {swapChainTextures[i], nri::TextureView::COLOR_ATTACHMENT, swapChainFormat};
 
         nri::Descriptor* colorAttachment = nullptr;
-        NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, colorAttachment));
+        NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, colorAttachment));
 
         nri::Fence* acquireSemaphore = nullptr;
         NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, acquireSemaphore));
@@ -400,8 +400,8 @@ void Sample::CreateRayTracingOutput(nri::Format swapChainFormat) {
     const nri::BindTextureMemoryDesc memoryBindingDesc = {m_RayTracingOutput, memory};
     NRI_ABORT_ON_FAILURE(NRI.BindTextureMemory(&memoryBindingDesc, 1));
 
-    nri::Texture2DViewDesc textureViewDesc = {m_RayTracingOutput, nri::Texture2DViewType::SHADER_RESOURCE_STORAGE, swapChainFormat};
-    NRI_ABORT_ON_FAILURE(NRI.CreateTexture2DView(textureViewDesc, m_RayTracingOutputView));
+    nri::TextureViewDesc textureViewDesc = {m_RayTracingOutput, nri::TextureView::STORAGE_TEXTURE, swapChainFormat};
+    NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_RayTracingOutputView));
 
     const nri::UpdateDescriptorRangeDesc updateDescriptorRangeDesc = {m_DescriptorSet, 0, 0, &m_RayTracingOutputView, 1};
     NRI.UpdateDescriptorRanges(&updateDescriptorRangeDesc, 1);

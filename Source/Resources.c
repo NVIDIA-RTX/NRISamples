@@ -93,7 +93,7 @@ int main(int argc, char** argv) {
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
-                .viewType = NriBufferViewType_SHADER_RESOURCE,
+                .type = NriBufferView_BUFFER,
                 .offset = 0,
                 .size = 1024,
                 .format = NriFormat_RGBA32_SFLOAT,
@@ -104,7 +104,7 @@ int main(int argc, char** argv) {
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
-                .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE,
+                .type = NriBufferView_STORAGE_BUFFER,
                 .offset = 0,
                 .size = 1024,
                 .format = NriFormat_RG32_UINT,
@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
-                .viewType = NriBufferViewType_SHADER_RESOURCE_BYTE_ADDRESS,
+                .type = NriBufferView_BYTE_ADDRESS_BUFFER,
                 .offset = 0,
                 .size = 1024,
             },
@@ -125,7 +125,7 @@ int main(int argc, char** argv) {
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
-                .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE_BYTE_ADDRESS,
+                .type = NriBufferView_STORAGE_BYTE_ADDRESS_BUFFER,
                 .offset = 0,
                 .size = 1024,
             },
@@ -135,7 +135,7 @@ int main(int argc, char** argv) {
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
-                .viewType = NriBufferViewType_SHADER_RESOURCE_STRUCTURED,
+                .type = NriBufferView_STRUCTURED_BUFFER,
                 .offset = 0,
                 .size = 1024,
                 .structureStride = 16,
@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
                 .buffer = placedBuffer,
-                .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE_STRUCTURED,
+                .type = NriBufferView_STORAGE_STRUCTURED_BUFFER,
                 .offset = 0,
                 .size = 1024,
                 .structureStride = 32,

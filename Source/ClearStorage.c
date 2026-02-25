@@ -94,16 +94,16 @@ int main(int argc, char** argv) {
     {
         NRI_ABORT_ON_FAILURE(iCore.CreateBufferView(&(NriBufferViewDesc){
                                                         .buffer = buffer,
-                                                        .viewType = NriBufferViewType_SHADER_RESOURCE_STORAGE,
+                                                        .type = NriBufferView_STORAGE_BUFFER,
                                                         .format = NriFormat_R32_SFLOAT,
                                                     },
             &storageBuffer));
 
-        NRI_ABORT_ON_FAILURE(iCore.CreateTexture1DView(&(NriTexture1DViewDesc){
-                                                           .texture = texture,
-                                                           .viewType = NriTexture1DViewType_SHADER_RESOURCE_STORAGE,
-                                                           .format = NriFormat_R32_SFLOAT,
-                                                       },
+        NRI_ABORT_ON_FAILURE(iCore.CreateTextureView(&(NriTextureViewDesc){
+                                                         .texture = texture,
+                                                         .type = NriTextureView_STORAGE_TEXTURE,
+                                                         .format = NriFormat_R32_SFLOAT,
+                                                     },
             &storageTexture));
     }
 
