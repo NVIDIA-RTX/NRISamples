@@ -149,11 +149,6 @@ void Sample::Destroy() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
-    if (graphicsAPI == nri::GraphicsAPI::D3D11) {
-        printf("This sample is not supported by D3D11\n");
-        exit(0);
-    }
-
     // Adapters
     nri::AdapterDesc adapterDesc[2] = {};
     uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
@@ -176,6 +171,17 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI));
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::StreamerInterface), (nri::StreamerInterface*)&NRI));
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI));
+
+    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
+    if (!deviceDesc.tiers.bindless) {
+        printf("Bindless is not supported!\n");
+        exit(0);
+    }
+
+    if (!deviceDesc.shaderFeatures.drawParameters && !deviceDesc.shaderFeatures.drawParametersEmulation) {
+        printf("Draw parameters are not supported!\n");
+        exit(0);
+    }
 
     // Create streamer
     nri::StreamerDesc streamerDesc = {};
@@ -219,7 +225,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
     }
 
     // Pipeline
-    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
     utils::ShaderCodeStorage shaderCodeStorage;
     {
         {
@@ -241,7 +246,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
             pipelineLayoutDesc.descriptorSetNum = helper::GetCountOf(descriptorSetDescs);
             pipelineLayoutDesc.descriptorSets = descriptorSetDescs;
             pipelineLayoutDesc.shaderStages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER;
-            pipelineLayoutDesc.flags = nri::PipelineLayoutBits::ENABLE_D3D12_DRAW_PARAMETERS_EMULATION;
+
+            if (deviceDesc.shaderFeatures.drawParametersEmulation)
+                pipelineLayoutDesc.flags = nri::PipelineLayoutBits::ENABLE_DRAW_PARAMETERS_EMULATION;
 
             NRI_ABORT_ON_FAILURE(NRI.CreatePipelineLayout(*m_Device, pipelineLayoutDesc, m_GraphicsPipelineLayout));
         }
