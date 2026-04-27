@@ -600,7 +600,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
     { // Descriptor pool
         nri::DescriptorPoolDesc descriptorPoolDesc = {};
         descriptorPoolDesc.descriptorSetMaxNum = materialNum + GetQueuedFrameNum() + 2;
-        descriptorPoolDesc.textureMaxNum = materialNum * TEXTURES_PER_MATERIAL;
+        descriptorPoolDesc.textureMaxNum = textureNum;
         descriptorPoolDesc.samplerMaxNum = GetQueuedFrameNum();
         descriptorPoolDesc.storageStructuredBufferMaxNum = 1 * 2 * TEST;
         descriptorPoolDesc.storageBufferMaxNum = 1 * 2 * TEST;
