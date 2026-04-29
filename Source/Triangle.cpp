@@ -2,7 +2,6 @@
 
 #include "NRIFramework.h"
 
-#include <chrono>
 #include <fstream>
 #include <vector>
 
@@ -339,22 +338,20 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         graphicsPipelineDesc.shaderNum = helper::GetCountOf(shaderStages);
         graphicsPipelineDesc.cache = m_PipelineCache;
 
-        auto t0 = std::chrono::high_resolution_clock::now();
+        double t0 = m_Timer.GetTimeStamp();
         NRI_ABORT_ON_FAILURE(NRI.CreateGraphicsPipeline(*m_Device, graphicsPipelineDesc, m_Pipeline));
-        auto t1 = std::chrono::high_resolution_clock::now();
-        printf("CreateGraphicsPipeline (main) took %lld us\n",
-            (long long)std::chrono::duration_cast<std::chrono::microseconds>(t1 - t0).count());
+        double t1 = m_Timer.GetTimeStamp();
+        printf("CreateGraphicsPipeline (main) took %.3f ms\n", t1 - t0);
 
         // Multiview
         if (deviceDesc.features.flexibleMultiview) {
             graphicsPipelineDesc.outputMerger.viewMask = VIEW_MASK;
             graphicsPipelineDesc.outputMerger.multiview = nri::Multiview::FLEXIBLE;
 
-            auto t2 = std::chrono::high_resolution_clock::now();
+            double t2 = m_Timer.GetTimeStamp();
             NRI_ABORT_ON_FAILURE(NRI.CreateGraphicsPipeline(*m_Device, graphicsPipelineDesc, m_PipelineMultiview));
-            auto t3 = std::chrono::high_resolution_clock::now();
-            printf("CreateGraphicsPipeline (multiview)  took %lld us\n",
-                (long long)std::chrono::duration_cast<std::chrono::microseconds>(t3 - t2).count());
+            double t3 = m_Timer.GetTimeStamp();
+            printf("CreateGraphicsPipeline (multiview) took %.3f ms\n", t3 - t2);
         }
     }
 
