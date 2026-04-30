@@ -88,7 +88,8 @@ int main(int argc, char** argv) {
         NRI_ABORT_ON_FAILURE(iCore.CreatePlacedBuffer(device, placedBufferMemory, 0, &bufferDesc, &placedBuffer));
     }
 
-    { // Test views
+    // Test buffer views
+    if (placedBuffer) {
         NriDescriptor* bufferView_Typed = NULL;
         iCore.CreateBufferView(
             &(NriBufferViewDesc){
@@ -161,7 +162,78 @@ int main(int argc, char** argv) {
         iCore.DestroyDescriptor(bufferView_StructuredStorage);
     }
 
+    // Create a committed depth-stencil texture
+    NriTexture* depthStencilTexture = NULL;
+    NRI_ABORT_ON_FAILURE(iCore.CreateCommittedTexture(device, NriMemoryLocation_DEVICE, 0,
+        &(NriTextureDesc){
+            .type = NriTextureType_TEXTURE_2D,
+            .usage = NriTextureUsageBits_DEPTH_STENCIL_ATTACHMENT | NriTextureUsageBits_SHADER_RESOURCE,
+            .format = NriFormat_D32_SFLOAT_S8_UINT,
+            .width = 800,
+            .height = 600,
+        },
+        &depthStencilTexture));
+
+    { // Test depth-stencil views
+        NriDescriptor* depthStencilView_Attachment = NULL;
+        NRI_ABORT_ON_FAILURE(iCore.CreateTextureView(
+            &(NriTextureViewDesc){
+                .texture = depthStencilTexture,
+                .type = NriTextureView_DEPTH_STENCIL_ATTACHMENT,
+                .format = NriFormat_D32_SFLOAT_S8_UINT,
+                .planes = NriPlaneBits_ALL,
+            },
+            &depthStencilView_Attachment));
+
+        NriDescriptor* depthStencilView_Attachment_DepthReadOnly = NULL;
+        NRI_ABORT_ON_FAILURE(iCore.CreateTextureView(
+            &(NriTextureViewDesc){
+                .texture = depthStencilTexture,
+                .type = NriTextureView_DEPTH_STENCIL_ATTACHMENT,
+                .format = NriFormat_D32_SFLOAT_S8_UINT,
+                .planes = NriPlaneBits_STENCIL,
+            },
+            &depthStencilView_Attachment_DepthReadOnly));
+
+        NriDescriptor* depthStencilView_Attachment_StencilReadOnly = NULL;
+        NRI_ABORT_ON_FAILURE(iCore.CreateTextureView(
+            &(NriTextureViewDesc){
+                .texture = depthStencilTexture,
+                .type = NriTextureView_DEPTH_STENCIL_ATTACHMENT,
+                .format = NriFormat_D32_SFLOAT_S8_UINT,
+                .planes = NriPlaneBits_DEPTH,
+            },
+            &depthStencilView_Attachment_StencilReadOnly));
+
+        NriDescriptor* depthStencilView_Resource_Depth = NULL;
+        NRI_ABORT_ON_FAILURE(iCore.CreateTextureView(
+            &(NriTextureViewDesc){
+                .texture = depthStencilTexture,
+                .type = NriTextureView_TEXTURE,
+                .format = NriFormat_D32_SFLOAT_S8_UINT,
+                .planes = NriPlaneBits_DEPTH,
+            },
+            &depthStencilView_Resource_Depth));
+
+        NriDescriptor* depthStencilView_Resource_Stencil = NULL;
+        NRI_ABORT_ON_FAILURE(iCore.CreateTextureView(
+            &(NriTextureViewDesc){
+                .texture = depthStencilTexture,
+                .type = NriTextureView_TEXTURE,
+                .format = NriFormat_D32_SFLOAT_S8_UINT,
+                .planes = NriPlaneBits_STENCIL,
+            },
+            &depthStencilView_Resource_Stencil));
+
+        iCore.DestroyDescriptor(depthStencilView_Attachment);
+        iCore.DestroyDescriptor(depthStencilView_Attachment_DepthReadOnly);
+        iCore.DestroyDescriptor(depthStencilView_Attachment_StencilReadOnly);
+        iCore.DestroyDescriptor(depthStencilView_Resource_Depth);
+        iCore.DestroyDescriptor(depthStencilView_Resource_Stencil);
+    }
+
     { // Cleanup
+        iCore.DestroyTexture(depthStencilTexture);
         iCore.DestroyBuffer(placedBuffer);
         iCore.FreeMemory(placedBufferMemory);
 
