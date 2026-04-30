@@ -80,7 +80,7 @@ int main(int argc, char** argv) {
             NriMemoryLocation_DEVICE, 0.0f,
             &(NriTextureDesc){
                 .type = NriTextureType_TEXTURE_1D,
-                .usage = NriBufferUsageBits_SHADER_RESOURCE_STORAGE,
+                .usage = NriTextureUsageBits_SHADER_RESOURCE_STORAGE,
                 .format = NriFormat_R32_SFLOAT,
                 .width = width,
             },
