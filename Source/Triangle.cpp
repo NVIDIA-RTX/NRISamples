@@ -3,7 +3,6 @@
 #include "NRIFramework.h"
 
 #include <fstream>
-#include <vector>
 
 constexpr const char* PSO_CACHE_PATH = "pso_cache.bin";
 
@@ -93,25 +92,6 @@ Sample::~Sample() {
             NRI.DestroyDescriptor(swapChainTexture.colorAttachment);
         }
 
-        // [PipelineCache test] serialize before destroying the device
-        if (m_PipelineCache) {
-            uint64_t size = 0;
-            nri::Result rq = NRI.GetPipelineCacheData(*m_PipelineCache, nullptr, size);
-            if (rq == nri::Result::SUCCESS && size > 0) {
-                std::vector<uint8_t> blob(size);
-                nri::Result rg = NRI.GetPipelineCacheData(*m_PipelineCache, blob.data(), size);
-                if (rg == nri::Result::SUCCESS) {
-                    std::ofstream(PSO_CACHE_PATH, std::ios::binary).write((const char*)blob.data(), (std::streamsize)size);
-                    printf("Saved %llu bytes to '%s'\n", (unsigned long long)size, PSO_CACHE_PATH);
-                } else {
-                    printf("GetPipelineCacheData(fetch) failed (%d) - cache file NOT updated\n", (int)rg);
-                }
-            } else {
-                printf("GetPipelineCacheData(query) failed (%d) - cache file NOT updated\n", (int)rq);
-            }
-            NRI.DestroyPipelineCache(m_PipelineCache);
-        }
-
         NRI.DestroyPipeline(m_Pipeline);
         NRI.DestroyPipeline(m_PipelineMultiview);
         NRI.DestroyPipelineLayout(m_PipelineLayout);
@@ -124,6 +104,22 @@ Sample::~Sample() {
 
         for (nri::Memory* memory : m_MemoryAllocations)
             NRI.FreeMemory(memory);
+
+        // Pipeline cache
+        if (m_PipelineCache) {
+            uint64_t size = 0;
+            NRI_ABORT_ON_FAILURE(NRI.GetPipelineCacheData(*m_PipelineCache, nullptr, size));
+
+            if (size > 0) {
+                std::vector<uint8_t> blob(size);
+                NRI_ABORT_ON_FAILURE(NRI.GetPipelineCacheData(*m_PipelineCache, blob.data(), size));
+
+                std::ofstream(PSO_CACHE_PATH, std::ios::binary).write((const char*)blob.data(), (std::streamsize)size);
+                printf("Pipeline cache: saved %" PRIu64 " bytes to '%s'\n", size, PSO_CACHE_PATH);
+            }
+
+            NRI.DestroyPipelineCache(m_PipelineCache);
+        }
     }
 
     if (NRI.HasSwapChain())
@@ -174,6 +170,37 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
     // Fences
     NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_FrameFence));
+
+    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
+    { // Pipeline cache
+        nri::PipelineCacheDesc cacheDesc = {};
+        std::vector<uint8_t> blob;
+
+        if (deviceDesc.features.pipelineCache) {
+            std::ifstream f(PSO_CACHE_PATH, std::ios::binary | std::ios::ate);
+            if (f) {
+                uint64_t size = (uint64_t)f.tellg();
+                blob.resize(size);
+
+                f.seekg(0).read((char*)blob.data(), (std::streamsize)size);
+
+                cacheDesc.data = blob.data();
+                cacheDesc.size = size;
+
+                printf("Pipeline cache: loaded %" PRIu64 " bytes from '%s'\n", size, PSO_CACHE_PATH);
+            } else
+                printf("Pipeline cache: '%s' not found, starting empty\n", PSO_CACHE_PATH);
+        } else
+            printf("Pipeline cache: unsupported\n");
+
+        nri::Result result = NRI.CreatePipelineCache(*m_Device, cacheDesc, m_PipelineCache);
+        if (result == nri::Result::OUT_OF_DATE) {
+            printf("Pipeline cache: supplied blob is stale, recreating empty\n");
+
+            nri::PipelineCacheDesc empty = {};
+            NRI.CreatePipelineCache(*m_Device, empty, m_PipelineCache);
+        }
+    }
 
     // Swap chain
     nri::Format swapChainFormat;
@@ -255,7 +282,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     }
 
     // Pipeline
-    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
     utils::ShaderCodeStorage shaderCodeStorage;
     {
         nri::VertexStreamDesc vertexStreamDesc = {};
@@ -303,30 +329,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
             utils::LoadShader(deviceDesc.graphicsAPI, "TriangleFlexibleMultiview.vs", shaderCodeStorage),
             utils::LoadShader(deviceDesc.graphicsAPI, "Triangle.fs", shaderCodeStorage),
         };
-
-        if (deviceDesc.features.pipelineCache) {
-            std::ifstream f(PSO_CACHE_PATH, std::ios::binary | std::ios::ate);
-            std::vector<uint8_t> blob;
-            nri::PipelineCacheDesc cacheDesc = {};
-            if (f) {
-                size_t size = (size_t)f.tellg();
-                blob.resize(size);
-                f.seekg(0).read((char*)blob.data(), (std::streamsize)size);
-                cacheDesc.data = blob.data();
-                cacheDesc.size = size;
-                printf("Loaded %zu bytes from '%s'\n", size, PSO_CACHE_PATH);
-            } else {
-                printf("'%s' not found, starting empty\n", PSO_CACHE_PATH);
-            }
-            nri::Result r = NRI.CreatePipelineCache(*m_Device, cacheDesc, m_PipelineCache);
-            if (r == nri::Result::FAILURE) {
-                printf("Supplied blob is stale, recreating empty\n");
-                nri::PipelineCacheDesc empty = {};
-                NRI.CreatePipelineCache(*m_Device, empty, m_PipelineCache);
-            }
-        } else {
-            printf("Device does not support PSO cache (features.pipelineCache=false)\n");
-        }
 
         nri::GraphicsPipelineDesc graphicsPipelineDesc = {};
         graphicsPipelineDesc.pipelineLayout = m_PipelineLayout;
@@ -494,7 +496,7 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 void Sample::PrepareFrame(uint32_t) {
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
 
-    if(IsHalfTimeLimitReached() && deviceDesc.features.flexibleMultiview)
+    if (IsHalfTimeLimitReached() && deviceDesc.features.flexibleMultiview)
         m_Multiview = !m_Multiview;
 
     ImGui::NewFrame();

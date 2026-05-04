@@ -12,11 +12,12 @@ compile_commands.json
 *.log
 *.ninja
 
-# generated folders
+# generated data
 _Bin/
 _Build/
 _Shaders/
 _Data/
+pso_cache.bin
 
 # can be a symbolic link
 _Data
