@@ -26,8 +26,10 @@ static const char* vendors[] = {
 
 static const char* architectures[] = {
     "unknown",
+    "SOFTWARE",
+    "VIRTUAL",
     "INTEGRATED",
-    "DESCRETE",
+    "DISCRETE",
 };
 
 #define NRI_ABORT_ON_FAILURE(result) \
