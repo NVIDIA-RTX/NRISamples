@@ -1,5 +1,5 @@
 [submodule "External/NRIFramework"]
 	path = External/NRIFramework
-	url = https://github.com/Daedie-git/NRIFramework.git
-	branch = codex/video-encode-decode-sample
+	url = https://github.com/NVIDIA-RTX/NRIFramework.git
+	branch = main
 	update = merge
