@@ -30,6 +30,7 @@ Or by running scripts only:
 ### CMake options
 
 - `DISABLE_SHADER_COMPILATION` - disable compilation of shaders (shaders can be built on other platform)
+- `NRI_SOURCE_OVERRIDE_DIR` - use an alternate NRI source tree, for example an in-review NRI branch
 - `NRIF_USE_WAYLAND` - use Wayland instead of X11 on Linux
 
 ## How to run
@@ -57,5 +58,5 @@ The executables from `_Bin` directory load resources from `_Data`, therefore the
 - Resources - various resources allocation related stuff
 - SceneViewer - loading & rendering of meshes with materials (also tests programmable sample locations, shading rate and pipeline statistics)
 - Triangle - simple textured triangle rendering (also multiview demonstration in _FLEXIBLE_ mode)
+- VideoEncodeDecode - H.264/H.265/AV1 NV12 video encode/decode round trip; built only when the selected NRI source provides the NRIVideo extension
 - Wrapper - shows how to wrap native D3D11/D3D12/VK objects into *NRI* entities
-
