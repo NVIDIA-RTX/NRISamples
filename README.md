@@ -30,7 +30,6 @@ Or by running scripts only:
 ### CMake options
 
 - `DISABLE_SHADER_COMPILATION` - disable compilation of shaders (shaders can be built on other platform)
-- `NRI_SOURCE_OVERRIDE_DIR` - use an alternate NRI source tree, for example an in-review NRI branch
 - `NRIF_USE_WAYLAND` - use Wayland instead of X11 on Linux
 
 ## How to run

@@ -43,25 +43,25 @@ enum class SampleCodec : uint8_t {
 
 static const char* GetCodecName(SampleCodec codec) {
     switch (codec) {
-    case SampleCodec::H265:
-        return "H.265";
-    case SampleCodec::AV1:
-        return "AV1";
-    case SampleCodec::H264:
-    default:
-        return "H.264";
+        case SampleCodec::H265:
+            return "H.265";
+        case SampleCodec::AV1:
+            return "AV1";
+        case SampleCodec::H264:
+        default:
+            return "H.264";
     }
 }
 
 static nri::VideoCodec GetNriCodec(SampleCodec codec) {
     switch (codec) {
-    case SampleCodec::H265:
-        return nri::VideoCodec::H265;
-    case SampleCodec::AV1:
-        return nri::VideoCodec::AV1;
-    case SampleCodec::H264:
-    default:
-        return nri::VideoCodec::H264;
+        case SampleCodec::H265:
+            return nri::VideoCodec::H265;
+        case SampleCodec::AV1:
+            return nri::VideoCodec::AV1;
+        case SampleCodec::H264:
+        default:
+            return nri::VideoCodec::H264;
     }
 }
 
@@ -72,10 +72,7 @@ static uint64_t GetEncodedPayloadHeaderSkip(SampleCodec codec, uint64_t encodedB
 
 static nri::VideoAV1SequenceDesc MakeAV1SequenceDesc() {
     nri::VideoAV1SequenceDesc desc = {};
-    desc.flags = nri::VideoAV1SequenceBits::ENABLE_ORDER_HINT |
-        nri::VideoAV1SequenceBits::ENABLE_CDEF |
-        nri::VideoAV1SequenceBits::ENABLE_RESTORATION |
-        nri::VideoAV1SequenceBits::COLOR_DESCRIPTION_PRESENT;
+    desc.flags = nri::VideoAV1SequenceBits::ENABLE_ORDER_HINT | nri::VideoAV1SequenceBits::ENABLE_CDEF | nri::VideoAV1SequenceBits::ENABLE_RESTORATION | nri::VideoAV1SequenceBits::COLOR_DESCRIPTION_PRESENT;
     desc.bitDepth = 8;
     desc.subsamplingX = 1;
     desc.subsamplingY = 1;
@@ -166,8 +163,7 @@ static bool SubmitOneTime(
     nri::CoreInterface& core, nri::Queue& queue, nri::DescriptorPool* descriptorPool, Record&& record) {
     nri::CommandAllocator* allocator = nullptr;
     nri::CommandBuffer* commandBuffer = nullptr;
-    bool ok = core.CreateCommandAllocator(queue, allocator) == nri::Result::SUCCESS && allocator && core.CreateCommandBuffer(*allocator, commandBuffer) == nri::Result::SUCCESS && commandBuffer &&
-        core.BeginCommandBuffer(*commandBuffer, descriptorPool) == nri::Result::SUCCESS;
+    bool ok = core.CreateCommandAllocator(queue, allocator) == nri::Result::SUCCESS && allocator && core.CreateCommandBuffer(*allocator, commandBuffer) == nri::Result::SUCCESS && commandBuffer && core.BeginCommandBuffer(*commandBuffer, descriptorPool) == nri::Result::SUCCESS;
     if (ok) {
         std::forward<decltype(record)>(record)(*commandBuffer);
         ok = core.EndCommandBuffer(*commandBuffer) == nri::Result::SUCCESS;
@@ -254,11 +250,11 @@ public:
     void RenderFrame(uint32_t frameIndex) override;
 
 private:
-     bool InitializeGraphics(nri::GraphicsAPI graphicsAPI);
+    bool InitializeGraphics(nri::GraphicsAPI graphicsAPI);
     bool TryInitializePreviewTextures(nri::GraphicsAPI graphicsAPI);
-     void InitializeGeneratedFrames(float timeSec);
+    void InitializeGeneratedFrames(float timeSec);
     bool CanRunRoundTrip() const;
-     void TryInitializeVideo(nri::GraphicsAPI graphicsAPI);
+    void TryInitializeVideo(nri::GraphicsAPI graphicsAPI);
     PatternConstants MakePatternConstants(PatternOperation operation, float timeSec) const;
     bool GeneratePatternWithCompute(const PatternConstants& constants, nri::Descriptor* previewTexture, bool returnSourceBufferToShaderStorage = false);
     bool WriteAnnexBHeadersToUploadBuffer(std::vector<uint8_t>& annexBHeaders);
@@ -916,8 +912,7 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
     vps.decPicBufMgr.maxNumReorderPics[0] = 1;
 
     nri::VideoH265SequenceParameterSetDesc h265Sps = {};
-    h265Sps.flags = nri::VideoH265SequenceParameterSetBits::TEMPORAL_ID_NESTING | nri::VideoH265SequenceParameterSetBits::AMP_ENABLED |
-        nri::VideoH265SequenceParameterSetBits::SAMPLE_ADAPTIVE_OFFSET_ENABLED;
+    h265Sps.flags = nri::VideoH265SequenceParameterSetBits::TEMPORAL_ID_NESTING | nri::VideoH265SequenceParameterSetBits::AMP_ENABLED | nri::VideoH265SequenceParameterSetBits::SAMPLE_ADAPTIVE_OFFSET_ENABLED;
     h265Sps.videoParameterSetId = vps.videoParameterSetId;
     h265Sps.maxSubLayersMinus1 = vps.maxSubLayersMinus1;
     h265Sps.sequenceParameterSetId = 0;
@@ -935,9 +930,7 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
     h265Sps.decPicBufMgr = vps.decPicBufMgr;
 
     nri::VideoH265PictureParameterSetDesc h265Pps = {};
-    h265Pps.flags = nri::VideoH265PictureParameterSetBits::CABAC_INIT_PRESENT | nri::VideoH265PictureParameterSetBits::TRANSFORM_SKIP_ENABLED |
-        nri::VideoH265PictureParameterSetBits::CU_QP_DELTA_ENABLED | nri::VideoH265PictureParameterSetBits::SLICE_CHROMA_QP_OFFSETS_PRESENT |
-        nri::VideoH265PictureParameterSetBits::DEBLOCKING_FILTER_CONTROL_PRESENT;
+    h265Pps.flags = nri::VideoH265PictureParameterSetBits::CABAC_INIT_PRESENT | nri::VideoH265PictureParameterSetBits::TRANSFORM_SKIP_ENABLED | nri::VideoH265PictureParameterSetBits::CU_QP_DELTA_ENABLED | nri::VideoH265PictureParameterSetBits::SLICE_CHROMA_QP_OFFSETS_PRESENT | nri::VideoH265PictureParameterSetBits::DEBLOCKING_FILTER_CONTROL_PRESENT;
     h265Pps.pictureParameterSetId = 0;
     h265Pps.sequenceParameterSetId = h265Sps.sequenceParameterSetId;
     h265Pps.videoParameterSetId = vps.videoParameterSetId;
@@ -1205,8 +1198,7 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
         return;
     }
 
-    if (NRI.CreateCommandAllocator(*m_GraphicsQueue, m_MetadataReadbackCommandAllocator) != nri::Result::SUCCESS ||
-        NRI.CreateCommandBuffer(*m_MetadataReadbackCommandAllocator, m_MetadataReadbackCommandBuffer) != nri::Result::SUCCESS) {
+    if (NRI.CreateCommandAllocator(*m_GraphicsQueue, m_MetadataReadbackCommandAllocator) != nri::Result::SUCCESS || NRI.CreateCommandBuffer(*m_MetadataReadbackCommandAllocator, m_MetadataReadbackCommandBuffer) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create metadata readback command buffer";
         return;
     }
@@ -1355,12 +1347,7 @@ bool Sample::TrySubmitEncodeAndMetadataReadback(float timeSec) {
     av1PictureDesc.currentFrameId = 0;
     av1PictureDesc.refreshFrameFlags = 0xFF;
     av1PictureDesc.primaryReferenceName = nri::VideoAV1ReferenceName::NONE;
-    av1PictureDesc.flags = nri::VideoAV1PictureBits::ERROR_RESILIENT_MODE |
-        nri::VideoAV1PictureBits::DISABLE_CDF_UPDATE |
-        nri::VideoAV1PictureBits::ALLOW_SCREEN_CONTENT_TOOLS |
-        nri::VideoAV1PictureBits::FORCE_INTEGER_MV |
-        nri::VideoAV1PictureBits::SHOW_FRAME |
-        nri::VideoAV1PictureBits::SHOWABLE_FRAME;
+    av1PictureDesc.flags = nri::VideoAV1PictureBits::ERROR_RESILIENT_MODE | nri::VideoAV1PictureBits::DISABLE_CDF_UPDATE | nri::VideoAV1PictureBits::ALLOW_SCREEN_CONTENT_TOOLS | nri::VideoAV1PictureBits::FORCE_INTEGER_MV | nri::VideoAV1PictureBits::SHOW_FRAME | nri::VideoAV1PictureBits::SHOWABLE_FRAME;
     av1PictureDesc.renderWidthMinus1 = VIDEO_WIDTH - 1;
     av1PictureDesc.renderHeightMinus1 = VIDEO_HEIGHT - 1;
     av1PictureDesc.baseQIndex = 20;
@@ -1441,7 +1428,6 @@ bool Sample::TrySubmitEncodeAndMetadataReadback(float timeSec) {
             barrierDesc.textures = textureBarriers;
             barrierDesc.textureNum = helper::GetCountOf(textureBarriers);
             NRI.CmdBarrier(commandBuffer, barrierDesc);
-
         })) {
         m_VideoStatus = std::string(GetCodecName(m_Codec)) + " encode submission failed";
         return false;
@@ -1585,10 +1571,7 @@ bool Sample::DecodeEncodedBitstream(const nri::VideoEncodeFeedback& feedback, co
     const uint64_t decodeSliceOffset = annexBHeaders.size();
     const uint64_t decodeBitstreamSize = AlignUp(decodeSliceOffset + encodedPayloadBytes, 256);
     const uint64_t encodedSourceOffset = ENCODED_SLICE_OFFSET + feedback.encodedBitstreamOffset + encodedPayloadSkip;
-    if (feedback.encodedBitstreamOffset > BITSTREAM_SIZE - ENCODED_SLICE_OFFSET ||
-        encodedSourceOffset > BITSTREAM_SIZE ||
-        encodedPayloadBytes > BITSTREAM_SIZE - encodedSourceOffset ||
-        decodeBitstreamSize > BITSTREAM_SIZE) {
+    if (feedback.encodedBitstreamOffset > BITSTREAM_SIZE - ENCODED_SLICE_OFFSET || encodedSourceOffset > BITSTREAM_SIZE || encodedPayloadBytes > BITSTREAM_SIZE - encodedSourceOffset || decodeBitstreamSize > BITSTREAM_SIZE) {
         m_VideoStatus = std::string("Encoded ") + GetCodecName(m_Codec) + " bitstream exceeded decode buffer size";
         return false;
     }
@@ -1783,8 +1766,7 @@ bool Sample::TryRunRoundTrip(float timeSec) {
 }
 
 bool Sample::CanRunRoundTrip() const {
-    return m_VideoReady && m_GraphicsQueue && m_VideoEncodeQueue && m_VideoDecodeQueue && m_UploadBuffer && m_UploadBufferView && m_SourcePreviewStorage &&
-           m_DecodePreviewStorage && m_GeneratePipelineLayout && m_GenerateComputePipeline && m_GenerateDescriptorSet;
+    return m_VideoReady && m_GraphicsQueue && m_VideoEncodeQueue && m_VideoDecodeQueue && m_UploadBuffer && m_UploadBufferView && m_SourcePreviewStorage && m_DecodePreviewStorage && m_GeneratePipelineLayout && m_GenerateComputePipeline && m_GenerateDescriptorSet;
 }
 
 void Sample::LatencySleep(uint32_t frameIndex) {
@@ -1804,9 +1786,7 @@ void Sample::DrawTexturePanel(const char* label, nri::Descriptor* texture, const
     ImGui::Image((ImTextureID)texture, size);
 }
 
-void Sample::PrepareFrame(uint32_t frameIndex) {
-    (void)frameIndex;
-
+void Sample::PrepareFrame(uint32_t) {
     const double timeSec = m_Timer.GetTimeStamp() * 0.001 - m_StartTimeSec;
     const bool canRunRoundTrip = CanRunRoundTrip();
 
