@@ -2,6 +2,10 @@
 
 #include "NRIFramework.h"
 
+#include <fstream>
+
+constexpr const char* PSO_CACHE_PATH = "pso_cache.bin";
+
 constexpr uint32_t VIEW_MASK = 0b11;
 constexpr nri::Color32f COLOR_0 = {1.0f, 1.0f, 0.0f, 1.0f};
 constexpr nri::Color32f COLOR_1 = {0.46f, 0.72f, 0.0f, 1.0f};
@@ -55,6 +59,7 @@ private:
     nri::PipelineLayout* m_PipelineLayout = nullptr;
     nri::Pipeline* m_Pipeline = nullptr;
     nri::Pipeline* m_PipelineMultiview = nullptr;
+    nri::PipelineCache* m_PipelineCache = nullptr;
     nri::DescriptorSet* m_TextureDescriptorSet = nullptr;
     nri::Descriptor* m_TextureShaderResource = nullptr;
     nri::Buffer* m_ConstantBuffer = nullptr;
@@ -99,6 +104,22 @@ Sample::~Sample() {
 
         for (nri::Memory* memory : m_MemoryAllocations)
             NRI.FreeMemory(memory);
+
+        // Pipeline cache
+        if (m_PipelineCache) {
+            uint64_t size = 0;
+            NRI_ABORT_ON_FAILURE(NRI.GetPipelineCacheData(*m_PipelineCache, nullptr, size));
+
+            if (size > 0) {
+                std::vector<uint8_t> blob(size);
+                NRI_ABORT_ON_FAILURE(NRI.GetPipelineCacheData(*m_PipelineCache, blob.data(), size));
+
+                std::ofstream(PSO_CACHE_PATH, std::ios::binary).write((const char*)blob.data(), (std::streamsize)size);
+                printf("Pipeline cache: saved %" PRIu64 " bytes to '%s'\n", size, PSO_CACHE_PATH);
+            }
+
+            NRI.DestroyPipelineCache(m_PipelineCache);
+        }
     }
 
     if (NRI.HasSwapChain())
@@ -149,6 +170,37 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
     // Fences
     NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_FrameFence));
+
+    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
+    { // Pipeline cache
+        nri::PipelineCacheDesc cacheDesc = {};
+        std::vector<uint8_t> blob;
+
+        if (deviceDesc.features.pipelineCache) {
+            std::ifstream f(PSO_CACHE_PATH, std::ios::binary | std::ios::ate);
+            if (f) {
+                uint64_t size = (uint64_t)f.tellg();
+                blob.resize(size);
+
+                f.seekg(0).read((char*)blob.data(), (std::streamsize)size);
+
+                cacheDesc.data = blob.data();
+                cacheDesc.size = size;
+
+                printf("Pipeline cache: loaded %" PRIu64 " bytes from '%s'\n", size, PSO_CACHE_PATH);
+            } else
+                printf("Pipeline cache: '%s' not found, starting empty\n", PSO_CACHE_PATH);
+        } else
+            printf("Pipeline cache: unsupported\n");
+
+        nri::Result result = NRI.CreatePipelineCache(*m_Device, cacheDesc, m_PipelineCache);
+        if (result == nri::Result::OUT_OF_DATE) {
+            printf("Pipeline cache: supplied blob is stale, recreating empty\n");
+
+            nri::PipelineCacheDesc empty = {};
+            NRI.CreatePipelineCache(*m_Device, empty, m_PipelineCache);
+        }
+    }
 
     // Swap chain
     nri::Format swapChainFormat;
@@ -230,7 +282,6 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     }
 
     // Pipeline
-    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
     utils::ShaderCodeStorage shaderCodeStorage;
     {
         nri::VertexStreamDesc vertexStreamDesc = {};
@@ -287,15 +338,22 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         graphicsPipelineDesc.outputMerger = outputMergerDesc;
         graphicsPipelineDesc.shaders = shaderStages;
         graphicsPipelineDesc.shaderNum = helper::GetCountOf(shaderStages);
+        graphicsPipelineDesc.cache = m_PipelineCache;
 
+        double t0 = m_Timer.GetTimeStamp();
         NRI_ABORT_ON_FAILURE(NRI.CreateGraphicsPipeline(*m_Device, graphicsPipelineDesc, m_Pipeline));
+        double t1 = m_Timer.GetTimeStamp();
+        printf("CreateGraphicsPipeline (main) took %.3f ms\n", t1 - t0);
 
         // Multiview
         if (deviceDesc.features.flexibleMultiview) {
             graphicsPipelineDesc.outputMerger.viewMask = VIEW_MASK;
             graphicsPipelineDesc.outputMerger.multiview = nri::Multiview::FLEXIBLE;
 
+            double t2 = m_Timer.GetTimeStamp();
             NRI_ABORT_ON_FAILURE(NRI.CreateGraphicsPipeline(*m_Device, graphicsPipelineDesc, m_PipelineMultiview));
+            double t3 = m_Timer.GetTimeStamp();
+            printf("CreateGraphicsPipeline (multiview) took %.3f ms\n", t3 - t2);
         }
     }
 
@@ -438,7 +496,7 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 void Sample::PrepareFrame(uint32_t) {
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
 
-    if(IsHalfTimeLimitReached() && deviceDesc.features.flexibleMultiview)
+    if (IsHalfTimeLimitReached() && deviceDesc.features.flexibleMultiview)
         m_Multiview = !m_Multiview;
 
     ImGui::NewFrame();
