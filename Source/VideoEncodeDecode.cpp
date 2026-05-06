@@ -235,14 +235,12 @@ static bool CopyNv12BufferToTexture(nri::CoreInterface& core, nri::Queue& queue,
     });
 }
 
-static nri::Result CreateVideoBitstreamBuffer(nri::CoreInterface& core, nri::Device& device, nri::GraphicsAPI graphicsAPI, float priority, const nri::BufferDesc& bufferDesc, nri::Buffer*& buffer) {
-    nri::MemoryLocation memoryLocation = nri::MemoryLocation::DEVICE;
-    if (bufferDesc.usage & nri::BufferUsageBits::VIDEO_ENCODE)
-        memoryLocation = graphicsAPI == nri::GraphicsAPI::VK ? nri::MemoryLocation::HOST_READBACK : nri::MemoryLocation::DEVICE;
-    else if (bufferDesc.usage & nri::BufferUsageBits::VIDEO_DECODE)
-        memoryLocation = nri::MemoryLocation::HOST_UPLOAD;
+static nri::Result CreateEncodeBitstreamBuffer(nri::CoreInterface& core, nri::Device& device, float priority, const nri::BufferDesc& bufferDesc, nri::Buffer*& buffer) {
+    return core.CreateCommittedBuffer(device, nri::MemoryLocation::HOST_READBACK, priority, bufferDesc, buffer);
+}
 
-    return core.CreateCommittedBuffer(device, memoryLocation, priority, bufferDesc, buffer);
+static nri::Result CreateDecodeBitstreamBuffer(nri::CoreInterface& core, nri::Device& device, float priority, const nri::BufferDesc& bufferDesc, nri::Buffer*& buffer) {
+    return core.CreateCommittedBuffer(device, nri::MemoryLocation::HOST_UPLOAD, priority, bufferDesc, buffer);
 }
 
 } // namespace
@@ -1139,7 +1137,7 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
 
     nri::BufferDesc bitstreamBufferDesc = {};
     bitstreamBufferDesc.size = BITSTREAM_SIZE;
-    bitstreamBufferDesc.usage = nri::BufferUsageBits::VIDEO_ENCODE | nri::BufferUsageBits::VIDEO_DECODE;
+    bitstreamBufferDesc.usage = nri::BufferUsageBits::VIDEO_ENCODE;
 
     nri::BufferDesc decodeBitstreamBufferDesc = {};
     decodeBitstreamBufferDesc.size = BITSTREAM_SIZE;
@@ -1166,7 +1164,7 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
         return;
     }
 
-    if (CreateVideoBitstreamBuffer(NRI, *m_Device, graphicsAPI, 0.0f, bitstreamBufferDesc, m_BitstreamBuffer) != nri::Result::SUCCESS) {
+    if (CreateEncodeBitstreamBuffer(NRI, *m_Device, 0.0f, bitstreamBufferDesc, m_BitstreamBuffer) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create encode bitstream buffer";
         return;
     }
@@ -1176,7 +1174,7 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
         return;
     }
 
-    if (CreateVideoBitstreamBuffer(NRI, *m_Device, graphicsAPI, 0.0f, decodeBitstreamBufferDesc, m_DecodeBitstreamBuffer) != nri::Result::SUCCESS) {
+    if (CreateDecodeBitstreamBuffer(NRI, *m_Device, 0.0f, decodeBitstreamBufferDesc, m_DecodeBitstreamBuffer) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create decode bitstream buffer";
         return;
     }
@@ -1387,14 +1385,11 @@ bool Sample::TrySubmitEncodeAndMetadataReadback(float timeSec) {
     encodeDesc.av1PictureDesc = m_Codec == SampleCodec::AV1 ? &av1PictureDesc : nullptr;
 
     if (!SubmitOneTime(NRI, *m_VideoEncodeQueue, [&](nri::CommandBuffer& commandBuffer) {
-            nri::BufferBarrierDesc bufferBarriers[3] = {};
-            bufferBarriers[0].buffer = m_BitstreamBuffer;
-            bufferBarriers[0].before = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
+            nri::BufferBarrierDesc bufferBarriers[2] = {};
+            bufferBarriers[0].buffer = m_MetadataBuffer;
             bufferBarriers[0].after = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
-            bufferBarriers[1].buffer = m_MetadataBuffer;
+            bufferBarriers[1].buffer = m_ResolvedMetadataBuffer;
             bufferBarriers[1].after = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
-            bufferBarriers[2].buffer = m_ResolvedMetadataBuffer;
-            bufferBarriers[2].after = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
 
             nri::TextureBarrierDesc textureBarriers[2] = {};
             textureBarriers[0].texture = m_EncodeTexture;
@@ -1417,13 +1412,11 @@ bool Sample::TrySubmitEncodeAndMetadataReadback(float timeSec) {
             barrierDesc.textureNum = helper::GetCountOf(textureBarriers);
             NRI.CmdBarrier(commandBuffer, barrierDesc);
             Video.CmdEncodeVideo(commandBuffer, encodeDesc);
-            bufferBarriers[0].before = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
-            bufferBarriers[0].after = {};
             // D3D12 resolves encode metadata inside CmdEncodeVideo and transitions the raw metadata buffer to encode-read before returning.
-            bufferBarriers[1].before = {nri::AccessBits::VIDEO_ENCODE_READ, nri::StageBits::VIDEO_ENCODE};
+            bufferBarriers[0].before = {nri::AccessBits::VIDEO_ENCODE_READ, nri::StageBits::VIDEO_ENCODE};
+            bufferBarriers[0].after = {};
+            bufferBarriers[1].before = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
             bufferBarriers[1].after = {};
-            bufferBarriers[2].before = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
-            bufferBarriers[2].after = {};
             textureBarriers[0].before = {nri::AccessBits::VIDEO_ENCODE_READ, nri::Layout::VIDEO_ENCODE_SRC, nri::StageBits::VIDEO_ENCODE};
             textureBarriers[0].after = {nri::AccessBits::NONE, nri::Layout::GENERAL, nri::StageBits::NONE};
             textureBarriers[1].before = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::Layout::VIDEO_ENCODE_DPB, nri::StageBits::VIDEO_ENCODE};
