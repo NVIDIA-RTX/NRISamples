@@ -235,6 +235,16 @@ static bool CopyNv12BufferToTexture(nri::CoreInterface& core, nri::Queue& queue,
     });
 }
 
+static nri::Result CreateVideoBitstreamBuffer(nri::CoreInterface& core, nri::Device& device, nri::GraphicsAPI graphicsAPI, float priority, const nri::BufferDesc& bufferDesc, nri::Buffer*& buffer) {
+    nri::MemoryLocation memoryLocation = nri::MemoryLocation::DEVICE;
+    if (bufferDesc.usage & nri::BufferUsageBits::VIDEO_ENCODE)
+        memoryLocation = graphicsAPI == nri::GraphicsAPI::VK ? nri::MemoryLocation::HOST_READBACK : nri::MemoryLocation::DEVICE;
+    else if (bufferDesc.usage & nri::BufferUsageBits::VIDEO_DECODE)
+        memoryLocation = nri::MemoryLocation::HOST_UPLOAD;
+
+    return core.CreateCommittedBuffer(device, memoryLocation, priority, bufferDesc, buffer);
+}
+
 } // namespace
 
 class Sample : public SampleBase {
@@ -1156,7 +1166,7 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
         return;
     }
 
-    if (NRI.CreateCommittedBuffer(*m_Device, nri::MemoryLocation::DEVICE, 0.0f, bitstreamBufferDesc, m_BitstreamBuffer) != nri::Result::SUCCESS) {
+    if (CreateVideoBitstreamBuffer(NRI, *m_Device, graphicsAPI, 0.0f, bitstreamBufferDesc, m_BitstreamBuffer) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create encode bitstream buffer";
         return;
     }
@@ -1166,7 +1176,7 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
         return;
     }
 
-    if (NRI.CreateCommittedBuffer(*m_Device, nri::MemoryLocation::HOST_UPLOAD, 0.0f, decodeBitstreamBufferDesc, m_DecodeBitstreamBuffer) != nri::Result::SUCCESS) {
+    if (CreateVideoBitstreamBuffer(NRI, *m_Device, graphicsAPI, 0.0f, decodeBitstreamBufferDesc, m_DecodeBitstreamBuffer) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create decode bitstream buffer";
         return;
     }
