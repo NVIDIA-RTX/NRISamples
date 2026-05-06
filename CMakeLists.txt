@@ -187,23 +187,10 @@ add_sample(Resources c)
 add_sample(SceneViewer cpp)
 add_sample(Triangle cpp)
 
-set(NRI_VIDEO_HEADER "${NRI_SOURCE_DIR}/Include/Extensions/NRIVideo.h")
-set(NRI_VIDEO_VERSION 0)
-if(EXISTS "${NRI_VIDEO_HEADER}")
-    file(STRINGS "${NRI_VIDEO_HEADER}" NRI_VIDEO_VERSION_LINE REGEX "^#define NRI_VIDEO_VERSION ")
-    if(NRI_VIDEO_VERSION_LINE MATCHES "^#define NRI_VIDEO_VERSION +([0-9]+)")
-        set(NRI_VIDEO_VERSION "${CMAKE_MATCH_1}")
-    endif()
-endif()
+add_sample(VideoEncodeDecode cpp)
 
-if(NRI_VIDEO_VERSION GREATER_EQUAL 1)
-    add_sample(VideoEncodeDecode cpp)
-
-    if(WIN32)
-        target_link_libraries(VideoEncodeDecode PRIVATE d3d12)
-    endif()
-else()
-    message(STATUS "Skipping VideoEncodeDecode: selected NRI source does not provide NRIVideo version 1")
+if(WIN32)
+    target_link_libraries(VideoEncodeDecode PRIVATE d3d12)
 endif()
 
 # Wrapper depends on Vulkan SDK availability
