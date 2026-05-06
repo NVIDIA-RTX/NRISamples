@@ -336,6 +336,7 @@ private:
     double m_StartTimeSec = 0.0;
     double m_LastRoundTripTimeSec = -1.0;
     bool m_VideoReady = false;
+    bool m_VideoQueuesRequested = false;
     bool m_DecodePreviewReady = false;
     bool m_PreviewTexturesShaderReadable = false;
     bool m_MetadataReadbackPending = false;
@@ -348,19 +349,19 @@ Sample::~Sample() {
 
         if (Video.DestroyVideoPicture) {
             if (m_DecodePicture)
-                Video.DestroyVideoPicture(*m_DecodePicture);
+                Video.DestroyVideoPicture(m_DecodePicture);
             if (m_ReconstructedPicture)
-                Video.DestroyVideoPicture(*m_ReconstructedPicture);
+                Video.DestroyVideoPicture(m_ReconstructedPicture);
             if (m_EncodePicture)
-                Video.DestroyVideoPicture(*m_EncodePicture);
+                Video.DestroyVideoPicture(m_EncodePicture);
             if (m_DecodeParameters)
-                Video.DestroyVideoSessionParameters(*m_DecodeParameters);
+                Video.DestroyVideoSessionParameters(m_DecodeParameters);
             if (m_EncodeParameters)
-                Video.DestroyVideoSessionParameters(*m_EncodeParameters);
+                Video.DestroyVideoSessionParameters(m_EncodeParameters);
             if (m_DecodeSession)
-                Video.DestroyVideoSession(*m_DecodeSession);
+                Video.DestroyVideoSession(m_DecodeSession);
             if (m_EncodeSession)
-                Video.DestroyVideoSession(*m_EncodeSession);
+                Video.DestroyVideoSession(m_EncodeSession);
         }
 
         if (m_MetadataReadbackCommandBuffer)
@@ -465,12 +466,23 @@ bool Sample::InitializeGraphics(nri::GraphicsAPI graphicsAPI) {
     uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
     NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(adapterDesc, adapterDescsNum));
 
+    const nri::AdapterDesc& selectedAdapter = adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
+    m_VideoQueuesRequested = graphicsAPI != nri::GraphicsAPI::D3D11 &&
+        selectedAdapter.queueNum[(uint32_t)nri::QueueType::VIDEO_ENCODE] &&
+        selectedAdapter.queueNum[(uint32_t)nri::QueueType::VIDEO_DECODE];
+
+    nri::QueueFamilyDesc queueFamilies[3] = {};
+    uint32_t queueFamilyNum = 0;
+    queueFamilies[queueFamilyNum].queueNum = 1;
+    queueFamilies[queueFamilyNum++].queueType = nri::QueueType::GRAPHICS;
+    if (m_VideoQueuesRequested) {
+        queueFamilies[queueFamilyNum].queueNum = 1;
+        queueFamilies[queueFamilyNum++].queueType = nri::QueueType::VIDEO_ENCODE;
+        queueFamilies[queueFamilyNum].queueNum = 1;
+        queueFamilies[queueFamilyNum++].queueType = nri::QueueType::VIDEO_DECODE;
+    }
+
     nri::DeviceCreationDesc deviceCreationDesc = {};
-    nri::QueueFamilyDesc queueFamilies[] = {
-        {nullptr, 1, nri::QueueType::GRAPHICS},
-        {nullptr, 1, nri::QueueType::VIDEO_ENCODE},
-        {nullptr, 1, nri::QueueType::VIDEO_DECODE},
-    };
 
     deviceCreationDesc.graphicsAPI = graphicsAPI;
     deviceCreationDesc.enableGraphicsAPIValidation = m_DebugAPI;
@@ -478,10 +490,10 @@ bool Sample::InitializeGraphics(nri::GraphicsAPI graphicsAPI) {
     deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_ENABLE_COMMAND_BUFFER_EMULATION;
     deviceCreationDesc.disableD3D12EnhancedBarriers = D3D12_DISABLE_ENHANCED_BARRIERS;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
-    deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
+    deviceCreationDesc.adapterDesc = &selectedAdapter;
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
     deviceCreationDesc.queueFamilies = queueFamilies;
-    deviceCreationDesc.queueFamilyNum = helper::GetCountOf(queueFamilies);
+    deviceCreationDesc.queueFamilyNum = queueFamilyNum;
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI));
@@ -839,6 +851,11 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
 
     if (graphicsAPI == nri::GraphicsAPI::D3D11) {
         m_VideoStatus = "D3D11 does not expose NRI video queues";
+        return;
+    }
+
+    if (!m_VideoQueuesRequested) {
+        m_VideoStatus = "Adapter has no NRI video encode/decode queues";
         return;
     }
 
