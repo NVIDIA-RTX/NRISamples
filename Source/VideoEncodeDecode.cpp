@@ -856,8 +856,8 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
     decodeSessionDesc.usage = nri::VideoUsage::DECODE;
     decodeSessionDesc.maxReferenceNum = 16;
 
-    if (Video.GetVideoQueue(*m_Device, encodeSessionDesc, m_VideoEncodeQueue) != nri::Result::SUCCESS || Video.GetVideoQueue(*m_Device, decodeSessionDesc, m_VideoDecodeQueue) != nri::Result::SUCCESS) {
-        m_VideoStatus = std::string("Failed to get ") + GetCodecName(m_Codec) + "-capable video queues";
+    if (NRI.GetQueue(*m_Device, nri::QueueType::VIDEO_ENCODE, 0, m_VideoEncodeQueue) != nri::Result::SUCCESS || NRI.GetQueue(*m_Device, nri::QueueType::VIDEO_DECODE, 0, m_VideoDecodeQueue) != nri::Result::SUCCESS) {
+        m_VideoStatus = "Failed to get video queues";
         return;
     }
 
@@ -983,31 +983,24 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
     encodeTextureDesc.height = VIDEO_HEIGHT;
     encodeTextureDesc.mipNum = 1;
     encodeTextureDesc.layerNum = 1;
+    encodeTextureDesc.videoCodec = GetNriCodec(m_Codec);
 
     nri::TextureDesc decodeTextureDesc = encodeTextureDesc;
     decodeTextureDesc.usage = nri::TextureUsageBits::VIDEO_DECODE;
 
-    nri::VideoTextureDesc encodeVideoTextureDesc = {};
-    encodeVideoTextureDesc.textureDesc = encodeTextureDesc;
-    encodeVideoTextureDesc.codec = GetNriCodec(m_Codec);
-
-    nri::VideoTextureDesc decodeVideoTextureDesc = {};
-    decodeVideoTextureDesc.textureDesc = decodeTextureDesc;
-    decodeVideoTextureDesc.codec = GetNriCodec(m_Codec);
-
-    if (Video.CreateCommittedVideoTexture(*m_Device, nri::MemoryLocation::DEVICE, 0.0f, encodeVideoTextureDesc, m_EncodeTexture) != nri::Result::SUCCESS) {
+    if (NRI.CreateCommittedTexture(*m_Device, nri::MemoryLocation::DEVICE, 0.0f, encodeTextureDesc, m_EncodeTexture) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create NV12 encode texture";
         return;
     }
     NRI.SetDebugName(m_EncodeTexture, "VideoEncodeTexture");
 
-    if (Video.CreateCommittedVideoTexture(*m_Device, nri::MemoryLocation::DEVICE, 0.0f, encodeVideoTextureDesc, m_ReconstructedTexture) != nri::Result::SUCCESS) {
+    if (NRI.CreateCommittedTexture(*m_Device, nri::MemoryLocation::DEVICE, 0.0f, encodeTextureDesc, m_ReconstructedTexture) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create NV12 reconstructed texture";
         return;
     }
     NRI.SetDebugName(m_ReconstructedTexture, "VideoReconstructedTexture");
 
-    if (Video.CreateCommittedVideoTexture(*m_Device, nri::MemoryLocation::DEVICE, 0.0f, decodeVideoTextureDesc, m_DecodeTexture) != nri::Result::SUCCESS) {
+    if (NRI.CreateCommittedTexture(*m_Device, nri::MemoryLocation::DEVICE, 0.0f, decodeTextureDesc, m_DecodeTexture) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create NV12 decode texture";
         return;
     }
@@ -1163,7 +1156,7 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
         return;
     }
 
-    if (Video.CreateCommittedVideoBitstreamBuffer(*m_Device, 0.0f, bitstreamBufferDesc, m_BitstreamBuffer) != nri::Result::SUCCESS) {
+    if (NRI.CreateCommittedBuffer(*m_Device, nri::MemoryLocation::DEVICE, 0.0f, bitstreamBufferDesc, m_BitstreamBuffer) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create encode bitstream buffer";
         return;
     }
@@ -1173,7 +1166,7 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
         return;
     }
 
-    if (Video.CreateCommittedVideoBitstreamBuffer(*m_Device, 0.0f, decodeBitstreamBufferDesc, m_DecodeBitstreamBuffer) != nri::Result::SUCCESS) {
+    if (NRI.CreateCommittedBuffer(*m_Device, nri::MemoryLocation::HOST_UPLOAD, 0.0f, decodeBitstreamBufferDesc, m_DecodeBitstreamBuffer) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create decode bitstream buffer";
         return;
     }
