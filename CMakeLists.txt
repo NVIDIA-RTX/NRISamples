@@ -187,6 +187,12 @@ add_sample(Resources c)
 add_sample(SceneViewer cpp)
 add_sample(Triangle cpp)
 
+add_sample(VideoEncodeDecode cpp)
+
+if(WIN32)
+    target_link_libraries(VideoEncodeDecode PRIVATE d3d12)
+endif()
+
 # Wrapper depends on Vulkan SDK availability
 if(DEFINED ENV{VULKAN_SDK})
     add_sample(Wrapper cpp)
