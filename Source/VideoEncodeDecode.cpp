@@ -1671,7 +1671,8 @@ bool Sample::TryDecodePendingMetadata(float timeSec) {
 
     nri::VideoAV1EncodeDecodeInfo av1DecodeInfo = {};
     if (m_Codec == SampleCodec::AV1) {
-        const uint8_t* encodedHeader = (const uint8_t*)NRI.MapBuffer(*m_BitstreamHeaderReadbackBuffer, 0, AV1_HEADER_READBACK_SIZE);
+        const bool needsEncodedHeaderReadback = feedbackResult == nri::Result::UNSUPPORTED;
+        const uint8_t* encodedHeader = needsEncodedHeaderReadback ? (const uint8_t*)NRI.MapBuffer(*m_BitstreamHeaderReadbackBuffer, 0, AV1_HEADER_READBACK_SIZE) : nullptr;
         if (!encodedHeader && feedbackResult == nri::Result::UNSUPPORTED) {
             m_VideoStatus = "Failed to map AV1 encoded header readback";
             return false;
