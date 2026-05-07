@@ -22,7 +22,6 @@ constexpr uint32_t DEFAULT_VIDEO_HEIGHT = 1080;
 constexpr double ROUND_TRIP_INTERVAL_SEC = 1.0 / 60.0;
 constexpr uint64_t BITSTREAM_SIZE = 2 * 1024 * 1024;
 constexpr uint64_t ENCODED_SLICE_OFFSET = 4096;
-constexpr uint64_t AV1_HEADER_READBACK_SIZE = 4096;
 constexpr uint64_t METADATA_SIZE = 4 * 1024 * 1024;
 constexpr uint64_t RESOLVED_METADATA_SIZE = 4096;
 
@@ -303,7 +302,6 @@ private:
     nri::DescriptorPool* m_GenerateDescriptorPool = nullptr;
     nri::DescriptorSet* m_GenerateDescriptorSet = nullptr;
     nri::Buffer* m_BitstreamHeaderUploadBuffer = nullptr;
-    nri::Buffer* m_BitstreamHeaderReadbackBuffer = nullptr;
     nri::Buffer* m_BitstreamBuffer = nullptr;
     nri::Buffer* m_DecodeBitstreamBuffer = nullptr;
     nri::Buffer* m_MetadataBuffer = nullptr;
@@ -401,8 +399,6 @@ Sample::~Sample() {
             NRI.DestroyBuffer(m_DecodeBitstreamBuffer);
         if (m_BitstreamBuffer)
             NRI.DestroyBuffer(m_BitstreamBuffer);
-        if (m_BitstreamHeaderReadbackBuffer)
-            NRI.DestroyBuffer(m_BitstreamHeaderReadbackBuffer);
         if (m_BitstreamHeaderUploadBuffer)
             NRI.DestroyBuffer(m_BitstreamHeaderUploadBuffer);
         if (m_UploadBuffer)
@@ -1236,10 +1232,6 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
     resolvedMetadataReadbackBufferDesc.size = RESOLVED_METADATA_SIZE;
     resolvedMetadataReadbackBufferDesc.usage = nri::BufferUsageBits::NONE;
 
-    nri::BufferDesc bitstreamHeaderReadbackBufferDesc = {};
-    bitstreamHeaderReadbackBufferDesc.size = AV1_HEADER_READBACK_SIZE;
-    bitstreamHeaderReadbackBufferDesc.usage = nri::BufferUsageBits::NONE;
-
     if (NRI.CreateCommittedBuffer(*m_Device, nri::MemoryLocation::HOST_UPLOAD, 0.0f, bitstreamHeaderUploadBufferDesc, m_BitstreamHeaderUploadBuffer) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create bitstream header upload buffer";
         return;
@@ -1247,11 +1239,6 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
 
     if (CreateEncodeBitstreamBuffer(NRI, *m_Device, 0.0f, bitstreamBufferDesc, m_BitstreamBuffer) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to create encode bitstream buffer";
-        return;
-    }
-
-    if (NRI.CreateCommittedBuffer(*m_Device, nri::MemoryLocation::HOST_READBACK, 0.0f, bitstreamHeaderReadbackBufferDesc, m_BitstreamHeaderReadbackBuffer) != nri::Result::SUCCESS) {
-        m_VideoStatus = "Failed to create bitstream header readback buffer";
         return;
     }
 
@@ -1577,17 +1564,12 @@ bool Sample::TrySubmitEncodeAndMetadataReadback(float timeSec) {
         return false;
     }
 
-    nri::BufferBarrierDesc metadataBarriers[4] = {};
+    nri::BufferBarrierDesc metadataBarriers[2] = {};
     metadataBarriers[0].buffer = m_ResolvedMetadataBuffer;
     metadataBarriers[0].before = {nri::AccessBits::NONE, nri::StageBits::NONE};
     metadataBarriers[0].after = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
     metadataBarriers[1].buffer = m_ResolvedMetadataReadbackBuffer;
     metadataBarriers[1].after = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-    metadataBarriers[2].buffer = m_BitstreamBuffer;
-    metadataBarriers[2].before = {nri::AccessBits::NONE, nri::StageBits::NONE};
-    metadataBarriers[2].after = {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY};
-    metadataBarriers[3].buffer = m_BitstreamHeaderReadbackBuffer;
-    metadataBarriers[3].after = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
 
     nri::BarrierDesc metadataBarrierDesc = {};
     metadataBarrierDesc.buffers = metadataBarriers;
@@ -1600,15 +1582,10 @@ bool Sample::TrySubmitEncodeAndMetadataReadback(float timeSec) {
     NRI.CmdBarrier(*m_MetadataReadbackCommandBuffer, metadataBarrierDesc);
     metadataBarrierDesc.bufferNum = helper::GetCountOf(metadataBarriers);
     NRI.CmdCopyBuffer(*m_MetadataReadbackCommandBuffer, *m_ResolvedMetadataReadbackBuffer, 0, *m_ResolvedMetadataBuffer, 0, RESOLVED_METADATA_SIZE);
-    NRI.CmdCopyBuffer(*m_MetadataReadbackCommandBuffer, *m_BitstreamHeaderReadbackBuffer, 0, *m_BitstreamBuffer, ENCODED_SLICE_OFFSET, AV1_HEADER_READBACK_SIZE);
     metadataBarriers[0].before = {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY};
     metadataBarriers[0].after = {nri::AccessBits::NONE, nri::StageBits::NONE};
     metadataBarriers[1].before = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
     metadataBarriers[1].after = {nri::AccessBits::NONE, nri::StageBits::NONE};
-    metadataBarriers[2].before = {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY};
-    metadataBarriers[2].after = {nri::AccessBits::NONE, nri::StageBits::NONE};
-    metadataBarriers[3].before = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-    metadataBarriers[3].after = {nri::AccessBits::NONE, nri::StageBits::NONE};
     NRI.CmdBarrier(*m_MetadataReadbackCommandBuffer, metadataBarrierDesc);
 
     if (NRI.EndCommandBuffer(*m_MetadataReadbackCommandBuffer) != nri::Result::SUCCESS) {
@@ -1648,17 +1625,11 @@ bool Sample::TryDecodePendingMetadata(float timeSec) {
     nri::VideoEncodeFeedback feedback = {};
     const nri::Result feedbackResult = Video.GetVideoEncodeFeedback(*m_EncodeSession, *m_ResolvedMetadataReadbackBuffer, 0, feedback);
     if (feedbackResult != nri::Result::SUCCESS) {
-        if (feedbackResult == nri::Result::UNSUPPORTED && m_Codec == SampleCodec::AV1) {
-            feedback.encodedBitstreamOffset = 0;
-            feedback.encodedBitstreamWrittenBytes = AV1_HEADER_READBACK_SIZE;
-            feedback.writtenSubregionNum = 1;
-        } else {
-            if (feedbackResult == nri::Result::UNSUPPORTED)
-                m_VideoStatus = std::string(GetCodecName(m_Codec)) + " encode metadata feedback is unsupported";
-            else
-                m_VideoStatus = "Failed to read resolved encode metadata";
-            return false;
-        }
+        if (feedbackResult == nri::Result::UNSUPPORTED)
+            m_VideoStatus = std::string(GetCodecName(m_Codec)) + " encode metadata feedback is unsupported";
+        else
+            m_VideoStatus = "Failed to read resolved encode metadata";
+        return false;
     }
 
     if (feedback.errorFlags || !feedback.encodedBitstreamWrittenBytes) {
@@ -1671,26 +1642,14 @@ bool Sample::TryDecodePendingMetadata(float timeSec) {
 
     nri::VideoAV1EncodeDecodeInfo av1DecodeInfo = {};
     if (m_Codec == SampleCodec::AV1) {
-        const uint8_t* encodedHeader = (const uint8_t*)NRI.MapBuffer(*m_BitstreamHeaderReadbackBuffer, 0, AV1_HEADER_READBACK_SIZE);
-        if (!encodedHeader) {
-            m_VideoStatus = "Failed to map AV1 encoded header readback";
-            return false;
-        }
-
         nri::VideoAV1EncodeDecodeInfoDesc av1InfoDesc = {};
         av1InfoDesc.feedback = &feedback;
         av1InfoDesc.sequence = &m_AV1Sequence;
-        av1InfoDesc.encodedPayloadHeader = encodedHeader;
-        av1InfoDesc.encodedPayloadHeaderSize = encodedHeader ? std::min<uint64_t>(AV1_HEADER_READBACK_SIZE, feedback.encodedBitstreamWrittenBytes) : 0;
         const nri::Result av1InfoResult = Video.GetVideoEncodeAV1DecodeInfo(*m_EncodeSession, *m_ResolvedMetadataReadbackBuffer, 0, av1InfoDesc, av1DecodeInfo);
         if (av1InfoResult != nri::Result::SUCCESS) {
-            if (encodedHeader)
-                NRI.UnmapBuffer(*m_BitstreamHeaderReadbackBuffer);
             m_VideoStatus = "Failed to prepare AV1 decode metadata";
             return false;
         }
-        if (encodedHeader)
-            NRI.UnmapBuffer(*m_BitstreamHeaderReadbackBuffer);
         feedback.encodedBitstreamWrittenBytes = av1DecodeInfo.bitstreamOffset + av1DecodeInfo.bitstreamSize;
     }
 
