@@ -558,7 +558,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         { // Multisampling rendering
             nri::AttachmentDesc colorAttachmentDesc = {};
             colorAttachmentDesc.descriptor = m_AttachmentMsaa;
-            colorAttachmentDesc.clearValue.color = {1.0f, 1.0f, 1.0f, 1.0f};
+            colorAttachmentDesc.clearValue.color = {{1.0f, 1.0f, 1.0f, 1.0f}};
             colorAttachmentDesc.loadOp = nri::LoadOp::CLEAR;
             colorAttachmentDesc.resolveOp = (nri::ResolveOp)m_ResolveMode;
 

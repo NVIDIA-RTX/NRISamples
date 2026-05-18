@@ -251,8 +251,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     }
 
     { // Samplers
-        NRI_ABORT_ON_FAILURE(NRI.CreateSampler(*m_Device, {nri::Filter::LINEAR, nri::Filter::LINEAR}, m_Linear_Sampler));
-        NRI_ABORT_ON_FAILURE(NRI.CreateSampler(*m_Device, {nri::Filter::NEAREST, nri::Filter::NEAREST}, m_Nearest_Sampler));
+        NRI_ABORT_ON_FAILURE(NRI.CreateSampler(*m_Device, {{nri::Filter::LINEAR, nri::Filter::LINEAR}}, m_Linear_Sampler));
+        NRI_ABORT_ON_FAILURE(NRI.CreateSampler(*m_Device, {{nri::Filter::NEAREST, nri::Filter::NEAREST}}, m_Nearest_Sampler));
     }
 
     { // Pipeline layout

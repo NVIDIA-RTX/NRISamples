@@ -14,7 +14,6 @@
 constexpr uint32_t GLOBAL_DESCRIPTOR_SET = 0;
 constexpr uint32_t MATERIAL_DESCRIPTOR_SET = 1;
 constexpr float CLEAR_DEPTH = 0.0f;
-constexpr uint32_t TEXTURES_PER_MATERIAL = 4;
 constexpr uint32_t BUFFER_COUNT = 3;
 
 enum SceneBuffers {
