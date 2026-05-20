@@ -477,7 +477,7 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 }
 
 void Sample::PrepareFrame(uint32_t) {
-    if(IsHalfTimeLimitReached())
+    if (IsHalfTimeLimitReached())
         m_RenderPassResolve = !m_RenderPassResolve;
 
     ImGui::NewFrame();
@@ -535,11 +535,15 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     nri::CommandBuffer* commandBuffer = queuedFrame.commandBuffer;
     NRI.BeginCommandBuffer(*commandBuffer, m_DescriptorPool);
     {
+        nri::AccessLayoutStage resolveDstState = {};
+        resolveDstState.access = m_RenderPassResolve ? nri::AccessBits::COLOR_ATTACHMENT : nri::AccessBits::RESOLVE_DESTINATION;
+        resolveDstState.layout = m_RenderPassResolve ? nri::Layout::COLOR_ATTACHMENT : nri::Layout::RESOLVE_DESTINATION;
+
         { // Barriers
             nri::TextureBarrierDesc textureBarriers[2] = {};
 
             textureBarriers[0].texture = swapChainTexture.texture;
-            textureBarriers[0].after = {nri::AccessBits::RESOLVE_DESTINATION, nri::Layout::RESOLVE_DESTINATION};
+            textureBarriers[0].after = resolveDstState;
 
             textureBarriers[1].texture = m_TextureMsaa;
             textureBarriers[1].before = m_TextureMsaaLastState;
@@ -630,7 +634,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         { // Barriers
             nri::TextureBarrierDesc textureBarrier = {};
             textureBarrier.texture = swapChainTexture.texture;
-            textureBarrier.before = {nri::AccessBits::RESOLVE_DESTINATION, nri::Layout::RESOLVE_DESTINATION};
+            textureBarrier.before = resolveDstState;
             textureBarrier.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
 
             nri::BarrierDesc barrierGroup = {};

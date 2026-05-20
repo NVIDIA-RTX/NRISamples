@@ -203,7 +203,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         for (size_t i = 0; i < queuedFrame.commandBufferGraphics.size(); i++)
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocatorGraphics, queuedFrame.commandBufferGraphics[i]));
 
-        if (m_IsAsyncMode) {
+        if (m_HasComputeQueue) {
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandAllocator(*m_ComputeQueue, queuedFrame.commandAllocatorCompute));
             NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocatorCompute, queuedFrame.commandBufferCompute));
         }
@@ -538,25 +538,25 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     nri::CommandBuffer* commandBufferArray[3] = {&commandBuffer0, &commandBuffer1, &commandBuffer2};
 
     { // Submit work
-        nri::FenceSubmitDesc textureAcquiredFence = {};
-        textureAcquiredFence.fence = swapChainAcquireSemaphore;
-        textureAcquiredFence.stages = nri::StageBits::COPY;
+        nri::FenceSubmitDesc swapChainAcquired = {};
+        swapChainAcquired.fence = swapChainAcquireSemaphore;
+        swapChainAcquired.stages = nri::StageBits::COLOR_ATTACHMENT; // block the color attachment stage so the clear/draw commands wait for the acquire
 
-        nri::FenceSubmitDesc renderingFinishedFence = {};
-        renderingFinishedFence.fence = swapChainTexture.releaseSemaphore;
+        nri::FenceSubmitDesc swapChainRelease = {};
+        swapChainRelease.fence = swapChainTexture.releaseSemaphore;
 
         if (m_IsAsyncMode) {
             nri::FenceSubmitDesc computeFinishedFence = {};
             computeFinishedFence.fence = m_ComputeFence;
             computeFinishedFence.value = 1 + frameIndex;
 
-            { // Submit the Compute task into the COMPUTE queue
+            { // Submit the "Compute" task into the "COMPUTE" queue
                 nri::FenceSubmitDesc waitFence = {};
                 waitFence.fence = m_FrameFence;
                 waitFence.value = frameIndex;
 
                 nri::QueueSubmitDesc computeTask = {};
-                computeTask.waitFences = &waitFence; // Wait for the previous frame completion before execution
+                computeTask.waitFences = &waitFence; // wait for the previous frame completion before execution
                 computeTask.waitFenceNum = 1;
                 computeTask.commandBuffers = &commandBufferArray[0];
                 computeTask.commandBufferNum = 1;
@@ -566,23 +566,23 @@ void Sample::RenderFrame(uint32_t frameIndex) {
                 NRI.QueueSubmit(*m_ComputeQueue, computeTask);
             }
 
-            { // Submit the Graphics task into the GRAPHICS queue
+            { // Submit the "Graphics" task into the "GRAPHICS" queue
                 nri::QueueSubmitDesc graphicsTask = {};
+                graphicsTask.waitFences = &swapChainAcquired; // wait for the swap chain acquisition
+                graphicsTask.waitFenceNum = 1;
                 graphicsTask.commandBuffers = &commandBufferArray[1];
                 graphicsTask.commandBufferNum = 1;
 
                 NRI.QueueSubmit(*m_GraphicsQueue, graphicsTask);
             }
 
-            { // Submit the Composition task into the GRAPHICS queue
-                nri::FenceSubmitDesc waitFences[] = {textureAcquiredFence, computeFinishedFence};
-
+            { // Submit the "Composition" task into the "GRAPHICS" queue
                 nri::QueueSubmitDesc compositionTask = {};
-                compositionTask.waitFences = waitFences; // Wait for the Compute task completion before execution
-                compositionTask.waitFenceNum = helper::GetCountOf(waitFences);
+                compositionTask.waitFences = &computeFinishedFence; // wait for the "Compute" task completion before execution ("Graphics" has been just submitted into the same queue, thus "in order" execution)
+                compositionTask.waitFenceNum = 1;
                 compositionTask.commandBuffers = &commandBufferArray[2];
                 compositionTask.commandBufferNum = 1;
-                compositionTask.signalFences = &renderingFinishedFence;
+                compositionTask.signalFences = &swapChainRelease;
                 compositionTask.signalFenceNum = 1;
 
                 NRI.QueueSubmit(*m_GraphicsQueue, compositionTask);
@@ -590,11 +590,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         } else {
             // Submit all tasks to the GRAPHICS queue
             nri::QueueSubmitDesc allTasks = {};
-            allTasks.waitFences = &textureAcquiredFence;
+            allTasks.waitFences = &swapChainAcquired;
             allTasks.waitFenceNum = 1;
             allTasks.commandBuffers = commandBufferArray;
             allTasks.commandBufferNum = helper::GetCountOf(commandBufferArray);
-            allTasks.signalFences = &renderingFinishedFence;
+            allTasks.signalFences = &swapChainRelease;
             allTasks.signalFenceNum = 1;
 
             NRI.QueueSubmit(*m_GraphicsQueue, allTasks);
