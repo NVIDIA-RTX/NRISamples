@@ -536,8 +536,17 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.BeginCommandBuffer(*commandBuffer, m_DescriptorPool);
     {
         nri::AccessLayoutStage resolveDstState = {};
-        resolveDstState.access = m_RenderPassResolve ? nri::AccessBits::COLOR_ATTACHMENT : nri::AccessBits::RESOLVE_DESTINATION;
-        resolveDstState.layout = m_RenderPassResolve ? nri::Layout::COLOR_ATTACHMENT : nri::Layout::RESOLVE_DESTINATION;
+        if (m_RenderPassResolve) {
+            // On-the-fly resolve
+            resolveDstState.access = nri::AccessBits::COLOR_ATTACHMENT;
+            resolveDstState.layout = nri::Layout::COLOR_ATTACHMENT;
+            resolveDstState.stages = nri::StageBits::COLOR_ATTACHMENT;
+        } else {
+            // Explicit resolve
+            resolveDstState.access = nri::AccessBits::RESOLVE_DESTINATION;
+            resolveDstState.layout = nri::Layout::RESOLVE_DESTINATION;
+            resolveDstState.stages = nri::StageBits::RESOLVE;
+        }
 
         { // Barriers
             nri::TextureBarrierDesc textureBarriers[2] = {};
@@ -547,7 +556,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
             textureBarriers[1].texture = m_TextureMsaa;
             textureBarriers[1].before = m_TextureMsaaLastState;
-            textureBarriers[1].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+            textureBarriers[1].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT, nri::StageBits::COLOR_ATTACHMENT};
 
             bool isAlreadyAttachment = m_TextureMsaaLastState.access == textureBarriers[1].after.access;
             m_TextureMsaaLastState = textureBarriers[1].after;
@@ -613,11 +622,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         if (!m_RenderPassResolve) {
-            { // Barriers
+            { // Barriers: prepare MSAA target for manual resolve
                 nri::TextureBarrierDesc textureBarrier = {};
                 textureBarrier.texture = m_TextureMsaa;
-                textureBarrier.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-                textureBarrier.after = {nri::AccessBits::RESOLVE_SOURCE, nri::Layout::RESOLVE_SOURCE};
+                textureBarrier.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT, nri::StageBits::COLOR_ATTACHMENT};
+                textureBarrier.after = {nri::AccessBits::RESOLVE_SOURCE, nri::Layout::RESOLVE_SOURCE, nri::StageBits::RESOLVE}; // Sync to explicit resolve stage
                 m_TextureMsaaLastState = textureBarrier.after;
 
                 nri::BarrierDesc barrierGroup = {};
@@ -631,11 +640,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.CmdResolveTexture(*commandBuffer, *swapChainTexture.texture, nullptr, *m_TextureMsaa, nullptr, (nri::ResolveOp)m_ResolveMode);
         }
 
-        { // Barriers
+        { // Barriers: prepare Swap Chain for Composition
             nri::TextureBarrierDesc textureBarrier = {};
             textureBarrier.texture = swapChainTexture.texture;
             textureBarrier.before = resolveDstState;
-            textureBarrier.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+            textureBarrier.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT, nri::StageBits::COLOR_ATTACHMENT};
 
             nri::BarrierDesc barrierGroup = {};
             barrierGroup.textureNum = 1;
@@ -663,10 +672,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.CmdEndRendering(*commandBuffer);
         }
 
-        { // Barriers
+        { // Barriers: transition to present
             nri::TextureBarrierDesc textureBarrier = {};
             textureBarrier.texture = swapChainTexture.texture;
-            textureBarrier.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+            textureBarrier.before = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT, nri::StageBits::COLOR_ATTACHMENT};
             textureBarrier.after = {nri::AccessBits::NONE, nri::Layout::PRESENT, nri::StageBits::NONE};
 
             nri::BarrierDesc barrierGroup = {};
@@ -681,7 +690,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     { // Submit
         nri::FenceSubmitDesc textureAcquiredFence = {};
         textureAcquiredFence.fence = swapChainAcquireSemaphore;
-        textureAcquiredFence.stages = nri::StageBits::COLOR_ATTACHMENT;
+        textureAcquiredFence.stages = m_RenderPassResolve ? nri::StageBits::COLOR_ATTACHMENT : nri::StageBits::RESOLVE;
 
         nri::FenceSubmitDesc renderingFinishedFence = {};
         renderingFinishedFence.fence = swapChainTexture.releaseSemaphore;
