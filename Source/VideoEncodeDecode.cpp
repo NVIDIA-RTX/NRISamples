@@ -261,6 +261,7 @@ private:
     PatternConstants MakePatternConstants(PatternOperation operation, float timeSec) const;
     bool GeneratePatternWithCompute(const PatternConstants& constants, nri::Descriptor* previewTexture, bool returnSourceBufferToShaderStorage = false);
     bool WriteAnnexBHeadersToUploadBuffer(std::vector<uint8_t>& annexBHeaders);
+    bool WriteAnnexBEndOfStream(std::vector<uint8_t>& annexBEndOfStream);
     bool TrySubmitEncodeAndMetadataReadback(float timeSec);
     bool TryDecodePendingMetadata(float timeSec);
     bool DecodeEncodedBitstream(const nri::VideoEncodeFeedback& feedback, const nri::VideoAV1EncodeDecodeInfo* av1DecodeInfo, float timeSec);
@@ -1370,6 +1371,29 @@ bool Sample::WriteAnnexBHeadersToUploadBuffer(std::vector<uint8_t>& annexBHeader
     return true;
 }
 
+bool Sample::WriteAnnexBEndOfStream(std::vector<uint8_t>& annexBEndOfStream) {
+    annexBEndOfStream.clear();
+    if (m_Codec == SampleCodec::AV1)
+        return true;
+
+    nri::VideoAnnexBEndOfStreamDesc annexBDesc = {};
+    annexBDesc.codec = GetNriCodec(m_Codec);
+    if (Video.WriteVideoAnnexBEndOfStream(annexBDesc) != nri::Result::SUCCESS || annexBDesc.writtenSize == 0) {
+        m_VideoStatus = std::string("Failed to query ") + GetCodecName(m_Codec) + " Annex-B end-of-stream size";
+        return false;
+    }
+
+    annexBEndOfStream.resize((size_t)annexBDesc.writtenSize);
+    annexBDesc.dst = annexBEndOfStream.data();
+    annexBDesc.dstSize = annexBEndOfStream.size();
+    if (Video.WriteVideoAnnexBEndOfStream(annexBDesc) != nri::Result::SUCCESS) {
+        m_VideoStatus = std::string("Failed to build ") + GetCodecName(m_Codec) + " Annex-B end-of-stream marker";
+        return false;
+    }
+
+    return true;
+}
+
 bool Sample::TrySubmitEncodeAndMetadataReadback(float timeSec) {
     if (!CanRunRoundTrip()) {
         m_VideoStatus = std::string(GetCodecName(m_Codec)) + " round trip is not currently supported in this configuration";
@@ -1667,6 +1691,9 @@ bool Sample::DecodeEncodedBitstream(const nri::VideoEncodeFeedback& feedback, co
     std::vector<uint8_t> annexBHeaders;
     if (!WriteAnnexBHeadersToUploadBuffer(annexBHeaders))
         return false;
+    std::vector<uint8_t> annexBEndOfStream;
+    if (!WriteAnnexBEndOfStream(annexBEndOfStream))
+        return false;
 
     const uint64_t encodedPayloadSkip = av1DecodeInfo ? av1DecodeInfo->bitstreamOffset : GetEncodedPayloadHeaderSkip(m_Codec, feedback.encodedBitstreamWrittenBytes);
     const uint64_t encodedPayloadBytes = av1DecodeInfo ? av1DecodeInfo->bitstreamSize : feedback.encodedBitstreamWrittenBytes - encodedPayloadSkip;
@@ -1900,7 +1927,7 @@ bool Sample::DecodeEncodedBitstream(const nri::VideoEncodeFeedback& feedback, co
 
     m_DecodePreviewReady = true;
     char message[128] = {};
-    std::snprintf(message, sizeof(message), "%s encode/decode round trip complete, encoded %llu bytes", GetCodecName(m_Codec), (unsigned long long)feedback.encodedBitstreamWrittenBytes);
+    std::snprintf(message, sizeof(message), "%s encode/decode round trip complete, encoded %llu bytes, EOS %llu bytes", GetCodecName(m_Codec), (unsigned long long)feedback.encodedBitstreamWrittenBytes, (unsigned long long)annexBEndOfStream.size());
     m_VideoStatus = message;
     return true;
 }
