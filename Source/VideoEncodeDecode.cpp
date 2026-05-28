@@ -1706,7 +1706,6 @@ bool Sample::TryDecodePendingMetadata(float timeSec) {
     const bool decoded = DecodeEncodedBitstream(feedback, m_Codec == SampleCodec::AV1 ? &av1DecodeInfo : nullptr, timeSec);
     if (decoded && m_AV1PFrameVisual && m_AV1PFrameStage == 0) {
         m_AV1PFrameStage = 1;
-        m_DecodePreviewReady = false;
         return TrySubmitEncodeAndMetadataReadback(timeSec);
     }
 
@@ -1784,39 +1783,16 @@ bool Sample::DecodeEncodedBitstream(const nri::VideoEncodeFeedback& feedback, co
         av1Info.tileLayout.miRowStarts = av1Info.miRowStarts;
         av1Info.tileLayout.widthInSuperblocksMinus1 = av1Info.widthInSuperblocksMinus1;
         av1Info.tileLayout.heightInSuperblocksMinus1 = av1Info.heightInSuperblocksMinus1;
+        if (av1Info.picture.references && av1Info.picture.referenceNum)
+            av1Info.picture.references = av1Info.references;
     }
     nri::VideoReference av1DecodeReference = {m_DecodePicture, 0};
-    nri::VideoAV1ReferenceDesc av1DecodeReferences[8] = {};
     uint8_t av1DecodeOrderHints[8] = {};
     const bool av1PFrame = m_AV1PFrameVisual && m_AV1PFrameStage == 1;
     if (av1PFrame) {
-        const nri::VideoAV1ReferenceName av1ReferenceNames[] = {
-            nri::VideoAV1ReferenceName::LAST,
-            nri::VideoAV1ReferenceName::LAST2,
-            nri::VideoAV1ReferenceName::LAST3,
-            nri::VideoAV1ReferenceName::GOLDEN,
-            nri::VideoAV1ReferenceName::BWDREF,
-            nri::VideoAV1ReferenceName::ALTREF2,
-            nri::VideoAV1ReferenceName::ALTREF,
-        };
-        for (uint32_t i = 0; i < helper::GetCountOf(av1ReferenceNames); i++) {
-            av1DecodeReferences[i].name = av1ReferenceNames[i];
-            av1DecodeReferences[i].refFrameIndex = 0;
-            av1DecodeReferences[i].frameType = nri::VideoEncodeFrameType::IDR;
-            av1DecodeReferences[i].orderHint = 0;
-            av1DecodeReferences[i].frameId = 0;
-            av1DecodeReferences[i].slot = 0;
-            av1DecodeReferences[i].savedOrderHints = av1DecodeOrderHints;
-        }
-        av1Info.picture.frameType = nri::VideoEncodeFrameType::P;
-        av1Info.picture.orderHint = 1;
-        av1Info.picture.refreshFrameFlags = 0x1;
-        av1Info.picture.primaryReferenceName = nri::VideoAV1ReferenceName::LAST;
-        av1Info.picture.currentFrameId = 1;
-        av1Info.picture.flags = nri::VideoAV1PictureBits::SHOW_FRAME | nri::VideoAV1PictureBits::SHOWABLE_FRAME;
         av1Info.picture.orderHints = av1DecodeOrderHints;
-        av1Info.picture.references = av1DecodeReferences;
-        av1Info.picture.referenceNum = helper::GetCountOf(av1ReferenceNames);
+        for (uint32_t i = 0; i < av1Info.picture.referenceNum && i < helper::GetCountOf(av1Info.references); i++)
+            av1Info.references[i].savedOrderHints = av1DecodeOrderHints;
     }
 
     nri::VideoDecodeDesc decodeDesc = {};
@@ -1939,6 +1915,9 @@ bool Sample::DecodeEncodedBitstream(const nri::VideoEncodeFeedback& feedback, co
     }
 
     m_DecodePreviewReady = true;
+    if (av1PFrame)
+        m_AV1PFrameStage = 0;
+
     char message[128] = {};
     std::snprintf(message, sizeof(message), "%s encode/decode round trip complete, encoded %llu bytes, EOS %llu bytes", GetCodecName(m_Codec), (unsigned long long)feedback.encodedBitstreamWrittenBytes, (unsigned long long)annexBEndOfStream.size());
     m_VideoStatus = message;
