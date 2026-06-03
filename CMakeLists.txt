@@ -1,5 +1,15 @@
 cmake_minimum_required(VERSION 3.30)
 
+include(FetchContent)
+
+# GitHub actions?
+if("$ENV{GITHUB_ACTIONS}" STREQUAL "")
+    set(GITHUB_CI FALSE CACHE BOOL "GitHub Actions runner" FORCE)
+else()
+    set(GITHUB_CI TRUE CACHE BOOL "GitHub Actions runner" FORCE)
+    message(STATUS "Detected environment: GitHub Actions...")
+endif()
+
 # Options
 set(SHADER_OUTPUT_PATH "${CMAKE_CURRENT_SOURCE_DIR}/_Shaders")
 
@@ -26,33 +36,26 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_C_STANDARD 17)
 
-# Download dependencies using Packman
-if(WIN32)
-    set(PACKMAN_EXT ".cmd")
-else()
-    set(PACKMAN_EXT ".sh")
+# Download dependencies
+set(DEPS)
+
+if(NOT GITHUB_CI)
+    fetchcontent_declare(
+        assets
+        DOWNLOAD_EXTRACT_TIMESTAMP 1
+        DOWNLOAD_NO_PROGRESS 1
+        SOURCE_SUBDIR "ignore CMakeLists.txt"
+        SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/_Data"
+        URL https://github.com/NVIDIA-RTX/NRISamples/releases/download/assets/_Data.7z
+    )
+    list(APPEND DEPS assets)
 endif()
 
-if((CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64") OR(CMAKE_SYSTEM_PROCESSOR MATCHES "AMD64"))
-    if(WIN32)
-        set(PACKMAN_PLATFORM "windows-x86_64")
-    else()
-        set(PACKMAN_PLATFORM "linux-x86_64")
-    endif()
-elseif((CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64") OR(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64"))
-    set(PACKMAN_PLATFORM "linux-aarch64")
-else()
-    message(FATAL_ERROR "Unsupported architecture: '${CMAKE_SYSTEM_PROCESSOR}'")
-endif()
+if(DEPS)
+    message("Downloading dependencies:")
+    message(STATUS "${DEPS} ...")
 
-message("Packman platform: ${PACKMAN_PLATFORM}")
-
-execute_process(COMMAND "${CMAKE_CURRENT_SOURCE_DIR}/External/Packman/packman${PACKMAN_EXT}" pull "${CMAKE_CURRENT_SOURCE_DIR}/Dependencies.xml" -p ${PACKMAN_PLATFORM} -t nri_data_version=2.3_minimal
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    RESULT_VARIABLE PACKMAN_RESULT)
-
-if(NOT "${PACKMAN_RESULT}" STREQUAL "0")
-    message(FATAL_ERROR "Packman failed(code = ${PACKMAN_RESULT})")
+    fetchcontent_makeavailable(${DEPS})
 endif()
 
 # Compile options
