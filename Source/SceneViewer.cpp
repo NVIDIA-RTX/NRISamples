@@ -204,6 +204,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     {
         nri::VertexStreamDesc vertexStreamDesc = {};
         vertexStreamDesc.bindingSlot = 0;
+        vertexStreamDesc.stride = sizeof(utils::Vertex);
 
         nri::VertexAttributeDesc vertexAttributeDesc[4] = {};
         {
