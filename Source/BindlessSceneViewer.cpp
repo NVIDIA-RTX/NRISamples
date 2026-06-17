@@ -177,7 +177,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         exit(0);
     }
 
-    if (!deviceDesc.shaderFeatures.drawParameters && !deviceDesc.shaderFeatures.drawParametersEmulation) {
+    if (!deviceDesc.shaderFeatures.drawParameters) {
         printf("Draw parameters are not supported!\n");
         exit(0);
     }
@@ -246,7 +246,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
             pipelineLayoutDesc.descriptorSets = descriptorSetDescs;
             pipelineLayoutDesc.shaderStages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER;
 
-            if (deviceDesc.shaderFeatures.drawParametersEmulation)
+            // We know that all shaders are not SM 6.8, so emulation is needed for D3D12
+            if (deviceDesc.graphicsAPI == nri::GraphicsAPI::D3D12)
                 pipelineLayoutDesc.flags = nri::PipelineLayoutBits::ENABLE_DRAW_PARAMETERS_EMULATION;
 
             NRI_ABORT_ON_FAILURE(NRI.CreatePipelineLayout(*m_Device, pipelineLayoutDesc, m_GraphicsPipelineLayout));
