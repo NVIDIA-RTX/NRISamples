@@ -326,12 +326,12 @@ bool Decoder::Decode(const DecodeRequest& request, DecodedFrame& decodedFrame) {
     uint32_t h26DecodeReferenceNum = 0;
     if (h26Codec && frame.frameType != nri::VideoEncodeFrameType::IDR) {
         h26DecodeReferences[h26DecodeReferenceNum] = {m_DecodePicture, 0};
-        h264DecodeReferences[h26DecodeReferenceNum] = {nri::VideoH264DecodeReferenceBits::NONE, 0, 0, 0, 0};
+        h264DecodeReferences[h26DecodeReferenceNum] = {nri::VideoH264DecodeReferenceBits::TOP_FIELD | nri::VideoH264DecodeReferenceBits::BOTTOM_FIELD, 0, 0, 0, 0};
         h265DecodeReferences[h26DecodeReferenceNum] = {0, 0, 0, nri::VideoEncodeFrameType::IDR, 0, 0};
         h26DecodeReferenceNum++;
         if (frame.frameType == nri::VideoEncodeFrameType::B) {
             h26DecodeReferences[h26DecodeReferenceNum] = {m_AV1PDecodePicture, 1};
-            h264DecodeReferences[h26DecodeReferenceNum] = {nri::VideoH264DecodeReferenceBits::NONE, 2, 1, 2, 2};
+            h264DecodeReferences[h26DecodeReferenceNum] = {nri::VideoH264DecodeReferenceBits::TOP_FIELD | nri::VideoH264DecodeReferenceBits::BOTTOM_FIELD, 2, 1, 2, 2};
             h265DecodeReferences[h26DecodeReferenceNum] = {1, 2, 0, nri::VideoEncodeFrameType::P, 0, 1};
             h26DecodeReferenceNum++;
         }
@@ -499,7 +499,7 @@ bool Decoder::Decode(const DecodeRequest& request, DecodedFrame& decodedFrame) {
             nri::TextureDataLayoutDesc lumaLayout = {};
             lumaLayout.rowPitch = request.nv12Layout->yRowPitchBytes;
             lumaLayout.slicePitch = request.nv12Layout->ySlicePitchBytes;
-            nri.CmdReadbackTextureToBuffer(commandBuffer, *request.nv12ReadbackBuffer, lumaLayout, *(av1PFrame ? m_AV1PDecodeTexture : m_DecodeTexture), lumaRegion);
+            nri.CmdReadbackTextureToBuffer(commandBuffer, *request.nv12ReadbackBuffer, lumaLayout, *dstTexture, lumaRegion);
 
             nri::TextureRegionDesc chromaRegion = {};
             chromaRegion.width = (nri::Dim_t)m_Size.videoWidth;
@@ -511,7 +511,7 @@ bool Decoder::Decode(const DecodeRequest& request, DecodedFrame& decodedFrame) {
             chromaLayout.offset = request.nv12Layout->uvOffsetBytes;
             chromaLayout.rowPitch = request.nv12Layout->uvRowPitchBytes;
             chromaLayout.slicePitch = request.nv12Layout->uvSlicePitchBytes;
-            nri.CmdReadbackTextureToBuffer(commandBuffer, *request.nv12ReadbackBuffer, chromaLayout, *(av1PFrame ? m_AV1PDecodeTexture : m_DecodeTexture), chromaRegion);
+            nri.CmdReadbackTextureToBuffer(commandBuffer, *request.nv12ReadbackBuffer, chromaLayout, *dstTexture, chromaRegion);
 
             nv12BufferBarrier.before = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
             nv12BufferBarrier.after = {nri::AccessBits::NONE, nri::StageBits::NONE};

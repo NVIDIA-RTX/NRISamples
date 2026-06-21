@@ -561,14 +561,18 @@ bool Encoder::Encode(const EncodeRequest& request) {
             bufferBarriers[1].after = {};
             textureBarriers[0].before = srcPictureStates.encodeRead;
             textureBarriers[0].after = {nri::AccessBits::NONE, nri::Layout::GENERAL, nri::StageBits::NONE};
-            textureBarriers[1].before = reconstructedPictureStates.encodeWrite;
-            textureBarriers[1].after = {nri::AccessBits::NONE, nri::Layout::GENERAL, nri::StageBits::NONE};
-            textureBarriers[2].before = {nri::AccessBits::VIDEO_ENCODE_READ, nri::Layout::VIDEO_ENCODE_DPB, nri::StageBits::VIDEO_ENCODE};
-            textureBarriers[2].after = reconstructedPictureStates.afterEncode;
-            textureBarriers[3].before = {nri::AccessBits::VIDEO_ENCODE_READ, nri::Layout::VIDEO_ENCODE_DPB, nri::StageBits::VIDEO_ENCODE};
-            textureBarriers[3].after = {nri::AccessBits::NONE, nri::Layout::GENERAL, nri::StageBits::NONE};
+            uint32_t postEncodeTextureBarrierNum = 1;
+            if (reconstructedPictureStates.releaseAfterEncode) {
+                textureBarriers[1].before = reconstructedPictureStates.encodeWrite;
+                textureBarriers[1].after = reconstructedPictureStates.afterEncode;
+                textureBarriers[2].before = {nri::AccessBits::VIDEO_ENCODE_READ, nri::Layout::VIDEO_ENCODE_DPB, nri::StageBits::VIDEO_ENCODE};
+                textureBarriers[2].after = reconstructedPictureStates.afterEncode;
+                textureBarriers[3].before = {nri::AccessBits::VIDEO_ENCODE_READ, nri::Layout::VIDEO_ENCODE_DPB, nri::StageBits::VIDEO_ENCODE};
+                textureBarriers[3].after = reconstructedPictureStates.afterEncode;
+                postEncodeTextureBarrierNum = textureBarrierNum;
+            }
             barrierDesc.textures = textureBarriers;
-            barrierDesc.textureNum = textureBarrierNum;
+            barrierDesc.textureNum = postEncodeTextureBarrierNum;
             nri.CmdBarrier(commandBuffer, barrierDesc);
         })) {
         m_Status = std::string(GetCodecName(m_Config.codec)) + " encode submission failed";
