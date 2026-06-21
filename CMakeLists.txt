@@ -191,6 +191,13 @@ add_sample(SceneViewer cpp)
 add_sample(Triangle cpp)
 
 add_sample(VideoEncodeDecode cpp)
+target_sources(VideoEncodeDecode PRIVATE
+    Source/VideoEncodeDecode/Decoder.cpp
+    Source/VideoEncodeDecode/Decoder.h
+    Source/VideoEncodeDecode/Encoder.cpp
+    Source/VideoEncodeDecode/Encoder.h
+    Source/VideoEncodeDecode/Shared.h
+)
 
 if(WIN32)
     target_link_libraries(VideoEncodeDecode PRIVATE d3d12)
