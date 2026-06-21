@@ -38,6 +38,12 @@ enum class SampleCodec : uint8_t {
     AV1,
 };
 
+enum class VisualFrameMode : uint8_t {
+    IDR,
+    P,
+    B,
+};
+
 struct Av1SequenceOptions {
     bool enableCdef = true;
     bool enableRestoration = true;
@@ -76,6 +82,7 @@ struct VideoConfig {
     uint32_t videoWidth = DEFAULT_VIDEO_WIDTH;
     uint32_t videoHeight = DEFAULT_VIDEO_HEIGHT;
     bool av1PFrameVisual = false;
+    VisualFrameMode h26FrameMode = VisualFrameMode::IDR;
 };
 
 struct VideoQuality {
@@ -117,8 +124,13 @@ struct EncodedFrame {
     nri::VideoEncodeFeedback feedback = {};
     nri::Buffer* bitstreamBuffer = nullptr;
     nri::VideoAV1EncodeDecodeInfo av1DecodeInfo = {};
+    nri::VideoEncodeFrameType frameType = nri::VideoEncodeFrameType::IDR;
+    uint32_t frameIndex = 0;
+    int32_t pictureOrderCount = 0;
+    uint32_t outputSlot = 0;
     bool hasAv1DecodeInfo = false;
     bool isAv1PFrame = false;
+    bool isDisplayFrame = true;
 };
 
 struct DecodedFrame {

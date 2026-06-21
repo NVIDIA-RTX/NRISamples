@@ -46,9 +46,11 @@ private:
     nri::VideoSessionParameters* m_Parameters = nullptr;
     nri::Texture* m_DecodeTexture = nullptr;
     nri::Texture* m_AV1PDecodeTexture = nullptr;
+    nri::Texture* m_BDecodeTexture = nullptr;
     nri::Buffer* m_DecodeBitstreamBuffer = nullptr;
     nri::VideoPicture* m_DecodePicture = nullptr;
     nri::VideoPicture* m_AV1PDecodePicture = nullptr;
+    nri::VideoPicture* m_BDecodePicture = nullptr;
 
     uint32_t m_DecodeFrameIndex = 0;
     bool m_Ready = false;

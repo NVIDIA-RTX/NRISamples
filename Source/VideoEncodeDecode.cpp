@@ -279,6 +279,7 @@ private:
     std::string m_PreviewStatus = "Initializing preview";
     std::string m_CodecArg = "H264";
     std::string m_AV1FrameArg = "IDR";
+    std::string m_H26FrameArg = "IDR";
     uint32_t m_VideoWidth = DEFAULT_VIDEO_WIDTH;
     uint32_t m_VideoHeight = DEFAULT_VIDEO_HEIGHT;
     uint32_t m_CodedVideoWidth = DEFAULT_VIDEO_WIDTH;
@@ -294,6 +295,7 @@ private:
     float m_DiffStrength = 6.0f;
     PatternConstants m_PendingEncodedPatternConstants = {};
     SampleCodec m_Codec = SampleCodec::H264;
+    video_sample::VisualFrameMode m_H26FrameMode = video_sample::VisualFrameMode::IDR;
     double m_StartTimeSec = 0.0;
     double m_LastRoundTripTimeSec = -ROUND_TRIP_INTERVAL_SEC;
     bool m_VideoReady = false;
@@ -364,6 +366,7 @@ Sample::~Sample() {
 void Sample::InitCmdLine(cmdline::parser& cmdLine) {
     cmdLine.add<std::string>("codec", 0, "video codec: H264, H265, or AV1", false, m_CodecArg, cmdline::oneof<std::string>("H264", "H265", "AV1"));
     cmdLine.add<std::string>("av1Frame", 0, "AV1 visual frame permutation: IDR or P", false, m_AV1FrameArg, cmdline::oneof<std::string>("IDR", "P"));
+    cmdLine.add<std::string>("h26Frame", 0, "H.264/H.265 visual frame permutation: IDR, P, or B", false, m_H26FrameArg, cmdline::oneof<std::string>("IDR", "P", "B"));
     cmdLine.add<uint32_t>("videoWidth", 0, "NV12 video encode/decode width", false, m_VideoWidth);
     cmdLine.add<uint32_t>("videoHeight", 0, "NV12 video encode/decode height", false, m_VideoHeight);
     cmdLine.add<uint32_t>("qpI", 0, "CQP quantizer for I/IDR frames", false, m_QpI);
@@ -376,6 +379,7 @@ void Sample::InitCmdLine(cmdline::parser& cmdLine) {
 void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     m_CodecArg = cmdLine.get<std::string>("codec");
     m_AV1FrameArg = cmdLine.get<std::string>("av1Frame");
+    m_H26FrameArg = cmdLine.get<std::string>("h26Frame");
     m_VideoWidth = cmdLine.get<uint32_t>("videoWidth");
     m_VideoHeight = cmdLine.get<uint32_t>("videoHeight");
     if (!cmdLine.exist("videoWidth") && cmdLine.exist("width"))
@@ -388,6 +392,7 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     m_AV1BaseQIndex = cmdLine.get<uint32_t>("av1BaseQIndex");
     m_Lossless = cmdLine.exist("lossless");
     m_Codec = m_CodecArg == "H265" ? SampleCodec::H265 : (m_CodecArg == "AV1" ? SampleCodec::AV1 : SampleCodec::H264);
+    m_H26FrameMode = m_H26FrameArg == "B" ? video_sample::VisualFrameMode::B : (m_H26FrameArg == "P" ? video_sample::VisualFrameMode::P : video_sample::VisualFrameMode::IDR);
     m_AV1PFrameVisual = m_Codec == SampleCodec::AV1 && m_AV1FrameArg == "P";
 }
 
@@ -410,6 +415,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     m_VideoConfig.videoWidth = m_VideoWidth;
     m_VideoConfig.videoHeight = m_VideoHeight;
     m_VideoConfig.av1PFrameVisual = m_AV1PFrameVisual;
+    m_VideoConfig.h26FrameMode = m_H26FrameMode;
     m_VideoQuality.qpI = m_QpI;
     m_VideoQuality.qpP = m_QpP;
     m_VideoQuality.qpB = m_QpB;
@@ -962,6 +968,9 @@ bool Sample::TryDecodePendingMetadata(float timeSec) {
         return false;
     }
 
+    if (!encodedFrame.isDisplayFrame)
+        return TrySubmitEncodeAndMetadataReadback(timeSec);
+
     PatternConstants patternConstants = m_HasPendingEncodedPatternConstants ? m_PendingEncodedPatternConstants : MakePatternConstants(OP_NV12_TO_PREVIEW, timeSec);
     patternConstants.operation = OP_NV12_TO_PREVIEW;
     patternConstants.diffStrength = m_DiffStrength;
@@ -1035,12 +1044,13 @@ void Sample::PrepareFrame(uint32_t) {
             const uint32_t effectiveQpP = m_VideoQuality.lossless ? minCodecQp : std::max(m_VideoQuality.qpP, minCodecQp);
             const uint32_t effectiveQpB = m_VideoQuality.lossless ? minCodecQp : std::max(m_VideoQuality.qpB, minCodecQp);
             ImGui::Text("Codec: %s, format: NV12, size: %ux%u", GetCodecName(m_Codec), m_VideoWidth, m_VideoHeight);
-            ImGui::Text("Startup-only: codec, video size, AV1 frame mode");
+            ImGui::Text("Startup-only: codec, video size, AV1/H.26x frame mode");
             ImGui::Text("CQP: I=%u, P=%u, B=%u%s", effectiveQpI, effectiveQpP, effectiveQpB, m_Codec == SampleCodec::AV1 ? ", AV1 baseQIndex follows below" : "");
             if (m_Codec == SampleCodec::AV1) {
                 const uint32_t effectiveAv1BaseQIndex = m_VideoQuality.lossless ? 1 : std::max(m_VideoQuality.av1BaseQIndex, 1u);
                 ImGui::Text("AV1: frame=%s, baseQIndex=%u", m_AV1FrameArg.c_str(), effectiveAv1BaseQIndex);
-            }
+            } else
+                ImGui::Text("H.26x frame permutation: %s", m_H26FrameArg.c_str());
             ImGui::TextWrapped("Video: %s", m_VideoStatus.c_str());
             ImGui::TextWrapped("Preview: %s", m_PreviewStatus.c_str());
             ImGui::Text("Encode queue: %s, decode queue: %s", m_VideoEncodeQueue ? "yes" : "no", m_VideoDecodeQueue ? "yes" : "no");
