@@ -2,6 +2,7 @@
 
 #include "Encoder.h"
 
+#include <algorithm>
 #include <cstdio>
 
 namespace video_sample {
@@ -363,7 +364,10 @@ bool Encoder::Encode(const EncodeRequest& request) {
                                      : av1CommonPictureFlags | nri::VideoAV1PictureBits::ERROR_RESILIENT_MODE;
     av1PictureDesc.renderWidthMinus1 = (uint16_t)((m_Context.graphicsAPI == nri::GraphicsAPI::VK ? m_Size.codedWidth : m_Size.videoWidth) - 1);
     av1PictureDesc.renderHeightMinus1 = (uint16_t)((m_Context.graphicsAPI == nri::GraphicsAPI::VK ? m_Size.codedHeight : m_Size.videoHeight) - 1);
-    av1PictureDesc.baseQIndex = (uint8_t)m_Config.av1BaseQIndex;
+    const bool av1LosslessFallback = m_Config.codec == SampleCodec::AV1 && request.quality.lossless;
+    const uint8_t minQ = m_Config.codec == SampleCodec::AV1 ? 1 : 0;
+    const uint8_t av1BaseQIndex = (uint8_t)(request.quality.lossless ? 1 : std::max(request.quality.av1BaseQIndex, (uint32_t)minQ));
+    av1PictureDesc.baseQIndex = av1BaseQIndex;
     av1PictureDesc.interpolationFilter = 0;
     av1PictureDesc.txMode = 2;
     av1PictureDesc.cdefDampingMinus3 = 3;
@@ -398,9 +402,9 @@ bool Encoder::Encode(const EncodeRequest& request) {
 
     nri::VideoEncodeRateControlDesc rateControlDesc = {};
     rateControlDesc.mode = nri::VideoEncodeRateControlMode::CQP;
-    rateControlDesc.qpI = (uint8_t)m_Config.qpI;
-    rateControlDesc.qpP = (uint8_t)m_Config.qpP;
-    rateControlDesc.qpB = (uint8_t)m_Config.qpB;
+    rateControlDesc.qpI = (uint8_t)(request.quality.lossless ? (av1LosslessFallback ? 1 : 0) : std::max(request.quality.qpI, (uint32_t)minQ));
+    rateControlDesc.qpP = (uint8_t)(request.quality.lossless ? (av1LosslessFallback ? 1 : 0) : std::max(request.quality.qpP, (uint32_t)minQ));
+    rateControlDesc.qpB = (uint8_t)(request.quality.lossless ? (av1LosslessFallback ? 1 : 0) : std::max(request.quality.qpB, (uint32_t)minQ));
     rateControlDesc.frameRateNumerator = 30;
     rateControlDesc.frameRateDenominator = 1;
 

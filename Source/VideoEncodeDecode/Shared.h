@@ -75,11 +75,15 @@ struct VideoConfig {
     SampleCodec codec = SampleCodec::H264;
     uint32_t videoWidth = DEFAULT_VIDEO_WIDTH;
     uint32_t videoHeight = DEFAULT_VIDEO_HEIGHT;
+    bool av1PFrameVisual = false;
+};
+
+struct VideoQuality {
     uint32_t qpI = 20;
     uint32_t qpP = 22;
     uint32_t qpB = 24;
     uint32_t av1BaseQIndex = 20;
-    bool av1PFrameVisual = false;
+    bool lossless = false;
 };
 
 struct VideoSize {
@@ -203,7 +207,7 @@ inline Nv12BufferLayout MakeNv12BufferLayout(const nri::DeviceDesc& deviceDesc, 
 inline CodecParameters MakeCodecParameters(nri::GraphicsAPI graphicsAPI, uint32_t codedWidth, uint32_t codedHeight) {
     CodecParameters params = {};
 
-    params.h264Sps.flags = nri::VideoH264SequenceParameterSetBits::DIRECT_8X8_INFERENCE | nri::VideoH264SequenceParameterSetBits::FRAME_MBS_ONLY;
+    params.h264Sps.flags = nri::VideoH264SequenceParameterSetBits::DIRECT_8X8_INFERENCE | nri::VideoH264SequenceParameterSetBits::FRAME_MBS_ONLY | nri::VideoH264SequenceParameterSetBits::QPPRIME_Y_ZERO_TRANSFORM_BYPASS;
     params.h264Sps.profileIdc = 100;
     params.h264Sps.levelIdc = 42;
     params.h264Sps.chromaFormatIdc = 1;

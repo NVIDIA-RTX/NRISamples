@@ -77,8 +77,11 @@ struct PatternConstants {
     uint32_t uvOffsetBytes = 0;
     uint32_t operation = OP_GENERATE_PATTERN;
     float time = 0.0f;
-    uint32_t _padding = 0;
-    uint32_t _padding1 = 0;
+    float motionSpeed = 1.0f;
+    float detailStrength = 1.0f;
+    float diffStrength = 6.0f;
+    uint32_t showDifference = 0;
+    uint32_t frameIndex = 0;
 };
 
 struct Nv12BufferLayout {
@@ -241,6 +244,7 @@ private:
     std::unique_ptr<video_sample::Encoder> m_Encoder;
     std::unique_ptr<video_sample::Decoder> m_Decoder;
     video_sample::VideoConfig m_VideoConfig = {};
+    video_sample::VideoQuality m_VideoQuality = {};
     video_sample::VideoSize m_VideoSize = {};
     video_sample::CodecParameters m_CodecParameters = {};
     nri::GraphicsAPI m_GraphicsAPI = nri::GraphicsAPI::NONE;
@@ -284,6 +288,11 @@ private:
     uint32_t m_QpP = 22;
     uint32_t m_QpB = 24;
     uint32_t m_AV1BaseQIndex = 20;
+    bool m_Lossless = false;
+    float m_PatternMotionSpeed = 1.0f;
+    float m_PatternDetailStrength = 1.0f;
+    float m_DiffStrength = 6.0f;
+    PatternConstants m_PendingEncodedPatternConstants = {};
     SampleCodec m_Codec = SampleCodec::H264;
     double m_StartTimeSec = 0.0;
     double m_LastRoundTripTimeSec = -ROUND_TRIP_INTERVAL_SEC;
@@ -293,6 +302,9 @@ private:
     bool m_PreviewTexturesShaderReadable = false;
     bool m_SourcePreviewReady = false;
     bool m_AV1PFrameVisual = false;
+    bool m_ShowDifference = false;
+    bool m_HasPendingEncodedPatternConstants = false;
+    uint32_t m_PatternFrameIndex = 0;
 };
 
 Sample::~Sample() {
@@ -358,6 +370,7 @@ void Sample::InitCmdLine(cmdline::parser& cmdLine) {
     cmdLine.add<uint32_t>("qpP", 0, "CQP quantizer for P frames", false, m_QpP);
     cmdLine.add<uint32_t>("qpB", 0, "CQP quantizer for B frames", false, m_QpB);
     cmdLine.add<uint32_t>("av1BaseQIndex", 0, "AV1 base quantizer index", false, m_AV1BaseQIndex);
+    cmdLine.add("lossless", 0, "force zero quantizers for lossless-capable codec modes");
 }
 
 void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
@@ -373,6 +386,7 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     m_QpP = cmdLine.get<uint32_t>("qpP");
     m_QpB = cmdLine.get<uint32_t>("qpB");
     m_AV1BaseQIndex = cmdLine.get<uint32_t>("av1BaseQIndex");
+    m_Lossless = cmdLine.exist("lossless");
     m_Codec = m_CodecArg == "H265" ? SampleCodec::H265 : (m_CodecArg == "AV1" ? SampleCodec::AV1 : SampleCodec::H264);
     m_AV1PFrameVisual = m_Codec == SampleCodec::AV1 && m_AV1FrameArg == "P";
 }
@@ -383,9 +397,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         std::fprintf(stderr, "%s\n", m_VideoStatus.c_str());
         return false;
     }
+    const uint32_t minCodecQp = m_Codec == SampleCodec::AV1 ? 1 : 0;
     const uint32_t maxCodecQp = m_Codec == SampleCodec::AV1 ? 255 : 51;
-    if (m_QpI > maxCodecQp || m_QpP > maxCodecQp || m_QpB > maxCodecQp || m_AV1BaseQIndex > 255) {
-        m_VideoStatus = m_Codec == SampleCodec::AV1 ? "AV1 quantizers must be in the 0..255 range" : "H.264/H.265 QP values must be in the 0..51 range";
+    if (m_QpI < minCodecQp || m_QpI > maxCodecQp || m_QpP < minCodecQp || m_QpP > maxCodecQp || m_QpB < minCodecQp || m_QpB > maxCodecQp || m_AV1BaseQIndex < minCodecQp || m_AV1BaseQIndex > 255) {
+        m_VideoStatus = m_Codec == SampleCodec::AV1 ? "AV1 quantizers must be in the 1..255 range on current hardware encode paths" : "H.264/H.265 QP values must be in the 0..51 range";
         std::fprintf(stderr, "%s\n", m_VideoStatus.c_str());
         return false;
     }
@@ -394,11 +409,12 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     m_VideoConfig.codec = m_Codec == SampleCodec::H265 ? video_sample::SampleCodec::H265 : (m_Codec == SampleCodec::AV1 ? video_sample::SampleCodec::AV1 : video_sample::SampleCodec::H264);
     m_VideoConfig.videoWidth = m_VideoWidth;
     m_VideoConfig.videoHeight = m_VideoHeight;
-    m_VideoConfig.qpI = m_QpI;
-    m_VideoConfig.qpP = m_QpP;
-    m_VideoConfig.qpB = m_QpB;
-    m_VideoConfig.av1BaseQIndex = m_AV1BaseQIndex;
     m_VideoConfig.av1PFrameVisual = m_AV1PFrameVisual;
+    m_VideoQuality.qpI = m_QpI;
+    m_VideoQuality.qpP = m_QpP;
+    m_VideoQuality.qpB = m_QpB;
+    m_VideoQuality.av1BaseQIndex = m_AV1BaseQIndex;
+    m_VideoQuality.lossless = m_Lossless;
 
     if (!InitializeGraphics(graphicsAPI))
         return false;
@@ -517,6 +533,11 @@ PatternConstants Sample::MakePatternConstants(PatternOperation operation, float 
     patternConstants.uvOffsetBytes = (uint32_t)m_Nv12Layout.uvOffsetBytes;
     patternConstants.operation = operation;
     patternConstants.time = timeSec;
+    patternConstants.motionSpeed = m_PatternMotionSpeed;
+    patternConstants.detailStrength = m_PatternDetailStrength;
+    patternConstants.diffStrength = m_DiffStrength;
+    patternConstants.showDifference = m_ShowDifference ? 1 : 0;
+    patternConstants.frameIndex = m_PatternFrameIndex;
     return patternConstants;
 }
 
@@ -903,15 +924,19 @@ bool Sample::TrySubmitEncodeAndMetadataReadback(float timeSec) {
         return false;
     }
 
+    m_PatternFrameIndex++;
     PatternConstants patternConstants = MakePatternConstants(OP_GENERATE_PATTERN, timeSec);
     if (!GeneratePatternWithCompute(patternConstants, m_SourcePreviewStorage, true)) {
         m_VideoStatus = "Failed to generate NV12 source pattern via compute";
         return false;
     }
+    m_PendingEncodedPatternConstants = patternConstants;
+    m_HasPendingEncodedPatternConstants = true;
 
     video_sample::EncodeRequest encodeRequest = {};
     encodeRequest.nv12Buffer = m_UploadBuffer;
     encodeRequest.nv12Layout = &m_SharedNv12Layout;
+    encodeRequest.quality = m_VideoQuality;
     encodeRequest.timeSec = timeSec;
     if (!m_Encoder->Encode(encodeRequest)) {
         m_VideoStatus = m_Encoder->GetStatus();
@@ -937,11 +962,15 @@ bool Sample::TryDecodePendingMetadata(float timeSec) {
         return false;
     }
 
-    PatternConstants patternConstants = MakePatternConstants(OP_NV12_TO_PREVIEW, timeSec);
+    PatternConstants patternConstants = m_HasPendingEncodedPatternConstants ? m_PendingEncodedPatternConstants : MakePatternConstants(OP_NV12_TO_PREVIEW, timeSec);
+    patternConstants.operation = OP_NV12_TO_PREVIEW;
+    patternConstants.diffStrength = m_DiffStrength;
+    patternConstants.showDifference = m_ShowDifference ? 1 : 0;
     if (!GeneratePatternWithCompute(patternConstants, m_DecodePreviewStorage, true)) {
         m_VideoStatus = "Failed to convert decoded NV12 to preview texture";
         return false;
     }
+    m_HasPendingEncodedPatternConstants = false;
 
     m_DecodePreviewReady = true;
     if (m_AV1PFrameVisual && !encodedFrame.isAv1PFrame)
@@ -988,8 +1017,7 @@ void Sample::PrepareFrame(uint32_t) {
     const double timeSec = m_Timer.GetTimeStamp() * 0.001 - m_StartTimeSec;
     const bool canRunRoundTrip = CanRunRoundTrip();
 
-    if (!m_SourcePreviewReady)
-        InitializeGeneratedFrames((float)timeSec);
+    InitializeGeneratedFrames((float)timeSec);
 
     if (canRunRoundTrip && timeSec - m_LastRoundTripTimeSec >= ROUND_TRIP_INTERVAL_SEC) {
         if (TryRunRoundTrip((float)timeSec))
@@ -1000,12 +1028,19 @@ void Sample::PrepareFrame(uint32_t) {
     {
         ImGui::SetNextWindowPos({20.0f, 20.0f}, ImGuiCond_Once);
         ImGui::SetNextWindowSize({900.0f, 520.0f}, ImGuiCond_Once);
-        ImGui::Begin("NRI Video Encode / Decode");
+            ImGui::Begin("NRI Video Encode / Decode");
         {
+            const uint32_t minCodecQp = m_Codec == SampleCodec::AV1 ? 1 : 0;
+            const uint32_t effectiveQpI = m_VideoQuality.lossless ? minCodecQp : std::max(m_VideoQuality.qpI, minCodecQp);
+            const uint32_t effectiveQpP = m_VideoQuality.lossless ? minCodecQp : std::max(m_VideoQuality.qpP, minCodecQp);
+            const uint32_t effectiveQpB = m_VideoQuality.lossless ? minCodecQp : std::max(m_VideoQuality.qpB, minCodecQp);
             ImGui::Text("Codec: %s, format: NV12, size: %ux%u", GetCodecName(m_Codec), m_VideoWidth, m_VideoHeight);
-            ImGui::Text("CQP: I=%u, P=%u, B=%u%s", m_QpI, m_QpP, m_QpB, m_Codec == SampleCodec::AV1 ? ", AV1 baseQIndex follows below" : "");
-            if (m_Codec == SampleCodec::AV1)
-                ImGui::Text("AV1: frame=%s, baseQIndex=%u", m_AV1FrameArg.c_str(), m_AV1BaseQIndex);
+            ImGui::Text("Startup-only: codec, video size, AV1 frame mode");
+            ImGui::Text("CQP: I=%u, P=%u, B=%u%s", effectiveQpI, effectiveQpP, effectiveQpB, m_Codec == SampleCodec::AV1 ? ", AV1 baseQIndex follows below" : "");
+            if (m_Codec == SampleCodec::AV1) {
+                const uint32_t effectiveAv1BaseQIndex = m_VideoQuality.lossless ? 1 : std::max(m_VideoQuality.av1BaseQIndex, 1u);
+                ImGui::Text("AV1: frame=%s, baseQIndex=%u", m_AV1FrameArg.c_str(), effectiveAv1BaseQIndex);
+            }
             ImGui::TextWrapped("Video: %s", m_VideoStatus.c_str());
             ImGui::TextWrapped("Preview: %s", m_PreviewStatus.c_str());
             ImGui::Text("Encode queue: %s, decode queue: %s", m_VideoEncodeQueue ? "yes" : "no", m_VideoDecodeQueue ? "yes" : "no");
@@ -1015,6 +1050,37 @@ void Sample::PrepareFrame(uint32_t) {
                 ImGui::Text("Decode preview: waiting for first decoded frame");
 
             ImGui::Separator();
+            ImGui::Text("Live controls");
+            ImGui::Checkbox("Lossless / zero quantizers", &m_VideoQuality.lossless);
+            if (m_VideoQuality.lossless) {
+                if (m_Codec == SampleCodec::AV1)
+                    ImGui::TextWrapped("AV1 hardware encode rejects baseQIndex 0 on current backends, so lossless mode uses near-lossless baseQIndex 1.");
+                else
+                    ImGui::TextWrapped("%s forces CQP 0%s.", GetCodecName(m_Codec), m_Codec == SampleCodec::H264 ? " with transform bypass advertised in the SPS" : "");
+            }
+            int qpI = (int)m_VideoQuality.qpI;
+            int qpP = (int)m_VideoQuality.qpP;
+            int qpB = (int)m_VideoQuality.qpB;
+            const int qpMin = m_Codec == SampleCodec::AV1 ? 1 : 0;
+            const int qpMax = m_Codec == SampleCodec::AV1 ? 255 : 51;
+            if (ImGui::SliderInt("QP I / IDR", &qpI, qpMin, qpMax))
+                m_VideoQuality.qpI = (uint32_t)qpI;
+            if (ImGui::SliderInt("QP P", &qpP, qpMin, qpMax))
+                m_VideoQuality.qpP = (uint32_t)qpP;
+            if (ImGui::SliderInt("QP B", &qpB, qpMin, qpMax))
+                m_VideoQuality.qpB = (uint32_t)qpB;
+            if (m_Codec == SampleCodec::AV1) {
+                int av1BaseQIndex = (int)m_VideoQuality.av1BaseQIndex;
+                if (ImGui::SliderInt("AV1 base Q index", &av1BaseQIndex, 1, 255))
+                    m_VideoQuality.av1BaseQIndex = (uint32_t)av1BaseQIndex;
+            }
+            ImGui::SliderFloat("Pattern motion", &m_PatternMotionSpeed, 0.0f, 4.0f, "%.2f");
+            ImGui::SliderFloat("Pattern detail", &m_PatternDetailStrength, 0.0f, 2.5f, "%.2f");
+            ImGui::Checkbox("Show artifact diff", &m_ShowDifference);
+            if (m_ShowDifference)
+                ImGui::SliderFloat("Diff amplification", &m_DiffStrength, 1.0f, 20.0f, "%.1f");
+
+            ImGui::Separator();
             if (ImGui::BeginTable("PreviewPanels", 2, ImGuiTableFlags_SizingStretchSame)) {
                 ImGui::TableNextColumn();
                 float width = std::max(200.0f, ImGui::GetContentRegionAvail().x);
@@ -1022,7 +1088,7 @@ void Sample::PrepareFrame(uint32_t) {
 
                 ImGui::TableNextColumn();
                 width = std::max(200.0f, ImGui::GetContentRegionAvail().x);
-                DrawTexturePanel(m_DecodePreviewReady ? "Decoded preview" : "Decoded preview pending", m_DecodePreviewReady ? m_DecodePreviewTextureView : nullptr, {width, width * float(m_VideoHeight) / float(m_VideoWidth)});
+                DrawTexturePanel(m_DecodePreviewReady ? (m_ShowDifference ? "Artifact diff" : "Decoded preview") : "Decoded preview pending", m_DecodePreviewReady ? m_DecodePreviewTextureView : nullptr, {width, width * float(m_VideoHeight) / float(m_VideoWidth)});
                 ImGui::EndTable();
             }
         }
@@ -1061,6 +1127,8 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         nri::AttachmentDesc colorAttachmentDesc = {};
         colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
         colorAttachmentDesc.clearValue.color.f = {0.03f, 0.03f, 0.03f, 1.0f};
+        colorAttachmentDesc.loadOp = nri::LoadOp::CLEAR;
+        colorAttachmentDesc.storeOp = nri::StoreOp::STORE;
 
         nri::RenderingDesc renderingDesc = {};
         renderingDesc.colorNum = 1;

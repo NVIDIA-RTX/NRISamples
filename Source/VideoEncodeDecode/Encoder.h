@@ -9,6 +9,7 @@ namespace video_sample {
 struct EncodeRequest {
     nri::Buffer* nv12Buffer = nullptr;
     const Nv12BufferLayout* nv12Layout = nullptr;
+    VideoQuality quality = {};
     float timeSec = 0.0f;
 };
 
