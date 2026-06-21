@@ -224,6 +224,7 @@ public:
     void LatencySleep(uint32_t frameIndex) override;
     void PrepareFrame(uint32_t frameIndex) override;
     void RenderFrame(uint32_t frameIndex) override;
+    bool AppShouldClose() override;
 
 private:
     bool InitializeGraphics(nri::GraphicsAPI graphicsAPI);
@@ -306,6 +307,9 @@ private:
     bool m_AV1PFrameVisual = false;
     bool m_ShowDifference = false;
     bool m_HasPendingEncodedPatternConstants = false;
+    bool m_RequireVideoRoundTrip = false;
+    bool m_SmokeRoundTripComplete = false;
+    bool m_SmokeRoundTripFailed = false;
     uint32_t m_PatternFrameIndex = 0;
 };
 
@@ -374,6 +378,7 @@ void Sample::InitCmdLine(cmdline::parser& cmdLine) {
     cmdLine.add<uint32_t>("qpB", 0, "CQP quantizer for B frames", false, m_QpB);
     cmdLine.add<uint32_t>("av1BaseQIndex", 0, "AV1 base quantizer index", false, m_AV1BaseQIndex);
     cmdLine.add("lossless", 0, "force zero quantizers for lossless-capable codec modes");
+    cmdLine.add("requireVideoRoundTrip", 0, "exit smoke runs only after a real encode/decode round trip");
 }
 
 void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
@@ -391,6 +396,7 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     m_QpB = cmdLine.get<uint32_t>("qpB");
     m_AV1BaseQIndex = cmdLine.get<uint32_t>("av1BaseQIndex");
     m_Lossless = cmdLine.exist("lossless");
+    m_RequireVideoRoundTrip = cmdLine.exist("requireVideoRoundTrip");
     m_Codec = m_CodecArg == "H265" ? SampleCodec::H265 : (m_CodecArg == "AV1" ? SampleCodec::AV1 : SampleCodec::H264);
     m_H26FrameMode = m_H26FrameArg == "B" ? video_sample::VisualFrameMode::B : (m_H26FrameArg == "P" ? video_sample::VisualFrameMode::P : video_sample::VisualFrameMode::IDR);
     m_AV1PFrameVisual = m_Codec == SampleCodec::AV1 && m_AV1FrameArg == "P";
@@ -988,6 +994,10 @@ bool Sample::TryDecodePendingMetadata(float timeSec) {
     char message[128] = {};
     std::snprintf(message, sizeof(message), "%s encode/decode round trip complete, encoded %llu bytes", GetCodecName(m_Codec), (unsigned long long)encodedFrame.feedback.encodedBitstreamWrittenBytes);
     m_VideoStatus = message;
+    if (!m_SmokeRoundTripComplete) {
+        std::printf("VIDEO_ROUND_TRIP_OK: %s\n", message);
+        m_SmokeRoundTripComplete = true;
+    }
     return true;
 }
 
@@ -1028,6 +1038,11 @@ void Sample::PrepareFrame(uint32_t) {
 
     InitializeGeneratedFrames((float)timeSec);
 
+    if (m_RequireVideoRoundTrip && !m_SmokeRoundTripComplete && !canRunRoundTrip && !m_SmokeRoundTripFailed) {
+        std::fprintf(stderr, "VIDEO_ROUND_TRIP_FAILED: %s\n", m_VideoStatus.c_str());
+        m_SmokeRoundTripFailed = true;
+    }
+
     if (canRunRoundTrip && timeSec - m_LastRoundTripTimeSec >= ROUND_TRIP_INTERVAL_SEC) {
         if (TryRunRoundTrip((float)timeSec))
             m_LastRoundTripTimeSec = timeSec;
@@ -1037,7 +1052,7 @@ void Sample::PrepareFrame(uint32_t) {
     {
         ImGui::SetNextWindowPos({20.0f, 20.0f}, ImGuiCond_Once);
         ImGui::SetNextWindowSize({900.0f, 520.0f}, ImGuiCond_Once);
-            ImGui::Begin("NRI Video Encode / Decode");
+        ImGui::Begin("NRI Video Encode / Decode");
         {
             const uint32_t minCodecQp = m_Codec == SampleCodec::AV1 ? 1 : 0;
             const uint32_t effectiveQpI = m_VideoQuality.lossless ? minCodecQp : std::max(m_VideoQuality.qpI, minCodecQp);
@@ -1106,6 +1121,10 @@ void Sample::PrepareFrame(uint32_t) {
     }
     ImGui::EndFrame();
     ImGui::Render();
+}
+
+bool Sample::AppShouldClose() {
+    return m_RequireVideoRoundTrip && (m_SmokeRoundTripComplete || m_SmokeRoundTripFailed);
 }
 
 void Sample::RenderFrame(uint32_t frameIndex) {
