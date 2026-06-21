@@ -263,7 +263,7 @@ inline CodecParameters MakeCodecParameters(nri::GraphicsAPI graphicsAPI, uint32_
     params.h265Sps.profileTierLevel = params.h265Vps.profileTierLevel;
     params.h265Sps.decPicBufMgr = params.h265Vps.decPicBufMgr;
 
-    params.h265Pps.flags = nri::VideoH265PictureParameterSetBits::CABAC_INIT_PRESENT | nri::VideoH265PictureParameterSetBits::TRANSFORM_SKIP_ENABLED | nri::VideoH265PictureParameterSetBits::CU_QP_DELTA_ENABLED | nri::VideoH265PictureParameterSetBits::SLICE_CHROMA_QP_OFFSETS_PRESENT | nri::VideoH265PictureParameterSetBits::DEBLOCKING_FILTER_CONTROL_PRESENT;
+    params.h265Pps.flags = nri::VideoH265PictureParameterSetBits::CABAC_INIT_PRESENT | nri::VideoH265PictureParameterSetBits::TRANSFORM_SKIP_ENABLED | nri::VideoH265PictureParameterSetBits::CU_QP_DELTA_ENABLED | nri::VideoH265PictureParameterSetBits::SLICE_CHROMA_QP_OFFSETS_PRESENT | nri::VideoH265PictureParameterSetBits::DEBLOCKING_FILTER_CONTROL_PRESENT | nri::VideoH265PictureParameterSetBits::LISTS_MODIFICATION_PRESENT;
     params.h265Pps.pictureParameterSetId = 0;
     params.h265Pps.sequenceParameterSetId = params.h265Sps.sequenceParameterSetId;
     params.h265Pps.videoParameterSetId = params.h265Vps.videoParameterSetId;
