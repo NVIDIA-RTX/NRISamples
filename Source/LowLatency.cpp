@@ -10,6 +10,7 @@ constexpr bool VSYNC = false;
 constexpr uint32_t WAITABLE_SWAP_CHAIN_MAX_FRAME_LATENCY = 1; // 2 helps to avoid "TOTAL = GPU + CPU" time issue
 constexpr uint32_t QUEUED_FRAMES_MAX_NUM = 3;
 constexpr uint32_t CTA_NUM = 38000; // TODO: tuned to reach ~1ms on RTX 4080
+constexpr uint32_t WORKLOAD_ELEMENT_SIZE = 2 * sizeof(float);
 constexpr uint32_t COLOR_LATENCY_SLEEP = NriBgra(255, 0, 0);
 constexpr uint32_t COLOR_SIMULATION = NriBgra(0, 255, 0);
 constexpr uint32_t COLOR_RENDER = NriBgra(0, 0, 255);
@@ -188,8 +189,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
     { // Buffer
         nri::BufferDesc bufferDesc = {};
-        bufferDesc.size = CTA_NUM * 256 * sizeof(float);
+        bufferDesc.size = CTA_NUM * 256 * WORKLOAD_ELEMENT_SIZE;
         bufferDesc.usage = nri::BufferUsageBits::SHADER_RESOURCE_STORAGE;
+        bufferDesc.structureStride = WORKLOAD_ELEMENT_SIZE;
 
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_Buffer));
 
@@ -202,8 +204,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
         nri::BufferViewDesc bufferViewDesc = {};
         bufferViewDesc.buffer = m_Buffer;
-        bufferViewDesc.format = nri::Format::R16_SFLOAT;
-        bufferViewDesc.type = nri::BufferView::STORAGE_BUFFER;
+        bufferViewDesc.size = nri::WHOLE_SIZE;
+        bufferViewDesc.type = nri::BufferView::STORAGE_STRUCTURED_BUFFER;
 
         NRI_ABORT_ON_FAILURE(NRI.CreateBufferView(bufferViewDesc, m_BufferStorage));
     }
@@ -211,7 +213,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     { // Compute pipeline
         utils::ShaderCodeStorage shaderCodeStorage;
 
-        nri::DescriptorRangeDesc descriptorRangeStorage = {0, 1, nri::DescriptorType::STORAGE_BUFFER, nri::StageBits::COMPUTE_SHADER};
+        nri::DescriptorRangeDesc descriptorRangeStorage = {0, 1, nri::DescriptorType::STORAGE_STRUCTURED_BUFFER, nri::StageBits::COMPUTE_SHADER};
         nri::DescriptorSetDesc descriptorSetDesc = {0, &descriptorRangeStorage, 1};
 
         nri::PipelineLayoutDesc pipelineLayoutDesc = {};
@@ -229,7 +231,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     { // Descriptor pool
         nri::DescriptorPoolDesc descriptorPoolDesc = {};
         descriptorPoolDesc.descriptorSetMaxNum = 1;
-        descriptorPoolDesc.storageBufferMaxNum = 1;
+        descriptorPoolDesc.storageStructuredBufferMaxNum = 1;
 
         NRI_ABORT_ON_FAILURE(NRI.CreateDescriptorPool(*m_Device, descriptorPoolDesc, m_DescriptorPool));
         NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 0, &m_DescriptorSet, 1, 0));

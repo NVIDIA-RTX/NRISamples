@@ -120,6 +120,7 @@ set(SHADERMAKE_GENERAL_ARGS
     --sRegShift 0 --bRegShift 32 --uRegShift 64 --tRegShift 128 # TODO: must be in sync with "VK_BINDING_OFFSETS"
     --sourceDir "Shaders"
     --ignoreConfigDir
+    --vulkanVersion 1.2 # only for WGPU
     -c "Shaders/Shaders.cfg"
     -o "${SHADER_OUTPUT_PATH}"
     -I "Shaders"

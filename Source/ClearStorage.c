@@ -33,6 +33,8 @@ int main(int argc, char** argv) {
             graphicsAPI = NriGraphicsAPI_D3D12;
         else if (!strcmp(argv[i], "--api=VULKAN"))
             graphicsAPI = NriGraphicsAPI_VK;
+        else if (!strcmp(argv[i], "--api=WGPU"))
+            graphicsAPI = NriGraphicsAPI_WGPU;
         else if (!strcmp(argv[i], "--debugAPI"))
             debugAPI = true;
         else if (!strcmp(argv[i], "--debugNRI"))

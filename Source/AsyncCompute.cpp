@@ -225,6 +225,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     { // Graphics pipeline
         nri::VertexStreamDesc vertexStreamDesc = {};
         vertexStreamDesc.bindingSlot = 0;
+        vertexStreamDesc.stride = deviceDesc.features.extendedDynamicState ? 0 : sizeof(Vertex);
 
         nri::VertexAttributeDesc vertexAttributeDesc[1] = {};
         {
@@ -279,11 +280,13 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         NRI_ABORT_ON_FAILURE(NRI.CreateComputePipeline(*m_Device, computePipelineDesc, m_ComputePipeline));
     }
 
-    { // Storage texture
+    // Storage texture
+    constexpr nri::Format storageTextureFormat = nri::Format::RGBA8_UNORM; // TODO: dictated by the shader and "SwapChainFormat"
+    {
         nri::TextureDesc textureDesc = {};
         textureDesc.type = nri::TextureType::TEXTURE_2D;
         textureDesc.usage = nri::TextureUsageBits::SHADER_RESOURCE_STORAGE;
-        textureDesc.format = swapChainFormat;
+        textureDesc.format = storageTextureFormat;
         textureDesc.width = (uint16_t)GetOutputResolution().x / 2;
         textureDesc.height = (uint16_t)GetOutputResolution().y;
         textureDesc.mipNum = 1;
@@ -317,7 +320,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     }
 
     { // Storage descriptor
-        nri::TextureViewDesc textureViewDesc = {m_Texture, nri::TextureView::STORAGE_TEXTURE, swapChainFormat};
+        nri::TextureViewDesc textureViewDesc = {m_Texture, nri::TextureView::STORAGE_TEXTURE, storageTextureFormat};
 
         NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_Descriptor));
     }

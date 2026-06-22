@@ -496,6 +496,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     {
         nri::VertexStreamDesc vertexStreamDesc = {};
         vertexStreamDesc.bindingSlot = 0;
+        vertexStreamDesc.stride = deviceDesc.features.extendedDynamicState ? 0 : sizeof(Vertex);
 
         nri::VertexAttributeDesc vertexAttributeDesc[2] = {};
         {

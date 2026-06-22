@@ -425,7 +425,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     // Wait for completion
     if (m_MultiThreading) {
-        while (m_ReadyCount.load(std::memory_order_relaxed) != m_ThreadNum - 1)
+        while (m_ReadyCount.load(std::memory_order_acquire) != m_ThreadNum - 1)
             _mm_pause();
     }
 
@@ -723,6 +723,7 @@ void Sample::CreatePipeline(nri::Format swapChainFormat) {
 
     nri::VertexStreamDesc vertexStreamDesc = {};
     vertexStreamDesc.bindingSlot = 0;
+    vertexStreamDesc.stride = deviceDesc.features.extendedDynamicState ? 0 : sizeof(Vertex);
 
     nri::VertexAttributeDesc vertexAttributeDesc[2] = {
         {

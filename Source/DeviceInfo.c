@@ -44,6 +44,27 @@ void SilencePlease(NriMessage messageType, const char* file, uint32_t line, cons
     (void)userArg;
 }
 
+void PrintSupportedGraphicsAPIs(NriGraphicsAPI supportedGraphicsAPIs) {
+    static const NriGraphicsAPI graphicsAPIs[] = {
+        NriGraphicsAPI_NONE,
+        NriGraphicsAPI_D3D11,
+        NriGraphicsAPI_D3D12,
+        NriGraphicsAPI_VK,
+        NriGraphicsAPI_WGPU,
+    };
+
+    uint32_t isFirst = 1;
+    for (uint32_t i = 0; i < sizeof(graphicsAPIs) / sizeof(graphicsAPIs[0]); i++) {
+        if (supportedGraphicsAPIs & graphicsAPIs[i]) {
+            printf("%s%s", isFirst ? "" : ", ", nriGetGraphicsAPIString(graphicsAPIs[i]));
+            isFirst = 0;
+        }
+    }
+
+    if (isFirst)
+        printf("none");
+}
+
 int main(int argc, char** argv) {
     // Settings
     NriGraphicsAPI graphicsAPI = NriGraphicsAPI_D3D11;
@@ -52,6 +73,8 @@ int main(int argc, char** argv) {
             graphicsAPI = NriGraphicsAPI_D3D12;
         else if (!strcmp(argv[i], "--api=VULKAN"))
             graphicsAPI = NriGraphicsAPI_VK;
+        else if (!strcmp(argv[i], "--api=WGPU"))
+            graphicsAPI = NriGraphicsAPI_WGPU;
     }
 
     // Query adapters number
@@ -78,19 +101,28 @@ int main(int argc, char** argv) {
         printf("\tVideo memory         : %" PRIu64 " Mb\n", adapterDesc->videoMemorySize >> 20);
         printf("\tShared system memory : %" PRIu64 " Mb\n", adapterDesc->sharedSystemMemorySize >> 20);
         printf("\tQueues               : {%u, %u, %u}\n", adapterDesc->queueNum[0], adapterDesc->queueNum[1], adapterDesc->queueNum[2]);
-        printf("\tID                   : 0x%08X\n", adapterDesc->deviceId);
+        printf("\tDeviceId             : 0x%08X\n", adapterDesc->deviceId);
+        printf("\tDriverVersion        : 0x%08X\n", adapterDesc->driverVersion);
         printf("\tUID.low              : 0x%016" PRIX64 "\n", adapterDesc->uid.low);
         printf("\tUID.high             : 0x%016" PRIX64 "\n", adapterDesc->uid.high);
 
+        printf("\tSupported GAPIs      : ");
+        PrintSupportedGraphicsAPIs(adapterDesc->supportedGraphicsAPIs);
+        printf("\n");
+
         // Print formats info
         NriDevice* device = NULL;
-        NRI_ABORT_ON_FAILURE(nriCreateDevice(
+        NriResult result = nriCreateDevice(
             &(NriDeviceCreationDesc){
                 .graphicsAPI = graphicsAPI,
                 .adapterDesc = adapterDesc,
                 .callbackInterface.MessageCallback = SilencePlease,
             },
-            &device));
+            &device);
+        if (result != NriResult_SUCCESS) {
+            printf("\n\t'%s' device creation failed\n", nriGetGraphicsAPIString(graphicsAPI));
+            continue;
+        }
 
         NriCoreInterface iCore = {0};
         NRI_ABORT_ON_FAILURE(nriGetInterface(
