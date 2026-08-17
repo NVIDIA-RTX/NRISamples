@@ -185,7 +185,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     { // Constant buffer
         nri::BufferDesc bufferDesc = {};
         bufferDesc.size = 256;
-        bufferDesc.usage = nri::BufferUsageBits::CONSTANT_BUFFER;
+        bufferDesc.usage = nri::BufferUsageBits::CONSTANT;
 
         NRI_ABORT_ON_FAILURE(NRI.CreatePlacedBuffer(*m_Device, NriDeviceUploadHeap, bufferDesc, m_Buffer));
 
@@ -458,7 +458,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     }
 
     // Present
-    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
+    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore, 0);
 
     { // Signaling after "Present" improves D3D11 performance a bit
         nri::FenceSubmitDesc signalFence = {};

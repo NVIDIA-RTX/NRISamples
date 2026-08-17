@@ -122,7 +122,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     // Create streamer
     nri::StreamerDesc streamerDesc = {};
     streamerDesc.dynamicBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
-    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER};
+    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX | nri::BufferUsageBits::INDEX};
     streamerDesc.constantBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
     streamerDesc.queuedFrameNum = QUEUED_FRAMES_MAX_NUM;
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
@@ -252,13 +252,17 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 void Sample::LatencySleep(uint32_t frameIndex) {
     nri::nriBeginAnnotation("LatencySleep", COLOR_LATENCY_SLEEP);
 
+    const uint64_t presentId = 1ull + frameIndex;
+
     // Marker
     if (m_AllowLowLatency)
-        NRI.SetLatencyMarker(*m_SwapChain, nri::LatencyMarker::SIMULATION_START);
+        NRI.SetLatencyMarker(*m_SwapChain, presentId, nri::LatencyMarker::SIMULATION_START);
 
     // Wait for present
-    if constexpr (WAITABLE_SWAP_CHAIN)
-        NRI.WaitForPresent(*m_SwapChain);
+    if constexpr (WAITABLE_SWAP_CHAIN) {
+        if (frameIndex != 0)
+            NRI.WaitForPresent(*m_SwapChain, presentId - 1);
+    }
 
     // Preserve frame queue (optimal place for "non-waitable" swap chain)
     if constexpr (WAITABLE_SWAP_CHAIN == EMULATE_BAD_PRACTICE) {
@@ -270,15 +274,17 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 
     // Sleep just before sampling input
     if (m_AllowLowLatency) {
-        NRI.LatencySleep(*m_SwapChain);
-        NRI.SetLatencyMarker(*m_SwapChain, nri::LatencyMarker::INPUT_SAMPLE);
+        NRI.LatencySleep(*m_SwapChain, presentId);
+        NRI.SetLatencyMarker(*m_SwapChain, presentId, nri::LatencyMarker::INPUT_SAMPLE);
     }
 
     nri::nriEndAnnotation();
 }
 
-void Sample::PrepareFrame(uint32_t) {
+void Sample::PrepareFrame(uint32_t frameIndex) {
     nri::nriBeginAnnotation("Simulation", COLOR_SIMULATION);
+
+    const uint64_t presentId = 1ull + frameIndex;
 
     // Emulate CPU workload
     double begin = m_Timer.GetTimeStamp() + m_CpuWorkload;
@@ -363,7 +369,7 @@ void Sample::PrepareFrame(uint32_t) {
 
     // Marker
     if (m_AllowLowLatency)
-        NRI.SetLatencyMarker(*m_SwapChain, nri::LatencyMarker::SIMULATION_END);
+        NRI.SetLatencyMarker(*m_SwapChain, presentId, nri::LatencyMarker::SIMULATION_END);
 
     nri::nriEndAnnotation();
 }
@@ -371,6 +377,7 @@ void Sample::PrepareFrame(uint32_t) {
 void Sample::RenderFrame(uint32_t frameIndex) {
     nri::nriBeginAnnotation("Render", COLOR_RENDER);
 
+    const uint64_t presentId = 1ull + frameIndex;
     const QueuedFrame& queuedFrame = m_QueuedFrames[frameIndex % m_QueuedFrameNum];
 
     // Preserve frame queue (optimal place for "waitable" swapchain)
@@ -495,19 +502,20 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         if (m_AllowLowLatency) {
             queueSubmitDesc.swapChain = m_SwapChain;
-            NRI.SetLatencyMarker(*m_SwapChain, nri::LatencyMarker::RENDER_SUBMIT_START);
+            queueSubmitDesc.presentId = presentId;
+            NRI.SetLatencyMarker(*m_SwapChain, presentId, nri::LatencyMarker::RENDER_SUBMIT_START);
         }
 
         NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
 
         if (m_AllowLowLatency)
-            NRI.SetLatencyMarker(*m_SwapChain, nri::LatencyMarker::RENDER_SUBMIT_END);
+            NRI.SetLatencyMarker(*m_SwapChain, presentId, nri::LatencyMarker::RENDER_SUBMIT_END);
     }
 
     NRI.EndStreamerFrame(*m_Streamer);
 
     // Present
-    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
+    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore, presentId);
 
     nri::nriEndAnnotation();
 }
