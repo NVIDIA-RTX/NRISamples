@@ -33,6 +33,7 @@ call :TestSample BindlessSceneViewer
 call :TestSample Buffers
 call :TestSample Clear
 call :TestSample ClearStorage
+call :TestSample CopyTests
 call :TestSample DescriptorHeapIndexing
 call :TestSample InputAttachment
 call :TestSample LowLatency
@@ -75,6 +76,15 @@ echo.
 
 echo %1 [VULKAN]
 "%DIR_BIN%\%1.exe" --api=VULKAN --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER%
+if %ERRORLEVEL% equ 0 (
+    echo =^> OK
+) else (
+    echo =^> FAILED!
+)
+echo.
+
+echo %1 [WGPU]
+"%DIR_BIN%\%1.exe" --api=WGPU --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER%
 if %ERRORLEVEL% equ 0 (
     echo =^> OK
 ) else (

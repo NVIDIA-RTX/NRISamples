@@ -43,6 +43,7 @@ The executables from `_Bin` directory load resources from `_Data`, therefore the
 - Buffers - various buffer-related stuff
 - Clear - minimal example of rendering using framebuffer clears only
 - ClearStorage - clear storage testing
+- CopyTests - validates core copy commands and synchronous host texture copies
 - DeviceInfo - queries and prints out information about device groups in the system
 - DescriptorHeapIndexing - HLSL dynamic resources demonstration (dynamically indexed descriptor heaps)
 - InputAttachment - "dynamic rendering local read" demonstration (reading on-chip rendering results)

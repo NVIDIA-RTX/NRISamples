@@ -75,6 +75,7 @@ int main(int argc, char** argv) {
             .size = 32 * 1024 * 1024,
             .usage = NriBufferUsageBits_SHADER_RESOURCE | NriBufferUsageBits_SHADER_RESOURCE_STORAGE,
             .structureStride = 4,
+            .byteAddress = true,
         };
 
         NriMemoryDesc memoryDesc = {0};

@@ -129,23 +129,24 @@ int main(int argc, char** argv) {
             device, NRI_INTERFACE(NriCoreInterface), &iCore));
 
         printf("\n");
-        printf("%54.54s\n", "STORAGE_WRITE_WITHOUT_FORMAT");
-        printf("%54.54s\n", "STORAGE_READ_WITHOUT_FORMAT |");
-        printf("%54.54s\n", "VERTEX_BUFFER | |");
-        printf("%54.54s\n", "STORAGE_BUFFER_ATOMICS | | |");
-        printf("%54.54s\n", "STORAGE_BUFFER | | | |");
-        printf("%54.54s\n", "BUFFER | | | | |");
-        printf("%54.54s\n", "MULTISAMPLE_RESOLVE | | | | | |");
-        printf("%54.54s\n", "MULTISAMPLE_8X | | | | | | |");
-        printf("%54.54s\n", "MULTISAMPLE_4X | | | | | | | |");
-        printf("%54.54s\n", "MULTISAMPLE_2X | | | | | | | | |");
-        printf("%54.54s\n", "BLEND | | | | | | | | | |");
-        printf("%54.54s\n", "DEPTH_STENCIL_ATTACHMENT | | | | | | | | | | |");
-        printf("%54.54s\n", "COLOR_ATTACHMENT | | | | | | | | | | | |");
-        printf("%54.54s\n", "STORAGE_TEXTURE_ATOMICS | | | | | | | | | | | | |");
-        printf("%54.54s\n", "STORAGE_TEXTURE | | | | | | | | | | | | | |");
-        printf("%54.54s\n", "TEXTURE | | | | | | | | | | | | | | |");
-        printf("%54.54s\n", "| | | | | | | | | | | | | | | |");
+        printf("%56.56s\n", "HOST_COPY");
+        printf("%56.56s\n", "STORAGE_WRITE_WITHOUT_FORMAT |");
+        printf("%56.56s\n", "STORAGE_READ_WITHOUT_FORMAT | |");
+        printf("%56.56s\n", "VERTEX_BUFFER | | |");
+        printf("%56.56s\n", "STORAGE_BUFFER_ATOMICS | | | |");
+        printf("%56.56s\n", "STORAGE_BUFFER | | | | |");
+        printf("%56.56s\n", "BUFFER | | | | | |");
+        printf("%56.56s\n", "MULTISAMPLE_RESOLVE | | | | | | |");
+        printf("%56.56s\n", "MULTISAMPLE_8X | | | | | | | |");
+        printf("%56.56s\n", "MULTISAMPLE_4X | | | | | | | | |");
+        printf("%56.56s\n", "MULTISAMPLE_2X | | | | | | | | | |");
+        printf("%56.56s\n", "BLEND | | | | | | | | | | |");
+        printf("%56.56s\n", "DEPTH_STENCIL_ATTACHMENT | | | | | | | | | | | |");
+        printf("%56.56s\n", "COLOR_ATTACHMENT | | | | | | | | | | | | |");
+        printf("%56.56s\n", "STORAGE_TEXTURE_ATOMICS | | | | | | | | | | | | | |");
+        printf("%56.56s\n", "STORAGE_TEXTURE | | | | | | | | | | | | | | |");
+        printf("%56.56s\n", "TEXTURE | | | | | | | | | | | | | | | |");
+        printf("%56.56s\n", "| | | | | | | | | | | | | | | | |");
 
         for (uint32_t f = 0; f < NriFormat_MAX_NUM; f++) {
             const NriFormatProps* formatProps = nriGetFormatProps((NriFormat)f);
@@ -153,8 +154,8 @@ int main(int argc, char** argv) {
 
             printf("%20.20s   ", formatProps->name);
 
-            for (uint16_t bit = 0; bit < 16; bit++) {
-                if (formatSupportBits & (1 << bit))
+            for (uint32_t bit = 0; bit < 17; bit++) {
+                if (formatSupportBits & (1u << bit))
                     printf("+ ");
                 else
                     printf(". ");
