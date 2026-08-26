@@ -191,15 +191,6 @@ Sample::~Sample() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
-    uint32_t concurrentThreadMaxNum = std::thread::hardware_concurrency();
-    m_ThreadNum = std::min((concurrentThreadMaxNum * 3) / 4, (uint32_t)THREAD_MAX_NUM);
-
-    for (ThreadContext& threadContext : m_ThreadContexts)
-        threadContext.control.store(HALT, std::memory_order_relaxed);
-
-    m_Boxes.resize(std::max(BOX_NUM, m_ThreadNum));
-    m_BoxesPerThread = (uint32_t)m_Boxes.size() / (uint32_t)m_ThreadNum;
-
     // Adapters
     nri::AdapterDesc adapterDesc[2] = {};
     uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
@@ -215,7 +206,20 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
+
+    if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & graphicsAPI))
+        exit(0);
+
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
+
+    uint32_t concurrentThreadMaxNum = std::thread::hardware_concurrency();
+    m_ThreadNum = std::min((concurrentThreadMaxNum * 3) / 4, (uint32_t)THREAD_MAX_NUM);
+
+    for (ThreadContext& threadContext : m_ThreadContexts)
+        threadContext.control.store(HALT, std::memory_order_relaxed);
+
+    m_Boxes.resize(std::max(BOX_NUM, m_ThreadNum));
+    m_BoxesPerThread = (uint32_t)m_Boxes.size() / (uint32_t)m_ThreadNum;
 
     // NRI
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI));

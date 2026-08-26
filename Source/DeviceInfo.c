@@ -111,6 +111,9 @@ int main(int argc, char** argv) {
         printf("\n");
 
         // Print formats info
+        if (!(adapterDesc->supportedGraphicsAPIs & graphicsAPI))
+            continue;
+
         NriDevice* device = NULL;
         NriResult result = nriCreateDevice(
             &(NriDeviceCreationDesc){

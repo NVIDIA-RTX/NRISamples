@@ -49,14 +49,17 @@ int main(int argc, char** argv) {
         uint32_t adapterDescsNum = 2;
         NRI_ABORT_ON_FAILURE(nriEnumerateAdapters(adapterDescs, &adapterDescsNum));
 
-        NRI_ABORT_ON_FAILURE(nriCreateDevice(
-            &(NriDeviceCreationDesc){
-                .graphicsAPI = graphicsAPI,
-                .enableGraphicsAPIValidation = debugAPI,
-                .enableNRIValidation = debugNRI,
-                .adapterDesc = &adapterDescs[adapterIndex < adapterDescsNum ? adapterIndex : adapterDescsNum - 1],
-            },
-            &device));
+        const NriDeviceCreationDesc deviceCreationDesc = {
+            .graphicsAPI = graphicsAPI,
+            .enableGraphicsAPIValidation = debugAPI,
+            .enableNRIValidation = debugNRI,
+            .adapterDesc = &adapterDescs[(adapterIndex < adapterDescsNum) ? adapterIndex : adapterDescsNum - 1],
+        };
+
+        if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & graphicsAPI))
+            return 0;
+
+        NRI_ABORT_ON_FAILURE(nriCreateDevice(&deviceCreationDesc, &device));
     }
 
     // Query interfaces

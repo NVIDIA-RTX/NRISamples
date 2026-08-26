@@ -116,6 +116,10 @@ bool CopyTests::Initialize(const Settings& settings) {
     deviceCreationDesc.adapterDesc = &adapters[adapterIndex];
     deviceCreationDesc.enableGraphicsAPIValidation = settings.debugAPI;
     deviceCreationDesc.enableNRIValidation = settings.debugNRI;
+
+    if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & settings.graphicsAPI))
+        exit(0);
+
     RETURN_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
     RETURN_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), &m_Core));
