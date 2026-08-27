@@ -67,7 +67,7 @@ private:
     bool VerifyTextureReadback(nri::Buffer& buffer, uint32_t width, uint32_t height, const nri::TextureDataLayoutDesc& layout);
     bool TestTextures();
     bool TransitionHostTexture(nri::Texture& texture, uint16_t mipNum, const nri::AccessLayoutStage& before, const nri::AccessLayoutStage& after);
-    bool TestHostCopyFormat(nri::Format format, uint32_t blockWidth, uint32_t blockHeight, uint32_t blockSize, bool& uploadPassed, bool& readbackPassed);
+    bool TestHostCopyFormat(nri::Format format, uint32_t blockWidth, uint32_t blockHeight, uint32_t blockSize, bool& uploadPassed, bool& readbackPassed, bool& wholeCopyPassed);
     bool TestHostCopies();
 
     nri::Device* m_Device = nullptr;
@@ -436,7 +436,7 @@ bool CopyTests::TransitionHostTexture(nri::Texture& texture, uint16_t mipNum, co
     return SubmitAndWait();
 }
 
-bool CopyTests::TestHostCopyFormat(nri::Format format, uint32_t blockWidth, uint32_t blockHeight, uint32_t blockSize, bool& uploadPassed, bool& readbackPassed) {
+bool CopyTests::TestHostCopyFormat(nri::Format format, uint32_t blockWidth, uint32_t blockHeight, uint32_t blockSize, bool& uploadPassed, bool& readbackPassed, bool& wholeCopyPassed) {
     constexpr uint32_t width = 64;
     constexpr uint32_t height = 64;
     constexpr uint16_t mipNum = 7;
@@ -455,7 +455,8 @@ bool CopyTests::TestHostCopyFormat(nri::Format format, uint32_t blockWidth, uint
 
     nri::Texture* uploadTexture = nullptr;
     nri::Texture* readbackTexture = nullptr;
-    if (!CreateTexture(textureDesc, uploadTexture) || !CreateTexture(textureDesc, readbackTexture))
+    nri::Texture* copyTexture = nullptr;
+    if (!CreateTexture(textureDesc, uploadTexture) || !CreateTexture(textureDesc, readbackTexture) || !CreateTexture(textureDesc, copyTexture))
         return false;
 
     struct MipData {
@@ -607,19 +608,80 @@ bool CopyTests::TestHostCopyFormat(nri::Format format, uint32_t blockWidth, uint
     if (!SubmitAndWait())
         return false;
 
-    uploadPassed = true;
-    for (const MipData& data : mipData) {
-        const uint8_t* gpuReadbackData = (const uint8_t*)m_Core.MapBuffer(*data.gpuReadbackBuffer, 0, data.gpuLayout.slicePitch);
-        if (!gpuReadbackData) {
-            printf("FAIL  MapBuffer(gpuReadbackBuffer) returned NULL\n");
+    auto verifyGpuReadbacks = [&](bool& passed) {
+        passed = true;
+        for (const MipData& data : mipData) {
+            const uint8_t* gpuReadbackData = (const uint8_t*)m_Core.MapBuffer(*data.gpuReadbackBuffer, 0, data.gpuLayout.slicePitch);
+            if (!gpuReadbackData) {
+                printf("FAIL  MapBuffer(gpuReadbackBuffer) returned NULL\n");
 
-            return false;
+                return false;
+            }
+
+            for (uint32_t row = 0; row < data.rowNum; row++)
+                passed &= memcmp(data.expected.data() + row * data.rowPitch, gpuReadbackData + row * data.gpuLayout.rowPitch, data.rowSize) == 0;
+            m_Core.UnmapBuffer(*data.gpuReadbackBuffer);
         }
 
-        for (uint32_t row = 0; row < data.rowNum; row++)
-            uploadPassed &= memcmp(data.expected.data() + row * data.rowPitch, gpuReadbackData + row * data.gpuLayout.rowPitch, data.rowSize) == 0;
-        m_Core.UnmapBuffer(*data.gpuReadbackBuffer);
+        return true;
+    };
+
+    if (!verifyGpuReadbacks(uploadPassed))
+        return false;
+
+    if (!TransitionHostTexture(*copyTexture, mipNum, undefined, hostWrite))
+        return false;
+
+    for (nri::UploadHostMemoryToTextureDesc& uploadDesc : uploadDescs)
+        uploadDesc.dstTexture = copyTexture;
+
+    RETURN_ON_FAILURE(m_Core.UploadHostMemoryToTexture(*m_Queue, uploadDescs.data(), (uint32_t)uploadDescs.size()));
+
+    if (!TransitionHostTexture(*copyTexture, mipNum, hostWrite, copyDestination) || !BeginCommandBuffer())
+        return false;
+
+    std::array<nri::TextureBarrierDesc, mipNum> wholeCopyBarriers = {};
+    for (uint32_t mip = 0; mip < mipNum; mip++) {
+        wholeCopyBarriers[mip].texture = mipData[mip].gpuReadbackTexture;
+        wholeCopyBarriers[mip].before = copySource;
+        wholeCopyBarriers[mip].after = copyDestination;
+        wholeCopyBarriers[mip].mipNum = 1;
+        wholeCopyBarriers[mip].layerNum = 1;
+        wholeCopyBarriers[mip].planes = nri::PlaneBits::COLOR;
     }
+
+    barrierDesc.textures = wholeCopyBarriers.data();
+    barrierDesc.textureNum = (uint32_t)wholeCopyBarriers.size();
+    m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
+
+    m_Core.CmdCopyTexture(*m_CommandBuffer, *copyTexture, nullptr, *uploadTexture, nullptr);
+
+    nri::TextureBarrierDesc wholeCopyBarrier = {};
+    wholeCopyBarrier.texture = copyTexture;
+    wholeCopyBarrier.before = copyDestination;
+    wholeCopyBarrier.after = copySource;
+    wholeCopyBarrier.mipNum = mipNum;
+    wholeCopyBarrier.layerNum = 1;
+    wholeCopyBarrier.planes = nri::PlaneBits::COLOR;
+    barrierDesc.textures = &wholeCopyBarrier;
+    barrierDesc.textureNum = 1;
+    m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
+
+    for (uint32_t mip = 0; mip < mipNum; mip++)
+        m_Core.CmdCopyTexture(*m_CommandBuffer, *mipData[mip].gpuReadbackTexture, &regions[0], *copyTexture, &regions[mip]);
+
+    barrierDesc.textures = readbackBarriers.data();
+    barrierDesc.textureNum = (uint32_t)readbackBarriers.size();
+    m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
+
+    for (uint32_t mip = 0; mip < mipNum; mip++)
+        m_Core.CmdReadbackTextureToBuffer(*m_CommandBuffer, *mipData[mip].gpuReadbackBuffer, mipData[mip].gpuLayout, *mipData[mip].gpuReadbackTexture, regions[0]);
+
+    if (!SubmitAndWait())
+        return false;
+
+    if (!verifyGpuReadbacks(wholeCopyPassed))
+        return false;
 
     if (!TransitionHostTexture(*readbackTexture, mipNum, undefined, copyDestination) || !BeginCommandBuffer())
         return false;
@@ -678,21 +740,26 @@ bool CopyTests::TestHostCopies() {
 
     bool uploadPassed = false;
     bool readbackPassed = false;
-    if (!TestHostCopyFormat(nri::Format::RGBA8_UNORM, 1, 1, 4, uploadPassed, readbackPassed))
+    bool wholeCopyPassed = false;
+    if (!TestHostCopyFormat(nri::Format::RGBA8_UNORM, 1, 1, 4, uploadPassed, readbackPassed, wholeCopyPassed))
         return false;
 
     if (m_Core.GetFormatSupport(*m_Device, nri::Format::BC1_RGBA_UNORM) & nri::FormatSupportBits::HOST_COPY) {
         bool bcUploadPassed = false;
         bool bcReadbackPassed = false;
-        if (!TestHostCopyFormat(nri::Format::BC1_RGBA_UNORM, 4, 4, 8, bcUploadPassed, bcReadbackPassed))
+        bool bcWholeCopyPassed = false;
+        if (!TestHostCopyFormat(nri::Format::BC1_RGBA_UNORM, 4, 4, 8, bcUploadPassed, bcReadbackPassed, bcWholeCopyPassed))
             return false;
 
         uploadPassed &= bcUploadPassed;
         readbackPassed &= bcReadbackPassed;
+        wholeCopyPassed &= bcWholeCopyPassed;
     } else
         printf("SKIP  BC1_RGBA_UNORM host copies are unsupported\n");
 
-    return Report("UploadHostMemoryToTexture", uploadPassed) && Report("ReadbackTextureToHostMemory", readbackPassed);
+    return Report("UploadHostMemoryToTexture", uploadPassed)
+        && Report("ReadbackTextureToHostMemory", readbackPassed)
+        && Report("CmdCopyTexture (whole mip chain)", wholeCopyPassed);
 }
 
 #undef RETURN_ON_FAILURE
