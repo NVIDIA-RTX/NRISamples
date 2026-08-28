@@ -35,17 +35,27 @@ call :TestSample Clear
 call :TestSample ClearStorage
 call :TestSample CopyTests
 call :TestSample DescriptorHeapIndexing
+call :TestSample DescriptorManagement
+call :TestSample DedicatedQueues
+call :TestSample GraphicsPipelineStates
 call :TestSample InputAttachment
+call :TestSample IndirectCommands
 call :TestSample LowLatency
+call :TestSample MemoryAliasing
+call :TestSample MeshShader
 call :TestSample Multisample
 call :TestSample MultiThreading
 call :TestSample Multiview
+call :TestSample Queries
+call :TestSample RayTracingAdvanced
 call :TestSample RayTracingBoxes
 call :TestSample RayTracingTriangle
 call :TestSample Readback
 call :TestSample Resize
 call :TestSample Resources
 call :TestSample SceneViewer
+call :TestSample Streamer
+call :TestSample TextureTypes
 call :TestSample Triangle
 call :TestSample Wrapper
 
