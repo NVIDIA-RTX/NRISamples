@@ -59,10 +59,13 @@ bool Run(const test::Settings& settings) {
         {expected.data(), 173},
         {expected.data() + 173, bufferSize - 173},
     };
+    const nri::StreamerCopyBatch copyBatch = streamerGuard.interface.BeginStreamerCopyBatch(*streamerGuard.streamer);
+
     nri::StreamBufferDataDesc streamBufferDesc = {};
     streamBufferDesc.dataChunks = chunks;
     streamBufferDesc.dataChunkNum = 2;
     streamBufferDesc.placementAlignment = 256;
+    streamBufferDesc.copyBatch = copyBatch;
     streamBufferDesc.dstBuffer = destinationBuffer;
 
     const nri::BufferOffset streamedBuffer = streamerGuard.interface.StreamBufferData(*streamerGuard.streamer, streamBufferDesc);
@@ -99,6 +102,7 @@ bool Run(const test::Settings& settings) {
     streamTextureDesc.data = textureData.data();
     streamTextureDesc.dataRowPitch = textureWidth * 4;
     streamTextureDesc.dataSlicePitch = (uint32_t)textureData.size();
+    streamTextureDesc.copyBatch = copyBatch;
     streamTextureDesc.dstTexture = destinationTexture;
     streamTextureDesc.dstRegion = {0, 0, 0, textureWidth, textureHeight, 1, 0, 0, nri::PlaneBits::ALL};
     const nri::BufferOffset streamedTexture = streamerGuard.interface.StreamTextureData(*streamerGuard.streamer, streamTextureDesc);
@@ -130,7 +134,7 @@ bool Run(const test::Settings& settings) {
     barrierDesc.textureNum = 1;
     context.core.CmdBarrier(*commandBuffer, barrierDesc);
 
-    streamerGuard.interface.CmdCopyStreamedData(*commandBuffer, *streamerGuard.streamer);
+    streamerGuard.interface.CmdCopyStreamedData(*commandBuffer, *streamerGuard.streamer, copyBatch);
 
     nri::BufferBarrierDesc bufferBarrier = {};
     bufferBarrier.buffer = destinationBuffer;

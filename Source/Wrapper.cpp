@@ -406,6 +406,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX | nri::BufferUsageBits::INDEX};
     streamerDesc.constantBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
     streamerDesc.queuedFrameNum = GetQueuedFrameNum();
+    streamerDesc.hostDataCapacity = IMGUI_HOST_DATA_CAPACITY;
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
     // Command queue
@@ -759,7 +760,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         renderingDesc.colorNum = 1;
         renderingDesc.colors = &colorAttachmentDesc;
 
-        CmdCopyImguiData(*commandBuffer, *m_Streamer);
+        const nri::ImguiRenderData imguiRenderData = CmdCopyImguiData(*commandBuffer, *m_Streamer);
 
         NRI.CmdBeginRendering(*commandBuffer, renderingDesc);
         {
@@ -819,7 +820,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             {
                 helper::Annotation annotation(NRI, *commandBuffer, "UI");
 
-                CmdDrawImgui(*commandBuffer, swapChainTexture.attachmentFormat, 1.0f, true);
+                CmdDrawImgui(*commandBuffer, imguiRenderData, swapChainTexture.attachmentFormat, 1.0f, true);
             }
         }
         NRI.CmdEndRendering(*commandBuffer);
