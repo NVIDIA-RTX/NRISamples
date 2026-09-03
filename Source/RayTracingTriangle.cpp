@@ -30,7 +30,7 @@ private:
     void CreateDescriptorSet();
     void CreateBottomLevelAccelerationStructure();
     void CreateTopLevelAccelerationStructure();
-    void CreateShaderTable();
+    void CreateShaderBindingTable();
     void CreateUploadBuffer(uint64_t size, nri::BufferUsageBits usage, nri::Buffer*& buffer, nri::Memory*& memory);
     void CreateScratchBuffer(nri::AccelerationStructure& accelerationStructure, nri::Buffer*& buffer, nri::Memory*& memory);
     void BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, const nri::BottomLevelGeometryDesc* objects, const uint32_t objectNum);
@@ -47,8 +47,8 @@ private:
     nri::Pipeline* m_Pipeline = nullptr;
     nri::PipelineLayout* m_PipelineLayout = nullptr;
 
-    nri::Buffer* m_ShaderTable = nullptr;
-    nri::Memory* m_ShaderTableMemory = nullptr;
+    nri::Buffer* m_ShaderBindingTable = nullptr;
+    nri::Memory* m_ShaderBindingTableMemory = nullptr;
     uint64_t m_ShaderGroupIdentifierSize = 0;
     uint64_t m_MissShaderOffset = 0;
     uint64_t m_HitShaderGroupOffset = 0;
@@ -97,7 +97,7 @@ Sample::~Sample() {
 
         NRI.DestroyDescriptorPool(m_DescriptorPool);
 
-        NRI.DestroyBuffer(m_ShaderTable);
+        NRI.DestroyBuffer(m_ShaderBindingTable);
 
         NRI.DestroyPipeline(m_Pipeline);
         NRI.DestroyPipelineLayout(m_PipelineLayout);
@@ -109,7 +109,7 @@ Sample::~Sample() {
 
         NRI.FreeMemory(m_BLASMemory);
         NRI.FreeMemory(m_TLASMemory);
-        NRI.FreeMemory(m_ShaderTableMemory);
+        NRI.FreeMemory(m_ShaderBindingTableMemory);
     }
 
     if (NRI.HasSwapChain())
@@ -164,7 +164,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     CreateRayTracingOutput(swapChainFormat);
     CreateBottomLevelAccelerationStructure();
     CreateTopLevelAccelerationStructure();
-    CreateShaderTable();
+    CreateShaderBindingTable();
 
     return InitImgui(*m_Device);
 }
@@ -222,12 +222,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
 
         nri::DispatchRaysDesc dispatchRaysDesc = {};
-        dispatchRaysDesc.raygenShader = {m_ShaderTable, 0, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
-        dispatchRaysDesc.missShaders = {m_ShaderTable, m_MissShaderOffset, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
-        dispatchRaysDesc.hitShaderGroups = {m_ShaderTable, m_HitShaderGroupOffset, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
-        dispatchRaysDesc.x = (uint16_t)GetOutputResolution().x;
-        dispatchRaysDesc.y = (uint16_t)GetOutputResolution().y;
-        dispatchRaysDesc.z = 1;
+        dispatchRaysDesc.raygenShaderRecord = {m_ShaderBindingTable, 0, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
+        dispatchRaysDesc.missShaderBindingTable = {m_ShaderBindingTable, m_MissShaderOffset, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
+        dispatchRaysDesc.hitShaderBindingTable = {m_ShaderBindingTable, m_HitShaderGroupOffset, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
+        dispatchRaysDesc.width = (uint16_t)GetOutputResolution().x;
+        dispatchRaysDesc.height = (uint16_t)GetOutputResolution().y;
+        dispatchRaysDesc.depth = 1;
         NRI.CmdDispatchRays(commandBuffer, dispatchRaysDesc);
 
         // Copy
@@ -627,37 +627,37 @@ void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& acce
     NRI.FreeMemory(scratchBufferMemory);
 }
 
-void Sample::CreateShaderTable() {
+void Sample::CreateShaderBindingTable() {
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
     const uint64_t identifierSize = deviceDesc.shaderStage.rayTracing.shaderGroupIdentifierSize;
     const uint64_t tableAlignment = deviceDesc.memoryAlignment.shaderBindingTable;
+    const uint32_t shaderBindingTableRecordStride = (uint32_t)helper::Align(identifierSize, tableAlignment);
 
     m_ShaderGroupIdentifierSize = identifierSize;
-    m_MissShaderOffset = helper::Align(identifierSize, tableAlignment);
+    m_MissShaderOffset = shaderBindingTableRecordStride;
     m_HitShaderGroupOffset = helper::Align(m_MissShaderOffset + identifierSize, tableAlignment);
-    const uint64_t shaderTableSize = helper::Align(m_HitShaderGroupOffset + identifierSize, tableAlignment);
+    const uint64_t shaderBindingTableSize = helper::Align(m_HitShaderGroupOffset + identifierSize, tableAlignment);
 
-    const nri::BufferDesc bufferDesc = {shaderTableSize, 0, nri::BufferUsageBits::SHADER_BINDING_TABLE};
-    NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_ShaderTable));
+    const nri::BufferDesc bufferDesc = {shaderBindingTableSize, 0, nri::BufferUsageBits::SHADER_BINDING_TABLE};
+    NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_ShaderBindingTable));
 
     nri::MemoryDesc memoryDesc = {};
-    NRI.GetBufferMemoryDesc(*m_ShaderTable, nri::MemoryLocation::DEVICE, memoryDesc);
+    NRI.GetBufferMemoryDesc(*m_ShaderBindingTable, nri::MemoryLocation::DEVICE, memoryDesc);
 
     nri::AllocateMemoryDesc allocateMemoryDesc = {};
     allocateMemoryDesc.size = memoryDesc.size;
     allocateMemoryDesc.type = memoryDesc.type;
-    NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, allocateMemoryDesc, m_ShaderTableMemory));
+    NRI_ABORT_ON_FAILURE(NRI.AllocateMemory(*m_Device, allocateMemoryDesc, m_ShaderBindingTableMemory));
 
-    const nri::BindBufferMemoryDesc bufferMemoryBindingDesc = {m_ShaderTable, m_ShaderTableMemory};
+    const nri::BindBufferMemoryDesc bufferMemoryBindingDesc = {m_ShaderBindingTable, m_ShaderBindingTableMemory};
     NRI_ABORT_ON_FAILURE(NRI.BindBufferMemory(&bufferMemoryBindingDesc, 1));
 
     nri::Buffer* buffer = nullptr;
     nri::Memory* memory = nullptr;
-    CreateUploadBuffer(shaderTableSize, nri::BufferUsageBits::NONE, buffer, memory);
+    CreateUploadBuffer(shaderBindingTableSize, nri::BufferUsageBits::NONE, buffer, memory);
 
-    uint8_t* data = (uint8_t*)NRI.MapBuffer(*buffer, 0, shaderTableSize);
-    for (uint32_t i = 0; i < 3; i++)
-        NRI.WriteShaderGroupIdentifiers(*m_Pipeline, i, 1, data + i * helper::Align(identifierSize, tableAlignment));
+    uint8_t* data = (uint8_t*)NRI.MapBuffer(*buffer, 0, shaderBindingTableSize);
+    NRI_ABORT_ON_FAILURE(NRI.WriteShaderGroupIdentifiers(*m_Pipeline, 0, 3, shaderBindingTableRecordStride, data));
     NRI.UnmapBuffer(*buffer);
 
     nri::CommandAllocator* commandAllocator = nullptr;
@@ -673,7 +673,7 @@ void Sample::CreateShaderTable() {
     NRI.BeginCommandBuffer(*commandBuffer, nullptr);
     {
         nri::BufferBarrierDesc bufferBarrier = {};
-        bufferBarrier.buffer = m_ShaderTable;
+        bufferBarrier.buffer = m_ShaderBindingTable;
 
         nri::BarrierDesc barrierDesc = {};
         barrierDesc.bufferNum = 1;
@@ -682,7 +682,7 @@ void Sample::CreateShaderTable() {
         bufferBarrier.after = {nri::AccessBits::COPY_DESTINATION};
         NRI.CmdBarrier(*commandBuffer, barrierDesc);
 
-        NRI.CmdCopyBuffer(*commandBuffer, *m_ShaderTable, 0, *buffer, 0, shaderTableSize);
+        NRI.CmdCopyBuffer(*commandBuffer, *m_ShaderBindingTable, 0, *buffer, 0, shaderBindingTableSize);
 
         bufferBarrier.before = bufferBarrier.after;
         bufferBarrier.after = {nri::AccessBits::SHADER_BINDING_TABLE};

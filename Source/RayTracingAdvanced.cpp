@@ -120,7 +120,7 @@ bool Run(const test::Settings& settings) {
     context.core.CmdBarrier(*commandBuffer, barrierDesc);
 
     nri::AccelerationStructure* sourceArray[] = {source};
-    guard.interface.CmdWriteAccelerationStructuresSizes(*commandBuffer, sourceArray, 1, *queryPool, 0);
+    guard.interface.CmdWriteAccelerationStructureSizes(*commandBuffer, sourceArray, 1, *queryPool, 0);
     context.core.CmdCopyQueries(*commandBuffer, *queryPool, 0, 1, *readback, 0);
     TEST_CHECK(context.SubmitAndWait(*queue, *commandBuffer));
 

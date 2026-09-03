@@ -172,7 +172,7 @@ private:
     void CreateDescriptorSets();
     void CreateBottomLevelAccelerationStructure();
     void CreateTopLevelAccelerationStructure();
-    void CreateShaderTable();
+    void CreateShaderBindingTable();
     void CreateUploadBuffer(uint64_t size, nri::BufferUsageBits usage, nri::Buffer*& buffer, nri::Memory*& memory);
     void CreateScratchBuffer(nri::AccelerationStructure& accelerationStructure, nri::Buffer*& buffer, nri::Memory*& memory);
     void BuildBottomLevelAccelerationStructure(nri::AccelerationStructure& accelerationStructure, const nri::BottomLevelGeometryDesc* objects, const uint32_t objectNum);
@@ -190,7 +190,7 @@ private:
     nri::PipelineLayout* m_PipelineLayout = nullptr;
     nri::Pipeline* m_Pipeline = nullptr;
 
-    nri::Buffer* m_ShaderTable = nullptr;
+    nri::Buffer* m_ShaderBindingTable = nullptr;
     uint64_t m_ShaderGroupIdentifierSize = 0;
     uint64_t m_MissShaderOffset = 0;
     uint64_t m_HitShaderGroupOffset = 0;
@@ -244,7 +244,7 @@ Sample::~Sample() {
 
         NRI.DestroyDescriptorPool(m_DescriptorPool);
 
-        NRI.DestroyBuffer(m_ShaderTable);
+        NRI.DestroyBuffer(m_ShaderBindingTable);
         NRI.DestroyBuffer(m_TexCoordBuffer);
         NRI.DestroyBuffer(m_IndexBuffer);
 
@@ -309,7 +309,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     CreateRayTracingOutput(swapChainFormat);
     CreateBottomLevelAccelerationStructure();
     CreateTopLevelAccelerationStructure();
-    CreateShaderTable();
+    CreateShaderBindingTable();
     CreateShaderResources();
 
     return true;
@@ -362,7 +362,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
         nri::BufferBarrierDesc bufferBarrier = {};
         if (frameIndex == 0) {
-            bufferBarrier.buffer = m_ShaderTable;
+            bufferBarrier.buffer = m_ShaderBindingTable;
             bufferBarrier.after = {nri::AccessBits::SHADER_BINDING_TABLE, nri::StageBits::RAYGEN_SHADER};
 
             barrierDesc.bufferNum = 1;
@@ -379,12 +379,12 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         }
 
         nri::DispatchRaysDesc dispatchRaysDesc = {};
-        dispatchRaysDesc.raygenShader = {m_ShaderTable, 0, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
-        dispatchRaysDesc.missShaders = {m_ShaderTable, m_MissShaderOffset, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
-        dispatchRaysDesc.hitShaderGroups = {m_ShaderTable, m_HitShaderGroupOffset, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
-        dispatchRaysDesc.x = (uint16_t)GetOutputResolution().x;
-        dispatchRaysDesc.y = (uint16_t)GetOutputResolution().y;
-        dispatchRaysDesc.z = 1;
+        dispatchRaysDesc.raygenShaderRecord = {m_ShaderBindingTable, 0, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
+        dispatchRaysDesc.missShaderBindingTable = {m_ShaderBindingTable, m_MissShaderOffset, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
+        dispatchRaysDesc.hitShaderBindingTable = {m_ShaderBindingTable, m_HitShaderGroupOffset, m_ShaderGroupIdentifierSize, m_ShaderGroupIdentifierSize};
+        dispatchRaysDesc.width = (uint16_t)GetOutputResolution().x;
+        dispatchRaysDesc.height = (uint16_t)GetOutputResolution().y;
+        dispatchRaysDesc.depth = 1;
         NRI.CmdDispatchRays(commandBuffer, dispatchRaysDesc);
 
         // Copy
@@ -865,35 +865,35 @@ void Sample::BuildTopLevelAccelerationStructure(nri::AccelerationStructure& acce
     NRI.FreeMemory(scratchBufferMemory);
 }
 
-void Sample::CreateShaderTable() {
+void Sample::CreateShaderBindingTable() {
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
     const uint64_t identifierSize = deviceDesc.shaderStage.rayTracing.shaderGroupIdentifierSize;
     const uint64_t tableAlignment = deviceDesc.memoryAlignment.shaderBindingTable;
+    const uint32_t shaderBindingTableRecordStride = (uint32_t)helper::Align(identifierSize, tableAlignment);
 
     m_ShaderGroupIdentifierSize = identifierSize;
-    m_MissShaderOffset = helper::Align(identifierSize, tableAlignment);
+    m_MissShaderOffset = shaderBindingTableRecordStride;
     m_HitShaderGroupOffset = helper::Align(m_MissShaderOffset + identifierSize, tableAlignment);
-    const uint64_t shaderTableSize = helper::Align(m_HitShaderGroupOffset + identifierSize, tableAlignment);
+    const uint64_t shaderBindingTableSize = helper::Align(m_HitShaderGroupOffset + identifierSize, tableAlignment);
 
-    const nri::BufferDesc bufferDesc = {shaderTableSize, 0, nri::BufferUsageBits::SHADER_BINDING_TABLE};
-    NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_ShaderTable));
+    const nri::BufferDesc bufferDesc = {shaderBindingTableSize, 0, nri::BufferUsageBits::SHADER_BINDING_TABLE};
+    NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_ShaderBindingTable));
 
     nri::ResourceGroupDesc resourceGroupDesc = {};
     resourceGroupDesc.memoryLocation = nri::MemoryLocation::DEVICE;
     resourceGroupDesc.bufferNum = 1;
-    resourceGroupDesc.buffers = &m_ShaderTable;
+    resourceGroupDesc.buffers = &m_ShaderBindingTable;
 
     const size_t baseAllocation = m_MemoryAllocations.size();
     m_MemoryAllocations.resize(baseAllocation + 1, nullptr);
     NRI_ABORT_ON_FAILURE(NRI.AllocateAndBindMemory(*m_Device, resourceGroupDesc, m_MemoryAllocations.data() + baseAllocation));
 
-    std::vector<uint8_t> content((size_t)shaderTableSize, 0);
-    for (uint32_t i = 0; i < 3; i++)
-        NRI.WriteShaderGroupIdentifiers(*m_Pipeline, i, 1, content.data() + i * helper::Align(identifierSize, tableAlignment));
+    std::vector<uint8_t> content((size_t)shaderBindingTableSize, 0);
+    NRI_ABORT_ON_FAILURE(NRI.WriteShaderGroupIdentifiers(*m_Pipeline, 0, 3, shaderBindingTableRecordStride, content.data()));
 
     nri::BufferUploadDesc dataDesc = {};
     dataDesc.data = content.data();
-    dataDesc.buffer = m_ShaderTable;
+    dataDesc.buffer = m_ShaderBindingTable;
     dataDesc.after = {nri::AccessBits::NONE};
     NRI_ABORT_ON_FAILURE(NRI.UploadData(*m_GraphicsQueue, nullptr, 0, &dataDesc, 1));
 }
