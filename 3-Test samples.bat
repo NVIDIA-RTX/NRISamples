@@ -34,6 +34,7 @@ call :TestSample Buffers
 call :TestSample Clear
 call :TestSample ClearStorage
 call :TestSample CopyTests
+call :TestSample DescriptorPoolIndexing
 call :TestSample DescriptorHeapIndexing
 call :TestSample DescriptorManagement
 call :TestSample DedicatedQueues

@@ -45,7 +45,8 @@ The executables from `_Bin` directory load resources from `_Data`, therefore the
 - ClearStorage - clear storage testing
 - CopyTests - validates core copy commands and synchronous host texture copies
 - DeviceInfo - queries and prints out information about device groups in the system
-- DescriptorHeapIndexing - HLSL dynamic resources demonstration (dynamically indexed descriptor heaps)
+- DescriptorPoolIndexing - HLSL dynamic resources through a directly indexed descriptor pool
+- DescriptorHeapIndexing - HLSL dynamic resources through a directly indexed descriptor heap
 - DescriptorManagement - descriptor copying, pool switching, update-after-set and pool recycling testing
 - DedicatedQueues - dedicated copy queue, synchronization and copy-queue timestamp testing
 - GraphicsPipelineStates - dynamic graphics state, geometry, tessellation and less common rasterization testing

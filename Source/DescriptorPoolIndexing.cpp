@@ -44,7 +44,8 @@ private:
     nri::Descriptor* m_Output_StorageTexture = nullptr;
     nri::Pipeline* m_ComputePipeline = nullptr;
     nri::PipelineLayout* m_PipelineLayout = nullptr;
-    nri::DescriptorHeap* m_DescriptorHeap = nullptr;
+    nri::DescriptorPool* m_DescriptorPool = nullptr;
+    nri::DescriptorSet* m_DescriptorSet = nullptr;
 
     std::vector<QueuedFrame> m_QueuedFrames = {};
     std::vector<SwapChainTexture> m_SwapChainTextures;
@@ -81,10 +82,8 @@ Sample::~Sample() {
 
         NRI.DestroyPipeline(m_ComputePipeline);
         NRI.DestroyPipelineLayout(m_PipelineLayout);
+        NRI.DestroyDescriptorPool(m_DescriptorPool);
     }
-
-    if (NRI.HasDescriptorHeap())
-        NRI.DestroyDescriptorHeap(m_DescriptorHeap);
 
     if (NRI.HasSwapChain())
         NRI.DestroySwapChain(m_SwapChain);
@@ -120,12 +119,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI));
 
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-    if (!deviceDesc.features.descriptorHeap) {
-        printf("Descriptor heaps are not supported!\n");
+    if (!deviceDesc.tiers.bindless) {
+        printf("Bindless is not supported!\n");
         exit(0);
     }
-
-    NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::DescriptorHeapInterface), (nri::DescriptorHeapInterface*)&NRI));
 
     // Command queue
     NRI_ABORT_ON_FAILURE(NRI.GetQueue(*m_Device, nri::QueueType::GRAPHICS, 0, m_GraphicsQueue));
@@ -278,12 +275,33 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
             {1, rootSamplerDescs[1], nri::StageBits::COMPUTE_SHADER},
         };
 
+        nri::DescriptorRangeDesc heaps[2] = {
+            { // Resource heap
+                2, // VK binding for "-fvk-bind-resource-heap"
+                RESOURCE_NUM,
+                nri::DescriptorType::MUTABLE,
+                nri::StageBits::COMPUTE_SHADER,
+                nri::DescriptorRangeBits::ARRAY | nri::DescriptorRangeBits::PARTIALLY_BOUND,
+            },
+            { // Sampler heap
+                0, // VK binding for "-fvk-bind-sampler-heap"
+                2,
+                nri::DescriptorType::SAMPLER,
+                nri::StageBits::COMPUTE_SHADER,
+                nri::DescriptorRangeBits::ARRAY | nri::DescriptorRangeBits::PARTIALLY_BOUND,
+            },
+        };
+
+        nri::DescriptorSetDesc descriptorSetDesc = {0, heaps, helper::GetCountOf(heaps)};
+
         nri::PipelineLayoutDesc pipelineLayoutDesc = {};
         pipelineLayoutDesc.rootRegisterSpace = 1;
         pipelineLayoutDesc.rootConstants = &rootConstant;
         pipelineLayoutDesc.rootConstantNum = 1;
         pipelineLayoutDesc.rootSamplers = rootSamplers;
         pipelineLayoutDesc.rootSamplerNum = helper::GetCountOf(rootSamplers);
+        pipelineLayoutDesc.descriptorSetNum = 1;
+        pipelineLayoutDesc.descriptorSets = &descriptorSetDesc;
         pipelineLayoutDesc.shaderStages = nri::StageBits::COMPUTE_SHADER;
         pipelineLayoutDesc.flags = nri::PipelineLayoutBits::RESOURCE_HEAP_DIRECTLY_INDEXED | nri::PipelineLayoutBits::SAMPLER_HEAP_DIRECTLY_INDEXED;
 
@@ -295,31 +313,54 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
         nri::ComputePipelineDesc computePipelineDesc = {};
         computePipelineDesc.pipelineLayout = m_PipelineLayout;
-        computePipelineDesc.shader = utils::LoadShader(graphicsAPI, "DescriptorIndexingHeap.cs", shaderCodeStorage);
+        computePipelineDesc.shader = utils::LoadShader(graphicsAPI, "DescriptorIndexingPool.cs", shaderCodeStorage);
 
         NRI_ABORT_ON_FAILURE(NRI.CreateComputePipeline(*m_Device, computePipelineDesc, m_ComputePipeline));
     }
 
-    { // Descriptor heap
-        const nri::DescriptorHeapDesc descriptorHeapDesc = {RESOURCE_NUM, 2};
-        NRI_ABORT_ON_FAILURE(NRI.CreateDescriptorHeap(*m_Device, descriptorHeapDesc, m_DescriptorHeap));
+    { // Descriptor pool (ala resource heap) and a descriptor set, working as "an interface" for updating descriptors in the heap
+        nri::DescriptorPoolDesc descriptorPoolDesc = {};
+        descriptorPoolDesc.mutableMaxNum = RESOURCE_NUM;
+        descriptorPoolDesc.samplerMaxNum = 2;
+        descriptorPoolDesc.descriptorSetMaxNum = 1;
+
+        NRI_ABORT_ON_FAILURE(NRI.CreateDescriptorPool(*m_Device, descriptorPoolDesc, m_DescriptorPool));
+
+        NRI_ABORT_ON_FAILURE(NRI.AllocateDescriptorSets(*m_DescriptorPool, *m_PipelineLayout, 0, &m_DescriptorSet, 1, 0));
+
+        // The descriptor set is the 1st allocated from the pool, so "GetDescriptorSetOffsets" returns {0}
+        uint32_t resourceHeapOffset = uint32_t(-1);
+        uint32_t samplerHeapOffset = uint32_t(-1);
+        NRI.GetDescriptorSetOffsets(*m_DescriptorSet, resourceHeapOffset, samplerHeapOffset);
+
+        if (resourceHeapOffset != 0 || samplerHeapOffset != 0) {
+            printf("ERROR: heap offsets are expected to be 0!\n");
+            exit(1);
+        }
     }
 
-    { // Write descriptors directly to heap indices
-        const nri::WriteResourceDescriptorsDesc resources[] = {
-            {m_Output_StorageTexture, 0},
-            {m_Buffer_Constant, 1},
-            {m_Tex0_Texture, 2},
-            {m_Tex1_Texture, 3},
+    { // Update descriptors in the resource heap
+        const nri::Descriptor* textures[] = {
+            m_Tex0_Texture,
+            m_Tex1_Texture,
         };
 
-        const nri::WriteSamplerDescriptorsDesc samplers[] = {
-            {m_Nearest_Sampler, 0},
-            {m_Linear_Sampler, 1},
+        const nri::Descriptor* samplers[] = {
+            m_Nearest_Sampler,
+            m_Linear_Sampler,
         };
 
-        NRI_ABORT_ON_FAILURE(NRI.WriteResourceDescriptors(*m_DescriptorHeap, resources, helper::GetCountOf(resources)));
-        NRI_ABORT_ON_FAILURE(NRI.WriteSamplerDescriptors(*m_DescriptorHeap, samplers, helper::GetCountOf(samplers)));
+        const nri::UpdateDescriptorRangeDesc updateDescriptorRangeDesc[] = {
+            // 0 range is "resource heap"
+            {m_DescriptorSet, 0, 0, &m_Output_StorageTexture, 1},
+            {m_DescriptorSet, 0, 1, &m_Buffer_Constant, 1},
+            {m_DescriptorSet, 0, 2, textures, helper::GetCountOf(textures)},
+
+            // 1 range is "sampler heap"
+            {m_DescriptorSet, 1, 0, samplers, helper::GetCountOf(samplers)},
+        };
+
+        NRI.UpdateDescriptorRanges(updateDescriptorRangeDesc, helper::GetCountOf(updateDescriptorRangeDesc));
     }
 
     return true;
@@ -370,7 +411,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     // Record
     nri::CommandBuffer& commandBuffer = *queuedFrame.commandBuffer;
-    NRI.BeginCommandBuffer(commandBuffer, nullptr);
+    NRI.BeginCommandBuffer(commandBuffer, m_DescriptorPool);
     {
         nri::TextureBarrierDesc textureTransitions[2] = {};
         nri::BarrierDesc barrierDesc = {};
@@ -393,9 +434,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         NRI.CmdBarrier(commandBuffer, barrierDesc);
 
         // Rendering
-        NRI.CmdSetDescriptorHeap(commandBuffer, *m_DescriptorHeap);
         NRI.CmdSetPipelineLayout(commandBuffer, nri::BindPoint::COMPUTE, *m_PipelineLayout);
         NRI.CmdSetPipeline(commandBuffer, *m_ComputePipeline);
+
+        nri::SetDescriptorSetDesc descriptorSet0 = {0, m_DescriptorSet};
+        NRI.CmdSetDescriptorSet(commandBuffer, descriptorSet0);
 
         const nri::SetRootConstantsDesc setRootConstantsDesc = {0, &rootConstants, sizeof(rootConstants)};
         NRI.CmdSetRootConstants(commandBuffer, setRootConstantsDesc);

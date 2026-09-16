@@ -82,6 +82,7 @@ endif()
 
 # External/NRIFramework
 set(NRI_SHADERS_PATH "${SHADER_OUTPUT_PATH}" CACHE STRING "")
+set(SHADERMAKE_FIND_SLANG ON)
 
 add_subdirectory("External/NRIFramework")
 
@@ -139,7 +140,7 @@ if(NRI_ENABLE_D3D12_SUPPORT)
 endif()
 
 if(NRI_ENABLE_VK_SUPPORT)
-    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p SPIRV --compiler "${SHADERMAKE_DXC_VK_PATH}" ${SHADERMAKE_GENERAL_ARGS})
+    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p SPIRV --compiler "${SHADERMAKE_DXC_VK_PATH}" ${SHADERMAKE_GENERAL_ARGS} --compilerAlias "SLANG=${SHADERMAKE_SLANG_PATH}")
 endif()
 
 add_custom_target(${PROJECT_NAME}Shaders ALL
@@ -177,6 +178,7 @@ add_sample(BindlessSceneViewer cpp)
 add_sample(Clear cpp)
 add_sample(ClearStorage c)
 add_sample(CopyTests cpp)
+add_sample(DescriptorPoolIndexing cpp)
 add_sample(DescriptorHeapIndexing cpp)
 add_sample(DescriptorManagement cpp)
 add_sample(DedicatedQueues cpp)
