@@ -251,8 +251,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
             pipelineLayoutDesc.descriptorSets = descriptorSetDescs;
             pipelineLayoutDesc.shaderStages = nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER;
 
-            // We know that all shaders are not SM 6.8, so emulation is needed for D3D12
-            if (deviceDesc.graphicsAPI == nri::GraphicsAPI::D3D12)
+            // We know that all shaders are not SM 6.8, so emulation is needed for D3D12 and Metal (DXIL)
+            if (deviceDesc.graphicsAPI == nri::GraphicsAPI::D3D12 || deviceDesc.graphicsAPI == nri::GraphicsAPI::METAL)
                 pipelineLayoutDesc.flags = nri::PipelineLayoutBits::ENABLE_DRAW_PARAMETERS_EMULATION;
 
             NRI_ABORT_ON_FAILURE(NRI.CreatePipelineLayout(*m_Device, pipelineLayoutDesc, m_GraphicsPipelineLayout));
