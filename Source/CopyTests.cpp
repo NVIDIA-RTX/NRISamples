@@ -744,18 +744,34 @@ bool CopyTests::TestHostCopies() {
     if (!TestHostCopyFormat(nri::Format::RGBA8_UNORM, 1, 1, 4, uploadPassed, readbackPassed, wholeCopyPassed))
         return false;
 
-    if (m_Core.GetFormatSupport(*m_Device, nri::Format::BC1_RGBA_UNORM) & nri::FormatSupportBits::HOST_COPY) {
-        bool bcUploadPassed = false;
-        bool bcReadbackPassed = false;
-        bool bcWholeCopyPassed = false;
-        if (!TestHostCopyFormat(nri::Format::BC1_RGBA_UNORM, 4, 4, 8, bcUploadPassed, bcReadbackPassed, bcWholeCopyPassed))
+    const struct {
+        nri::Format format;
+        uint32_t width, height, size;
+        const char* name;
+    } compressedFormats[] = {
+        {nri::Format::BC1_RGBA_UNORM, 4, 4, 8, "BC1"},
+        {nri::Format::ETC2_RGB8_A8_UNORM, 4, 4, 16, "ETC2"},
+        {nri::Format::ASTC_5X4_UNORM, 5, 4, 16, "ASTC 5x4"},
+    };
+
+    for (const auto& format : compressedFormats) {
+        if (!(m_Core.GetFormatSupport(*m_Device, format.format) & nri::FormatSupportBits::HOST_COPY)) {
+            printf("SKIP  %s host copies are unsupported\n", format.name);
+
+            continue;
+        }
+
+        bool compressedUploadPassed = false;
+        bool compressedReadbackPassed = false;
+        bool compressedWholeCopyPassed = false;
+        if (!TestHostCopyFormat(format.format, format.width, format.height, format.size, compressedUploadPassed, compressedReadbackPassed, compressedWholeCopyPassed))
             return false;
 
-        uploadPassed &= bcUploadPassed;
-        readbackPassed &= bcReadbackPassed;
-        wholeCopyPassed &= bcWholeCopyPassed;
-    } else
-        printf("SKIP  BC1_RGBA_UNORM host copies are unsupported\n");
+        uploadPassed &= compressedUploadPassed;
+        readbackPassed &= compressedReadbackPassed;
+        wholeCopyPassed &= compressedWholeCopyPassed;
+        Report(format.name, compressedUploadPassed && compressedReadbackPassed && compressedWholeCopyPassed);
+    }
 
     return Report("UploadHostMemoryToTexture", uploadPassed)
         && Report("ReadbackTextureToHostMemory", readbackPassed)

@@ -60,6 +60,7 @@ The executables from `_Bin` directory load resources from `_Data`, therefore the
 - DescriptorManagement - descriptor copying, pool switching, update-after-set and pool recycling testing
 - DedicatedQueues - dedicated copy queue, synchronization and copy-queue timestamp testing
 - GraphicsPipelineStates - dynamic graphics state, geometry, tessellation and less common rasterization testing
+- GraphicsVertexInput - vertex input, geometry and tessellation draw testing
 - InputAttachment - "dynamic rendering local read" demonstration (reading on-chip rendering results)
 - IndirectCommands - indirect graphics and compute command testing
 - LowLatency - low latency demonstration
