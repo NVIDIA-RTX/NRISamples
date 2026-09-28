@@ -58,21 +58,15 @@ bool Run(const test::Settings& settings) {
     context.core.CmdCopyBuffer(*copyCommandBuffer, *readbackBuffer, 0, *deviceBuffer, 0, dataSize);
 
     nri::QueryPool* timestampQueryPool = nullptr;
-    nri::Buffer* timestampReadback = nullptr;
     if (context.deviceDesc->features.timestampCopyQueue) {
         nri::QueryPoolDesc queryPoolDesc = {nri::QueryType::TIMESTAMP_COPY_QUEUE, 1};
         TEST_CHECK(context.core.CreateQueryPool(*context.device, queryPoolDesc, timestampQueryPool));
         context.Track(timestampQueryPool);
 
-        const uint32_t querySize = context.core.GetQuerySize(*timestampQueryPool);
-        nri::BufferDesc queryBufferDesc = {};
-        queryBufferDesc.size = querySize;
-        TEST_CHECK(context.CreateBuffer(queryBufferDesc, nri::MemoryLocation::HOST_READBACK, timestampReadback));
-
-        context.core.CmdResetQueries(*copyCommandBuffer, *timestampQueryPool, 0, 1);
+        context.core.ResetQueries(*timestampQueryPool, 0, 1);
         context.core.CmdEndQuery(*copyCommandBuffer, *timestampQueryPool, 0);
-        context.core.CmdCopyQueries(*copyCommandBuffer, *timestampQueryPool, 0, 1, *timestampReadback, 0);
-    }
+    } else
+        printf("SKIP  Copy-queue timestamps are unsupported\n");
 
     TEST_CHECK(context.core.EndCommandBuffer(*copyCommandBuffer));
 
@@ -100,12 +94,26 @@ bool Run(const test::Settings& settings) {
 
     bool passed = test::VerifyBytes(context.core, *readbackBuffer, expected.data(), dataSize);
 
-    if (timestampReadback) {
-        const uint64_t* timestamp = (const uint64_t*)context.core.MapBuffer(*timestampReadback, 0, sizeof(uint64_t));
-        passed &= timestamp != nullptr;
-        context.core.UnmapBuffer(*timestampReadback);
-    } else
-        printf("SKIP  Copy-queue timestamps are unsupported\n");
+    if (timestampQueryPool) {
+        nri::BufferDesc timestampBufferDesc = {};
+        timestampBufferDesc.size = sizeof(uint64_t);
+        nri::Buffer* timestampReadbackBuffer = nullptr;
+        TEST_CHECK(context.CreateBuffer(timestampBufferDesc, nri::MemoryLocation::HOST_READBACK, timestampReadbackBuffer));
+
+        nri::Queue& resolveQueue = context.deviceDesc->other.timestampCopyQueueResolveOnCopyQueue ? *copyQueue : *graphicsQueue;
+        nri::CommandAllocator* resolveCommandAllocator = nullptr;
+        nri::CommandBuffer* resolveCommandBuffer = nullptr;
+        TEST_CHECK(context.CreateCommandObjects(resolveQueue, resolveCommandAllocator, resolveCommandBuffer));
+        TEST_CHECK(context.core.BeginCommandBuffer(*resolveCommandBuffer, nullptr));
+        context.core.CmdCopyQueries(*resolveCommandBuffer, *timestampQueryPool, 0, 1, *timestampReadbackBuffer, 0);
+        TEST_CHECK(context.SubmitAndWait(resolveQueue, *resolveCommandBuffer));
+
+        const uint64_t* timestampData = (const uint64_t*)context.core.MapBuffer(*timestampReadbackBuffer, 0, sizeof(uint64_t));
+        bool timestampPassed = timestampData && *timestampData != 0;
+        if (timestampData)
+            context.core.UnmapBuffer(*timestampReadbackBuffer);
+        passed &= test::Report("copy queue timestamp", timestampPassed);
+    }
 
     TEST_CHECK(context.core.QueueWaitIdle(graphicsQueue));
 
