@@ -82,6 +82,7 @@ endif()
 
 # External/NRIFramework
 set(NRI_SHADERS_PATH "${SHADER_OUTPUT_PATH}" CACHE STRING "")
+set(SHADERMAKE_FIND_SLANG ON)
 
 add_subdirectory("External/NRIFramework")
 
