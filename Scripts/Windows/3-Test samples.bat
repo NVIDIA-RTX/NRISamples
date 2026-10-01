@@ -1,4 +1,8 @@
 @echo off
+setlocal
+for %%I in ("%~dp0..\..") do set "ROOT=%%~fI"
+
+pushd "%ROOT%" || exit /B 1
 
 set DIR_DATA=_Data
 set DIR_BIN=_Bin\Release
@@ -11,7 +15,8 @@ if not exist "%DIR_BIN%" (
 if not exist "%DIR_BIN%" (
     echo The project is not compiled!
     pause
-    exit /b
+    popd
+    exit /b 1
 )
 echo Running samples from '%DIR_BIN%'...
 echo.
@@ -62,6 +67,7 @@ call :TestSample Wrapper
 
 pause
 
+popd
 exit /b
 
 ::========================================================================================
