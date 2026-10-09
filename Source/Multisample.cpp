@@ -495,13 +495,23 @@ void Sample::PrepareFrame(uint32_t) {
             ImGui::Checkbox("Resolve within render pass", &m_RenderPassResolve);
 
             const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-            if (deviceDesc.features.resolveOpMinMax) {
-                static const char* items[] = {
-                    "Average",
-                    "Min",
-                    "Max",
-                };
-                ImGui::Combo("Resolve mode", &m_ResolveMode, items, helper::GetCountOf(items));
+            nri::ResolveOpBits resolveOps = m_RenderPassResolve ? deviceDesc.resolve.attachment.color : deviceDesc.resolve.command.color;
+            if ((resolveOps & (nri::ResolveOpBits)NriBit(m_ResolveMode)) == 0)
+                m_ResolveMode = (int)nri::ResolveOp::AVERAGE;
+
+            static const char* items[] = {
+                "Average",
+                "Min",
+                "Max",
+            };
+            if (ImGui::BeginCombo("Resolve mode", items[m_ResolveMode])) {
+                for (uint32_t i = 0; i < helper::GetCountOf(items); i++) {
+                    ImGui::BeginDisabled((resolveOps & (nri::ResolveOpBits)NriBit(i)) == 0);
+                    if (ImGui::Selectable(items[i], m_ResolveMode == (int)i))
+                        m_ResolveMode = (int)i;
+                    ImGui::EndDisabled();
+                }
+                ImGui::EndCombo();
             }
         }
         ImGui::End();
