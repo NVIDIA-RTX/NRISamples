@@ -65,7 +65,7 @@ private:
 
     uint64_t m_GeometryOffset = 0;
     bool m_RenderPassResolve = false;
-    int m_ResolveMode = 0;
+    nri::ResolveOp m_ResolveOp = nri::ResolveOp::AVERAGE;
 };
 
 Sample::~Sample() {
@@ -294,7 +294,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         outputMergerDesc.colorNum = 1;
 
         nri::ShaderDesc shaderStages[] = {
-            utils::LoadShader(deviceDesc.graphicsAPI, "TriangleFlexibleMultiview.vs", shaderCodeStorage),
+            utils::LoadShader(deviceDesc.graphicsAPI, deviceDesc.graphicsAPI == nri::GraphicsAPI::METAL ? "Triangle.vs" : "TriangleFlexibleMultiview.vs", shaderCodeStorage),
             utils::LoadShader(deviceDesc.graphicsAPI, "Triangle.fs", shaderCodeStorage),
         };
 
@@ -494,15 +494,37 @@ void Sample::PrepareFrame(uint32_t) {
         {
             ImGui::Checkbox("Resolve within render pass", &m_RenderPassResolve);
 
+            // Only supported resolve ops are listed, the selection falls back to the first one if the current op becomes unsupported
             const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-            if (deviceDesc.features.resolveOpMinMax) {
-                static const char* items[] = {
-                    "Average",
-                    "Min",
-                    "Max",
-                };
-                ImGui::Combo("Resolve mode", &m_ResolveMode, items, helper::GetCountOf(items));
+            const nri::ResolveOpBits resolveOps = m_RenderPassResolve ? deviceDesc.resolve.attachment.color : deviceDesc.resolve.command.color;
+
+            static const char* names[] = {
+                "Average",
+                "Min",
+                "Max",
+                "Sample zero",
+            };
+            static_assert(helper::GetCountOf(names) == (uint32_t)nri::ResolveOp::MAX_NUM, "Unexpected");
+
+            const char* items[(uint32_t)nri::ResolveOp::MAX_NUM] = {};
+            nri::ResolveOp ops[(uint32_t)nri::ResolveOp::MAX_NUM] = {};
+            int itemNum = 0;
+            int selected = 0;
+            for (uint32_t i = 0; i < (uint32_t)nri::ResolveOp::MAX_NUM; i++) {
+                if (resolveOps & (nri::ResolveOpBits)(1u << i)) {
+                    if (m_ResolveOp == (nri::ResolveOp)i)
+                        selected = itemNum;
+
+                    items[itemNum] = names[i];
+                    ops[itemNum++] = (nri::ResolveOp)i;
+                }
             }
+
+            if (itemNum > 1)
+                ImGui::Combo("Resolve mode", &selected, items, itemNum);
+
+            if (itemNum)
+                m_ResolveOp = ops[selected];
         }
         ImGui::End();
     }
@@ -579,7 +601,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             colorAttachmentDesc.descriptor = m_AttachmentMsaa;
             colorAttachmentDesc.clearValue.color = {{1.0f, 1.0f, 1.0f, 1.0f}};
             colorAttachmentDesc.loadOp = nri::LoadOp::CLEAR;
-            colorAttachmentDesc.resolveOp = (nri::ResolveOp)m_ResolveMode;
+            colorAttachmentDesc.resolveOp = m_ResolveOp;
 
             if (m_RenderPassResolve) {
                 colorAttachmentDesc.storeOp = nri::StoreOp::DISCARD;
@@ -643,7 +665,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             }
 
             // Resolve (slow, off chip)
-            NRI.CmdResolveTexture(*commandBuffer, *swapChainTexture.texture, nullptr, *m_TextureMsaa, nullptr, (nri::ResolveOp)m_ResolveMode);
+            NRI.CmdResolveTexture(*commandBuffer, *swapChainTexture.texture, nullptr, *m_TextureMsaa, nullptr, m_ResolveOp);
         }
 
         { // Barriers: prepare Swap Chain for Composition

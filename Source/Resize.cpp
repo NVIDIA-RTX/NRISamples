@@ -76,7 +76,9 @@ Sample::~Sample() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
-    m_PrevWindowResolution = m_OutputResolution;
+    int windowWidth, windowHeight;
+    glfwGetWindowSize(m_Window, &windowWidth, &windowHeight);
+    m_PrevWindowResolution = uint2(windowWidth, windowHeight);
 
     // Adapters
     nri::AdapterDesc adapterDesc[2] = {};
@@ -200,21 +202,23 @@ void Sample::PrepareFrame(uint32_t) {
         uint32_t w = (uint32_t)vidmode->width;
         uint32_t h = (uint32_t)vidmode->height;
 
-        if (m_IsFullscreen)
-            m_OutputResolution = uint2(w, h);
-        else
-            m_OutputResolution = m_PrevWindowResolution;
-
-        uint32_t x = (w - m_OutputResolution.x) >> 1;
-        uint32_t y = (h - m_OutputResolution.y) >> 1;
+        const uint2 windowResolution = m_IsFullscreen ? uint2(w, h) : m_PrevWindowResolution;
+        uint32_t x = (w - windowResolution.x) >> 1;
+        uint32_t y = (h - windowResolution.y) >> 1;
 
         glfwSetWindowAttrib(m_Window, GLFW_DECORATED, m_IsFullscreen ? 0 : 1);
 #if (NRIF_PLATFORM != NRIF_WAYLAND)
         glfwSetWindowPos(m_Window, x, y);
 #endif
-        glfwSetWindowSize(m_Window, m_OutputResolution.x, m_OutputResolution.y);
+        glfwSetWindowSize(m_Window, windowResolution.x, windowResolution.y);
+    }
 
+    int framebufferWidth, framebufferHeight;
+    glfwGetFramebufferSize(m_Window, &framebufferWidth, &framebufferHeight);
+    if (framebufferWidth > 0 && framebufferHeight > 0 && (m_OutputResolution.x != (uint32_t)framebufferWidth || m_OutputResolution.y != (uint32_t)framebufferHeight)) {
+        m_OutputResolution = uint2(framebufferWidth, framebufferHeight);
         ResizeSwapChain();
+        ImGui::GetIO().DisplaySize = ImVec2((float)framebufferWidth, (float)framebufferHeight);
     }
 
     // UI

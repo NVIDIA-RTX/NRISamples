@@ -37,6 +37,14 @@ Scripts resolve the project root from their own location and can be launched fro
 
 To clean generated files, run `Scripts/Windows/4-Clean.bat`, `bash Scripts/Linux/4-Clean.sh` or `bash Scripts/MacOS/4-Clean.sh`. Cleanup also removes downloaded `_Data` and runs the matching cleanup scripts in NRIFramework and NRI.
 
+### macOS
+
+- Install **Xcode** 26+ and the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`)
+- Install **VulkanSDK** (provides *DXC*, required to compile shaders, and *Vulkan* through *MoltenVK*)
+- Install **Metal Shader Converter** to run the samples on *Metal* (HLSL → DXIL → Metal, enabled automatically if installed, *Metal* becomes the default API; otherwise *Vulkan* is used)
+- Clone project and init submodules
+- Generate and build project using **cmake**
+
 ### CMake options
 
 - `DISABLE_SHADER_COMPILATION` - disable compilation of shaders (shaders can be built on other platform)
@@ -60,6 +68,7 @@ The executables from `_Bin` directory load resources from `_Data`, therefore the
 - DescriptorManagement - descriptor copying, pool switching, update-after-set and pool recycling testing
 - DedicatedQueues - dedicated copy queue, synchronization and copy-queue timestamp testing
 - GraphicsPipelineStates - dynamic graphics state, geometry, tessellation and less common rasterization testing
+- GraphicsVertexInput - vertex input, geometry and tessellation draw testing
 - InputAttachment - "dynamic rendering local read" demonstration (reading on-chip rendering results)
 - IndirectCommands - indirect graphics and compute command testing
 - LowLatency - low latency demonstration

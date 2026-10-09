@@ -50,6 +50,7 @@ void PrintSupportedGraphicsAPIs(NriGraphicsAPI supportedGraphicsAPIs) {
         NriGraphicsAPI_D3D11,
         NriGraphicsAPI_D3D12,
         NriGraphicsAPI_VK,
+        NriGraphicsAPI_METAL,
         NriGraphicsAPI_WGPU,
     };
 
@@ -67,12 +68,20 @@ void PrintSupportedGraphicsAPIs(NriGraphicsAPI supportedGraphicsAPIs) {
 
 int main(int argc, char** argv) {
     // Settings
+#if (defined(__APPLE__) && NRI_ENABLE_METAL_SHADER_CONVERTER)
+    NriGraphicsAPI graphicsAPI = NriGraphicsAPI_METAL;
+#else
     NriGraphicsAPI graphicsAPI = NriGraphicsAPI_D3D11;
+#endif
     for (int i = 0; i < argc; i++) {
-        if (!strcmp(argv[i], "--api=D3D12"))
+        if (!strcmp(argv[i], "--api=D3D11"))
+            graphicsAPI = NriGraphicsAPI_D3D11;
+        else if (!strcmp(argv[i], "--api=D3D12"))
             graphicsAPI = NriGraphicsAPI_D3D12;
         else if (!strcmp(argv[i], "--api=VULKAN"))
             graphicsAPI = NriGraphicsAPI_VK;
+        else if (!strcmp(argv[i], "--api=METAL"))
+            graphicsAPI = NriGraphicsAPI_METAL;
         else if (!strcmp(argv[i], "--api=WGPU"))
             graphicsAPI = NriGraphicsAPI_WGPU;
     }

@@ -177,6 +177,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_FrameFence));
 
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
+    // Metal Shader Converter doesn't support "SV_ViewID"
+    const bool flexibleMultiview = deviceDesc.features.flexibleMultiview && deviceDesc.graphicsAPI != nri::GraphicsAPI::METAL;
     { // Pipeline cache
         nri::PipelineCacheDesc cacheDesc = {};
         std::vector<uint8_t> blob;
@@ -332,7 +334,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         outputMergerDesc.colorNum = 1;
 
         nri::ShaderDesc shaderStages[] = {
-            utils::LoadShader(deviceDesc.graphicsAPI, "TriangleFlexibleMultiview.vs", shaderCodeStorage),
+            utils::LoadShader(deviceDesc.graphicsAPI, deviceDesc.graphicsAPI == nri::GraphicsAPI::METAL ? "Triangle.vs" : "TriangleFlexibleMultiview.vs", shaderCodeStorage),
             utils::LoadShader(deviceDesc.graphicsAPI, "Triangle.fs", shaderCodeStorage),
         };
 
@@ -352,7 +354,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         printf("CreateGraphicsPipeline (main) took %.3f ms\n", t1 - t0);
 
         // Multiview
-        if (deviceDesc.features.flexibleMultiview) {
+        if (flexibleMultiview) {
             graphicsPipelineDesc.outputMerger.viewMask = VIEW_MASK;
             graphicsPipelineDesc.outputMerger.multiview = nri::Multiview::FLEXIBLE;
 
@@ -501,8 +503,9 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 
 void Sample::PrepareFrame(uint32_t) {
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
+    const bool flexibleMultiview = m_PipelineMultiview != nullptr;
 
-    if (IsHalfTimeLimitReached() && deviceDesc.features.flexibleMultiview)
+    if (IsHalfTimeLimitReached() && flexibleMultiview)
         m_Multiview = !m_Multiview;
 
     ImGui::NewFrame();
@@ -514,7 +517,7 @@ void Sample::PrepareFrame(uint32_t) {
             ImGui::SliderFloat("Transparency", &m_Transparency, 0.0f, 1.0f);
             ImGui::SliderFloat("Scale", &m_Scale, 0.5f, 50.0f, "%.2f", ImGuiSliderFlags_Logarithmic);
 
-            ImGui::BeginDisabled(!deviceDesc.features.flexibleMultiview);
+            ImGui::BeginDisabled(!flexibleMultiview);
             ImGui::Checkbox("Multiview", &m_Multiview);
             ImGui::EndDisabled();
         }
