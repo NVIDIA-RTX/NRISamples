@@ -726,6 +726,21 @@ std::vector<StreamOptions> MakeMatrixCases(const StreamOptions& base) {
             o.rateControlB = {RateControlKind::CBR, 3000, 0};
             o.minPsnr = 25.0;
         });
+        // Rate control limits: D3D12 enables them by flags, VK by the CBR/VBR structures
+        add("cbr-qp-range", [&](StreamOptions& o) {
+            setRate(o, RateControlKind::CBR, 4000, 0);
+            o.quality.rateControl.qpMin = 30;
+            o.quality.rateControl.qpMax = 30;
+        });
+        add("cbr-max-frame", [&](StreamOptions& o) {
+            setRate(o, RateControlKind::CBR, 4000, 0);
+            o.quality.rateControl.maxFrameBits = 120000;
+        });
+        add("vbr-vbv", [&](StreamOptions& o) {
+            setRate(o, RateControlKind::VBR, 3000, 6000);
+            o.quality.rateControl.vbvMs = 200;
+            o.quality.rateControl.vbvInitialMs = 100;
+        });
         add("no-feedback", [](StreamOptions& o) { o.config.encodeFeedback = false; });
         add("1080p", [](StreamOptions& o) {
             o.config.videoWidth = 1920;
@@ -777,6 +792,27 @@ std::vector<StreamOptions> MakeMatrixCases(const StreamOptions& base) {
         }
 
         if (codec == SampleCodec::H265) {
+            add("ids-nolistmod", [](StreamOptions& o) {
+                o.config.h265VpsId = 3;
+                o.config.h265SpsId = 5;
+                o.config.h265PpsId = 7;
+                o.config.referenceNum = 2;
+                o.config.h265ListsModification = false;
+                o.config.reverseReferences = false;
+            });
+            add("b-nolistmod", [](StreamOptions& o) {
+                o.gop = "BP";
+                o.config.referenceNum = 2;
+                o.config.h265ListsModification = false;
+                o.config.reverseReferences = false;
+                o.frameNum = 8;
+            });
+            // SPS scaling_list_enabled_flag without lists: the decode uses the default lists, the encoders do not, hence the PSNR limit
+            add("scaling-default", [](StreamOptions& o) {
+                o.config.h265ScalingListEnabled = true;
+                o.config.h265ListsModification = false;
+                o.minPsnr = 20.0;
+            });
             add("ids", [](StreamOptions& o) {
                 o.config.h265VpsId = 3;
                 o.config.h265SpsId = 5;

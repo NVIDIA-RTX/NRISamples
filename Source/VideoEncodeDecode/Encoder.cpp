@@ -558,6 +558,11 @@ bool Encoder::Encode(const EncodeRequest& request, EncodedFrame& frame) {
     if (rateControl.kind != RateControlKind::CQP) {
         rateControlDesc.targetBitrate = uint64_t(rateControl.bitrateKbps) * 1000;
         rateControlDesc.maxBitrate = uint64_t(rateControl.maxBitrateKbps ? rateControl.maxBitrateKbps : rateControl.bitrateKbps) * 1000;
+        rateControlDesc.qpMin = (uint8_t)rateControl.qpMin;
+        rateControlDesc.qpMax = (uint8_t)rateControl.qpMax;
+        rateControlDesc.maxFrameBitSize = rateControl.maxFrameBits;
+        rateControlDesc.virtualBufferSizeMs = rateControl.vbvMs;
+        rateControlDesc.initialVirtualBufferSizeMs = rateControl.vbvInitialMs;
     }
 
     // Encode

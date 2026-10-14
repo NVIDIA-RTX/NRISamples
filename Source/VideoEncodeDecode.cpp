@@ -158,6 +158,7 @@ private:
     double m_LastRoundTripTimeSec = -ROUND_TRIP_INTERVAL_SEC;
     bool m_VideoReady = false;
     bool m_VideoQueuesRequested = false;
+    bool m_EnhancedBarriers = false;
     bool m_DecodePreviewReady = false;
     bool m_PreviewTexturesShaderReadable = false;
     bool m_SourcePreviewReady = false;
@@ -260,6 +261,13 @@ void Sample::InitCmdLine(cmdline::parser& cmdLine) {
     cmdLine.add<std::string>("h264Ids", 0, "stream: H.264 SPS,PPS ids", false, m_H264IdsArg);
     cmdLine.add<uint32_t>("h264PpsRefs", 0, "stream: H.264 PPS num_ref_idx_l0_default_active_minus1", false, 0);
     cmdLine.add<uint32_t>("codedAlign", 0, "stream: minimum alignment of the coded size", false, 1);
+    cmdLine.add<uint32_t>("qpMin", 0, "stream: CBR/VBR QP range minimum", false, 0);
+    cmdLine.add<uint32_t>("qpMax", 0, "stream: CBR/VBR QP range maximum", false, 0);
+    cmdLine.add<uint32_t>("maxFrameBits", 0, "stream: CBR/VBR maximum frame size in bits", false, 0);
+    cmdLine.add<uint32_t>("vbvMs", 0, "stream: CBR/VBR virtual buffer size in ms", false, 0);
+    cmdLine.add<uint32_t>("vbvInitialMs", 0, "stream: CBR/VBR initial virtual buffer fullness in ms", false, 0);
+    cmdLine.add("h265ScalingList", 0, "stream: set the H.265 SPS scaling_list_enabled_flag (default lists)");
+    cmdLine.add("enhancedBarriers", 0, "D3D12: use enhanced barriers (off by default for the video queues)");
     cmdLine.add<std::string>("h265Ids", 0, "stream: H.265 VPS,SPS,PPS ids", false, m_H265IdsArg);
     cmdLine.add("h265DefaultParams", 0, "stream: create the H.265 encode session without parameter sets (backend defaults, level by size)");
     cmdLine.add("noH265ListsModification", 0, "stream: clear the H.265 PPS lists_modification_present_flag");
@@ -359,6 +367,13 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     options.quality.rateControl.kind = rc == "cbr" ? video_sample::RateControlKind::CBR : (rc == "vbr" ? video_sample::RateControlKind::VBR : video_sample::RateControlKind::CQP);
     options.quality.rateControl.bitrateKbps = cmdLine.get<uint32_t>("bitrate");
     options.quality.rateControl.maxBitrateKbps = cmdLine.get<uint32_t>("maxBitrate");
+    options.quality.rateControl.qpMin = cmdLine.get<uint32_t>("qpMin");
+    options.quality.rateControl.qpMax = cmdLine.get<uint32_t>("qpMax");
+    options.quality.rateControl.maxFrameBits = cmdLine.get<uint32_t>("maxFrameBits");
+    options.quality.rateControl.vbvMs = cmdLine.get<uint32_t>("vbvMs");
+    options.quality.rateControl.vbvInitialMs = cmdLine.get<uint32_t>("vbvInitialMs");
+    options.config.h265ScalingListEnabled = cmdLine.exist("h265ScalingList");
+    m_EnhancedBarriers = cmdLine.exist("enhancedBarriers");
 
     // FRAME:MODE:KBPS[:MAXKBPS]
     const std::string rcChange = cmdLine.get<std::string>("rcChange");
@@ -455,7 +470,7 @@ bool Sample::InitializeGraphics(nri::GraphicsAPI graphicsAPI) {
     deviceCreationDesc.enableNRIValidation = m_DebugNRI;
     deviceCreationDesc.enableD3D11CommandBufferEmulation = D3D11_ENABLE_COMMAND_BUFFER_EMULATION;
     // D3D12 video encode command lists fail to close with enhanced barriers enabled.
-    deviceCreationDesc.disableD3D12EnhancedBarriers = graphicsAPI == nri::GraphicsAPI::D3D12 ? true : D3D12_DISABLE_ENHANCED_BARRIERS;
+    deviceCreationDesc.disableD3D12EnhancedBarriers = graphicsAPI == nri::GraphicsAPI::D3D12 ? !m_EnhancedBarriers : D3D12_DISABLE_ENHANCED_BARRIERS;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &selectedAdapter;
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
