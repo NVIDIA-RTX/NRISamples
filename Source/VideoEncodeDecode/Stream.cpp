@@ -167,6 +167,18 @@ std::vector<FramePlan> BuildFramePlans(const VideoConfig& config, const std::str
             }
         }
 
+        // The H.265 RPS of a picture only lists its own references (NRI cannot keep other DPB pictures), a decoder drops the rest
+        if (kind == 'B' && config.codec == SampleCodec::H265) {
+            dpb.erase(std::remove_if(dpb.begin(), dpb.end(), [&](const DpbEntry& entry) {
+                for (uint32_t i = 0; i < plan.referenceNum; i++) {
+                    if (plan.references[i].slot == entry.slot)
+                        return false;
+                }
+                return true;
+            }),
+                dpb.end());
+        }
+
         plan.reverseReferenceOrder = config.reverseReferences && config.codec == SampleCodec::H265 && plan.referenceNum > 1 && (plan.codingIndex & 1);
         plan.reverseDecodeReferenceOrder = config.reverseDecodeReferences && config.codec == SampleCodec::H265 && plan.referenceNum > 1 && (plan.codingIndex & 1);
 
