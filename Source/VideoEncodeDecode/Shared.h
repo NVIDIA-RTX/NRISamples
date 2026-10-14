@@ -380,11 +380,14 @@ inline CodecParameters MakeCodecParameters(nri::GraphicsAPI graphicsAPI, const V
     params.h264Sps.referenceFrameNum = (uint8_t)referenceNum;
     params.h264Sps.pictureWidthInMbsMinus1 = (uint16_t)((codedWidth + 15) / 16 - 1);
     params.h264Sps.pictureHeightInMapUnitsMinus1 = (uint16_t)((codedHeight + 15) / 16 - 1);
-    if (isCropped) {
+    // The coded size can be smaller than the macroblock-aligned picture (D3D12 codes the video size)
+    const uint32_t h264AlignedWidth = (codedWidth + 15) & ~15u;
+    const uint32_t h264AlignedHeight = (codedHeight + 15) & ~15u;
+    if (h264AlignedWidth != config.videoWidth || h264AlignedHeight != config.videoHeight) {
         // CropUnitX/Y are 2 luma samples (4:2:0, frame_mbs_only)
         params.h264Sps.flags |= nri::VideoH264SequenceParameterSetBits::FRAME_CROPPING;
-        params.h264Sps.frameCropRightOffset = (uint16_t)((codedWidth - config.videoWidth) / 2);
-        params.h264Sps.frameCropBottomOffset = (uint16_t)((codedHeight - config.videoHeight) / 2);
+        params.h264Sps.frameCropRightOffset = (uint16_t)((h264AlignedWidth - config.videoWidth) / 2);
+        params.h264Sps.frameCropBottomOffset = (uint16_t)((h264AlignedHeight - config.videoHeight) / 2);
     }
 
     params.h264Pps.flags = nri::VideoH264PictureParameterSetBits::DEBLOCKING_FILTER_CONTROL_PRESENT;
