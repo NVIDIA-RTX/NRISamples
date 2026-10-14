@@ -121,6 +121,7 @@ struct VideoConfig {
     bool encodeFeedback = true;        // "CmdResolveVideoEncodeFeedback" + "GetVideoEncodeFeedback", otherwise the bitstream is scanned
     Av1InfoMode av1Info = Av1InfoMode::AUTO;
     bool h265DefaultParameters = false; // encode session parameters are created by the backend (decode and Annex-B headers mirror them)
+    bool decodePictureAtVideoSize = false; // decode pictures cover the video size (external streams) instead of the coded texture size
     bool h264TransformBypass = false;   // SPS qpprime_y_zero_transform_bypass_flag (lossless with QP 0), not allowed by the High profile
     uint32_t codedAlignment = 1;       // minimum alignment of the coded size, e.g. 16 (macroblocks) for drivers that code aligned pictures
     uint8_t h264SpsId = 0;
@@ -219,6 +220,8 @@ struct EncodedFrame {
     bool hasAv1DecodeInfo = false;
     bool feedbackResolved = false;
     bool av1MetadataUnsupported = false;
+    bool hasAv1SavedOrderHints = false;                         // external stream decode: "SavedOrderHints" of the DPB pictures (indexed by DPB slot) instead of zeros
+    uint8_t av1SavedOrderHints[MAX_DPB_SLOT_NUM][8] = {};
 };
 
 struct DecodedFrame {
@@ -577,7 +580,7 @@ inline nri::Result CreateDecodeBitstreamBuffer(nri::CoreInterface& core, nri::De
 }
 
 // Creates "slotNum" DPB pictures: layers of one texture or separate textures
-inline bool CreatePictureSlots(NRIInterface& nri, nri::VideoInterface& video, nri::Device& device, const nri::TextureDesc& textureDesc, nri::VideoPictureUsage usage, bool useArray, uint32_t slotNum, const char* name, PictureSlot* slots, std::vector<nri::Texture*>& textures) {
+inline bool CreatePictureSlots(NRIInterface& nri, nri::VideoInterface& video, nri::Device& device, const nri::TextureDesc& textureDesc, nri::VideoPictureUsage usage, bool useArray, uint32_t slotNum, const char* name, PictureSlot* slots, std::vector<nri::Texture*>& textures, uint32_t pictureWidth = 0, uint32_t pictureHeight = 0) {
     nri::TextureDesc desc = textureDesc;
     nri::Texture* arrayTexture = nullptr;
     if (useArray) {
@@ -607,8 +610,8 @@ inline bool CreatePictureSlots(NRIInterface& nri, nri::VideoInterface& video, nr
         nri::VideoPictureDesc pictureDesc = {};
         pictureDesc.texture = slot.texture;
         pictureDesc.usage = usage;
-        pictureDesc.width = textureDesc.width;
-        pictureDesc.height = textureDesc.height;
+        pictureDesc.width = (nri::Dim_t)(pictureWidth ? pictureWidth : textureDesc.width);
+        pictureDesc.height = (nri::Dim_t)(pictureHeight ? pictureHeight : textureDesc.height);
         pictureDesc.layer = (nri::Dim_t)slot.layer;
         if (video.CreateVideoPicture(device, pictureDesc, slot.picture) != nri::Result::SUCCESS)
             return false;

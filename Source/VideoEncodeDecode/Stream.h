@@ -58,6 +58,8 @@ std::vector<FramePlan> BuildFramePlans(const VideoConfig& config, const std::str
 bool QueryVideoSize(const VideoContext& context, const VideoConfig& config, VideoSize& size, bool& isUnsupported, std::string& status);
 
 StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& options);
+// Decode an external AV1 OBU stream (one OBU_FRAME per picture), optionally compared bit-exactly with an NV12 reference of the shown pictures
+StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string& path, const std::string& refYuvPath, const std::string& name, const std::string& dumpDir, bool verbose);
 std::vector<StreamOptions> MakeMatrixCases(const StreamOptions& base);
 const char* GetStreamStatusName(StreamStatus status);
 
