@@ -9,6 +9,7 @@
 #include "../../External/NRIFramework/External/NRI/Source/Shared/SharedVideo.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
