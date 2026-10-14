@@ -143,7 +143,9 @@ std::vector<FramePlan> BuildFramePlans(const VideoConfig& config, const std::str
             std::sort(past.begin(), past.end(), [](const DpbEntry& a, const DpbEntry& b) { return a.poc > b.poc; });
             std::sort(future.begin(), future.end(), [](const DpbEntry& a, const DpbEntry& b) { return a.poc < b.poc; });
 
-            const uint32_t pastNum = (uint32_t)std::min<size_t>(past.size(), std::max(referenceNum, 2u) - 1);
+            // The H.265 B picture List0 limit is not exposed by NRI (NVIDIA: 1), H.264 takes the DPB size
+            const uint32_t pastMax = config.codec == SampleCodec::H265 ? 1u : std::max(referenceNum, 2u) - 1;
+            const uint32_t pastNum = (uint32_t)std::min<size_t>(past.size(), pastMax);
             for (uint32_t i = 0; i < pastNum; i++)
                 plan.references[plan.referenceNum++] = toReference(past[i], 0);
             if (!future.empty())
@@ -188,11 +190,11 @@ std::vector<FramePlan> BuildFramePlans(const VideoConfig& config, const std::str
             continue;
         }
 
-        // B pictures can't reference across an IDR
-        for (uint32_t pending : pendingB)
-            emit(pending, nonReferenceP);
-        pendingB.clear();
         if (kind == 'I') {
+            // B pictures can't reference across an IDR
+            for (uint32_t pending : pendingB)
+                emit(pending, nonReferenceP);
+            pendingB.clear();
             emit(displayIndex, kind);
             continue;
         }
