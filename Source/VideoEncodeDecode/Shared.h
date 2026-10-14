@@ -121,6 +121,7 @@ struct VideoConfig {
     bool h265DefaultParameters = false; // encode session parameters are created by the backend (decode and Annex-B headers mirror them)
     bool h264TransformBypass = false;   // SPS qpprime_y_zero_transform_bypass_flag (lossless with QP 0), not allowed by the High profile
     uint8_t h264SpsId = 0;
+    uint8_t h264PpsRefIdxL0DefaultActiveMinus1 = 0; // PPS num_ref_idx_l0_default_active_minus1
     uint8_t h264PpsId = 0;
     uint8_t h265VpsId = 0;
     uint8_t h265SpsId = 0;
@@ -393,7 +394,7 @@ inline CodecParameters MakeCodecParameters(nri::GraphicsAPI graphicsAPI, const V
     params.h264Pps.flags = nri::VideoH264PictureParameterSetBits::DEBLOCKING_FILTER_CONTROL_PRESENT;
     params.h264Pps.sequenceParameterSetId = config.h264SpsId;
     params.h264Pps.pictureParameterSetId = config.h264PpsId;
-    params.h264Pps.refIndexL0DefaultActiveMinus1 = 0;
+    params.h264Pps.refIndexL0DefaultActiveMinus1 = config.h264PpsRefIdxL0DefaultActiveMinus1;
     params.h264Pps.refIndexL1DefaultActiveMinus1 = 0;
 
     // H.265

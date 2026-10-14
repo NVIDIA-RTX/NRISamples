@@ -258,6 +258,7 @@ void Sample::InitCmdLine(cmdline::parser& cmdLine) {
     cmdLine.add<std::string>("feedback", 0, "stream: resolve encode feedback, 'off' scans the bitstream", false, m_FeedbackArg, cmdline::oneof<std::string>("on", "off"));
     cmdLine.add<std::string>("av1Info", 0, "stream: AV1 decode info source, metadata uses the submitted descriptions only (D3D12)", false, m_Av1InfoArg, cmdline::oneof<std::string>("auto", "header", "metadata"));
     cmdLine.add<std::string>("h264Ids", 0, "stream: H.264 SPS,PPS ids", false, m_H264IdsArg);
+    cmdLine.add<uint32_t>("h264PpsRefs", 0, "stream: H.264 PPS num_ref_idx_l0_default_active_minus1", false, 0);
     cmdLine.add<std::string>("h265Ids", 0, "stream: H.265 VPS,SPS,PPS ids", false, m_H265IdsArg);
     cmdLine.add("h265DefaultParams", 0, "stream: create the H.265 encode session without parameter sets (backend defaults, level by size)");
     cmdLine.add("noH265ListsModification", 0, "stream: clear the H.265 PPS lists_modification_present_flag");
@@ -317,6 +318,7 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     options.config.h264TransformBypass = m_Lossless;
     options.config.h265ListsModification = !cmdLine.exist("noH265ListsModification");
     options.config.reverseReferences = !cmdLine.exist("noReverseRefs");
+    options.config.h264PpsRefIdxL0DefaultActiveMinus1 = (uint8_t)cmdLine.get<uint32_t>("h264PpsRefs");
     const std::string decodeDpb = cmdLine.get<std::string>("decodeDpb");
     options.config.decodeDpb = decodeDpb == "coincide" ? video_sample::DecodeDpbMode::COINCIDE : (decodeDpb == "distinct" ? video_sample::DecodeDpbMode::DISTINCT : video_sample::DecodeDpbMode::AUTO);
     const std::string dpbLayout = cmdLine.get<std::string>("dpbLayout");
