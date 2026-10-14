@@ -269,6 +269,7 @@ void Sample::InitCmdLine(cmdline::parser& cmdLine) {
     cmdLine.add<uint32_t>("vbvMs", 0, "stream: CBR/VBR virtual buffer size in ms", false, 0);
     cmdLine.add<uint32_t>("vbvInitialMs", 0, "stream: CBR/VBR initial virtual buffer fullness in ms", false, 0);
     cmdLine.add("h265ScalingList", 0, "stream: set the H.265 SPS scaling_list_enabled_flag (default lists)");
+    cmdLine.add<std::string>("picturePlanes", 0, "video picture barriers address the planes with ALL, COLOR or PLANES (PLANE_0 | PLANE_1)", false, "all", cmdline::oneof<std::string>("all", "color", "planes"));
     cmdLine.add("enhancedBarriers", 0, "D3D12: use enhanced barriers (off by default for the video queues)");
     cmdLine.add<std::string>("h265Ids", 0, "stream: H.265 VPS,SPS,PPS ids", false, m_H265IdsArg);
     cmdLine.add("h265DefaultParams", 0, "stream: create the H.265 encode session without parameter sets (backend defaults, level by size)");
@@ -383,6 +384,8 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     options.quality.rateControl.vbvInitialMs = cmdLine.get<uint32_t>("vbvInitialMs");
     options.config.h265ScalingListEnabled = cmdLine.exist("h265ScalingList");
     m_EnhancedBarriers = cmdLine.exist("enhancedBarriers");
+    const std::string picturePlanes = cmdLine.get<std::string>("picturePlanes");
+    video_sample::g_PicturePlanes = picturePlanes == "color" ? nri::PlaneBits::COLOR : (picturePlanes == "planes" ? (nri::PlaneBits::PLANE_0 | nri::PlaneBits::PLANE_1) : nri::PlaneBits::ALL);
 
     // FRAME:MODE:KBPS[:MAXKBPS]
     const std::string rcChange = cmdLine.get<std::string>("rcChange");

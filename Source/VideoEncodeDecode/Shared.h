@@ -640,6 +640,9 @@ inline bool InitializePictureLayouts(nri::CoreInterface& core, nri::Queue& queue
     });
 }
 
+// "ALL" by default; "COLOR" and "PLANE_0 | PLANE_1" cover the other ways to address both planes of an NV12 picture
+inline nri::PlaneBits g_PicturePlanes = nri::PlaneBits::ALL;
+
 inline nri::TextureBarrierDesc MakePictureBarrier(const PictureSlot& slot, nri::AccessLayoutStage before, nri::AccessLayoutStage after) {
     nri::TextureBarrierDesc barrier = {};
     barrier.texture = slot.texture;
@@ -648,7 +651,7 @@ inline nri::TextureBarrierDesc MakePictureBarrier(const PictureSlot& slot, nri::
     barrier.layerOffset = (nri::Dim_t)slot.layer;
     barrier.layerNum = 1;
     barrier.mipNum = 1;
-    barrier.planes = nri::PlaneBits::ALL;
+    barrier.planes = g_PicturePlanes;
     return barrier;
 }
 
