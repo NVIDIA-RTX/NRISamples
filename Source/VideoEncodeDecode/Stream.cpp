@@ -387,6 +387,10 @@ StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& o
     VideoConfig config = options.config;
     const bool hasB = options.gop.find('B') != std::string::npos && config.codec != SampleCodec::AV1;
     config.hasBFrames = hasB;
+    for (size_t i = 0, run = 0; i <= options.gop.size(); i++) {
+        run = (i < options.gop.size() && options.gop[i] == 'B') ? run + 1 : 0;
+        config.reorderNum = std::max<uint32_t>(config.reorderNum, (uint32_t)run);
+    }
     if (hasB)
         config.referenceNum = std::max(config.referenceNum, 2u);
     if (config.codec == SampleCodec::AV1)
