@@ -238,8 +238,8 @@ bool QueryVideoSize(const VideoContext& context, const VideoConfig& config, Vide
         return false;
     }
 
-    const uint32_t codedWidthAlignment = std::max({encodeCapabilities.pictureAccessGranularityWidth, decodeCapabilities.pictureAccessGranularityWidth, 1u});
-    const uint32_t codedHeightAlignment = std::max({encodeCapabilities.pictureAccessGranularityHeight, decodeCapabilities.pictureAccessGranularityHeight, 1u});
+    const uint32_t codedWidthAlignment = std::max({encodeCapabilities.pictureAccessGranularityWidth, decodeCapabilities.pictureAccessGranularityWidth, config.codedAlignment});
+    const uint32_t codedHeightAlignment = std::max({encodeCapabilities.pictureAccessGranularityHeight, decodeCapabilities.pictureAccessGranularityHeight, config.codedAlignment});
     const uint32_t codedWidth = (uint32_t)AlignUp(std::max({config.videoWidth, encodeCapabilities.widthMin, decodeCapabilities.widthMin}), codedWidthAlignment);
     const uint32_t codedHeight = (uint32_t)AlignUp(std::max({config.videoHeight, encodeCapabilities.heightMin, decodeCapabilities.heightMin}), codedHeightAlignment);
     if ((encodeCapabilities.widthMax && codedWidth > encodeCapabilities.widthMax) || (decodeCapabilities.widthMax && codedWidth > decodeCapabilities.widthMax) || (encodeCapabilities.heightMax && codedHeight > encodeCapabilities.heightMax) || (decodeCapabilities.heightMax && codedHeight > decodeCapabilities.heightMax)) {

@@ -120,6 +120,7 @@ struct VideoConfig {
     Av1InfoMode av1Info = Av1InfoMode::AUTO;
     bool h265DefaultParameters = false; // encode session parameters are created by the backend (decode and Annex-B headers mirror them)
     bool h264TransformBypass = false;   // SPS qpprime_y_zero_transform_bypass_flag (lossless with QP 0), not allowed by the High profile
+    uint32_t codedAlignment = 1;       // minimum alignment of the coded size, e.g. 16 (macroblocks) for drivers that code aligned pictures
     uint8_t h264SpsId = 0;
     uint8_t h264PpsRefIdxL0DefaultActiveMinus1 = 0; // PPS num_ref_idx_l0_default_active_minus1
     uint8_t h264PpsId = 0;
