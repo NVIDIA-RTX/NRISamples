@@ -211,6 +211,8 @@ target_sources(VideoEncodeDecode PRIVATE
     Source/VideoEncodeDecode/Encoder.cpp
     Source/VideoEncodeDecode/Encoder.h
     Source/VideoEncodeDecode/Shared.h
+    Source/VideoEncodeDecode/Stream.cpp
+    Source/VideoEncodeDecode/Stream.h
 )
 
 if(WIN32)

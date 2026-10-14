@@ -7,12 +7,14 @@
 #include "NRIFramework.h"
 #include "VideoEncodeDecode/Decoder.h"
 #include "VideoEncodeDecode/Encoder.h"
+#include "VideoEncodeDecode/Stream.h"
 
 #include "Extensions/NRIVideo.h"
 
 #include <algorithm>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <cstring>
 #include <memory>
 #include <type_traits>
@@ -20,53 +22,20 @@
 
 namespace {
 
-constexpr uint32_t DEFAULT_VIDEO_WIDTH = 1920;
-constexpr uint32_t DEFAULT_VIDEO_HEIGHT = 1080;
-constexpr double ROUND_TRIP_INTERVAL_SEC = 1.0 / 60.0;
-constexpr uint64_t BITSTREAM_SIZE = 2 * 1024 * 1024;
-constexpr uint64_t ENCODED_SLICE_OFFSET = 4096;
-constexpr uint64_t METADATA_SIZE = 4 * 1024 * 1024;
-constexpr uint64_t RESOLVED_METADATA_SIZE = 4096;
-
-enum PatternOperation : uint32_t {
-    OP_GENERATE_PATTERN = 0,
-    OP_NV12_TO_PREVIEW = 1,
-};
-
-enum class SampleCodec : uint8_t {
-    H264,
-    H265,
-    AV1,
-};
-
-static const char* GetCodecName(SampleCodec codec) {
-    switch (codec) {
-        case SampleCodec::H265:
-            return "H.265";
-        case SampleCodec::AV1:
-            return "AV1";
-        case SampleCodec::H264:
-        default:
-            return "H.264";
-    }
-}
-
-static nri::VideoCodec GetNriCodec(SampleCodec codec) {
-    switch (codec) {
-        case SampleCodec::H265:
-            return nri::VideoCodec::H265;
-        case SampleCodec::AV1:
-            return nri::VideoCodec::AV1;
-        case SampleCodec::H264:
-        default:
-            return nri::VideoCodec::H264;
-    }
-}
-
-struct QueuedFrame {
-    nri::CommandAllocator* commandAllocator = nullptr;
-    nri::CommandBuffer* commandBuffer = nullptr;
-};
+using video_sample::AlignUp;
+using video_sample::DEFAULT_VIDEO_HEIGHT;
+using video_sample::DEFAULT_VIDEO_WIDTH;
+using video_sample::GetCodecName;
+using video_sample::GetNriCodec;
+using video_sample::MakeNv12BufferLayout;
+using video_sample::Nv12BufferLayout;
+using video_sample::OP_GENERATE_PATTERN;
+using video_sample::OP_NV12_TO_PREVIEW;
+using video_sample::PatternOperation;
+using video_sample::QueuedFrame;
+using video_sample::ROUND_TRIP_INTERVAL_SEC;
+using video_sample::SampleCodec;
+using video_sample::SubmitOneTime;
 
 struct PatternConstants {
     uint32_t width = DEFAULT_VIDEO_WIDTH;
@@ -83,133 +52,6 @@ struct PatternConstants {
     uint32_t showDifference = 0;
     uint32_t frameIndex = 0;
 };
-
-struct Nv12BufferLayout {
-    uint32_t yRowPitchBytes = DEFAULT_VIDEO_WIDTH;
-    uint32_t ySlicePitchBytes = DEFAULT_VIDEO_WIDTH * DEFAULT_VIDEO_HEIGHT;
-    uint64_t uvOffsetBytes = uint64_t(DEFAULT_VIDEO_WIDTH) * DEFAULT_VIDEO_HEIGHT;
-    uint32_t uvRowPitchBytes = DEFAULT_VIDEO_WIDTH;
-    uint32_t uvSlicePitchBytes = DEFAULT_VIDEO_WIDTH * DEFAULT_VIDEO_HEIGHT / 2;
-    uint64_t totalSizeBytes = uint64_t(DEFAULT_VIDEO_WIDTH) * DEFAULT_VIDEO_HEIGHT * 3 / 2;
-};
-
-static uint64_t AlignUp(uint64_t value, uint64_t alignment) {
-    return alignment == 0 ? value : ((value + alignment - 1) / alignment) * alignment;
-}
-
-static Nv12BufferLayout MakeNv12BufferLayout(const nri::DeviceDesc& deviceDesc, uint32_t width, uint32_t height) {
-    const uint32_t rowAlignment = std::max(deviceDesc.memoryAlignment.uploadBufferTextureRow, 1u);
-    const uint32_t sliceAlignment = std::max(deviceDesc.memoryAlignment.uploadBufferTextureSlice, 1u);
-
-    Nv12BufferLayout layout = {};
-    layout.yRowPitchBytes = (uint32_t)AlignUp(width, rowAlignment);
-    layout.ySlicePitchBytes = (uint32_t)AlignUp(uint64_t(layout.yRowPitchBytes) * height, sliceAlignment);
-    layout.uvOffsetBytes = layout.ySlicePitchBytes;
-    layout.uvRowPitchBytes = (uint32_t)AlignUp(width, rowAlignment);
-    layout.uvSlicePitchBytes = (uint32_t)AlignUp(uint64_t(layout.uvRowPitchBytes) * (height / 2), sliceAlignment);
-    layout.totalSizeBytes = layout.uvOffsetBytes + layout.uvSlicePitchBytes;
-    return layout;
-}
-
-template <typename Record>
-static bool SubmitOneTime(nri::CoreInterface& core, nri::Queue& queue, Record&& record) {
-    nri::CommandAllocator* allocator = nullptr;
-    nri::CommandBuffer* commandBuffer = nullptr;
-    bool ok = core.CreateCommandAllocator(queue, allocator) == nri::Result::SUCCESS && allocator && core.CreateCommandBuffer(*allocator, commandBuffer) == nri::Result::SUCCESS && commandBuffer && core.BeginCommandBuffer(*commandBuffer, nullptr) == nri::Result::SUCCESS;
-    if (ok) {
-        std::forward<Record>(record)(*commandBuffer);
-        ok = core.EndCommandBuffer(*commandBuffer) == nri::Result::SUCCESS;
-    }
-    if (ok) {
-        const nri::CommandBuffer* commandBuffers[] = {commandBuffer};
-        nri::QueueSubmitDesc submit = {};
-        submit.commandBuffers = commandBuffers;
-        submit.commandBufferNum = 1;
-        ok = core.QueueSubmit(queue, submit) == nri::Result::SUCCESS && core.QueueWaitIdle(&queue) == nri::Result::SUCCESS;
-    }
-    if (commandBuffer)
-        core.DestroyCommandBuffer(commandBuffer);
-    if (allocator)
-        core.DestroyCommandAllocator(allocator);
-    return ok;
-}
-
-template <typename Record>
-static bool SubmitOneTime(
-    nri::CoreInterface& core, nri::Queue& queue, nri::DescriptorPool* descriptorPool, Record&& record) {
-    nri::CommandAllocator* allocator = nullptr;
-    nri::CommandBuffer* commandBuffer = nullptr;
-    bool ok = core.CreateCommandAllocator(queue, allocator) == nri::Result::SUCCESS && allocator && core.CreateCommandBuffer(*allocator, commandBuffer) == nri::Result::SUCCESS && commandBuffer && core.BeginCommandBuffer(*commandBuffer, descriptorPool) == nri::Result::SUCCESS;
-    if (ok) {
-        std::forward<decltype(record)>(record)(*commandBuffer);
-        ok = core.EndCommandBuffer(*commandBuffer) == nri::Result::SUCCESS;
-    }
-    if (ok) {
-        const nri::CommandBuffer* commandBuffers[] = {commandBuffer};
-        nri::QueueSubmitDesc submit = {};
-        submit.commandBuffers = commandBuffers;
-        submit.commandBufferNum = 1;
-        ok = core.QueueSubmit(queue, submit) == nri::Result::SUCCESS && core.QueueWaitIdle(&queue) == nri::Result::SUCCESS;
-    }
-    if (commandBuffer)
-        core.DestroyCommandBuffer(commandBuffer);
-    if (allocator)
-        core.DestroyCommandAllocator(allocator);
-    return ok;
-}
-
-static bool CopyNv12BufferToTexture(nri::CoreInterface& core, nri::Queue& queue, const Nv12BufferLayout& layout, nri::Buffer& src, nri::Texture& dst, uint32_t width, uint32_t height) {
-    return SubmitOneTime(core, queue, [&](nri::CommandBuffer& commandBuffer) {
-        nri::BufferBarrierDesc bufferBarrier = {};
-        bufferBarrier.buffer = &src;
-        bufferBarrier.before = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
-        bufferBarrier.after = {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY};
-
-        nri::TextureBarrierDesc textureBarrier = {};
-        textureBarrier.texture = &dst;
-        textureBarrier.before = {nri::AccessBits::NONE, nri::Layout::GENERAL, nri::StageBits::NONE};
-        textureBarrier.after = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
-        textureBarrier.mipNum = nri::REMAINING;
-        textureBarrier.layerNum = nri::REMAINING;
-        textureBarrier.planes = nri::PlaneBits::ALL;
-
-        nri::BarrierDesc barrierDesc = {};
-        barrierDesc.buffers = &bufferBarrier;
-        barrierDesc.bufferNum = 1;
-        barrierDesc.textures = &textureBarrier;
-        barrierDesc.textureNum = 1;
-        core.CmdBarrier(commandBuffer, barrierDesc);
-
-        nri::TextureRegionDesc lumaRegion = {};
-        lumaRegion.width = (nri::Dim_t)width;
-        lumaRegion.height = (nri::Dim_t)height;
-        lumaRegion.depth = 1;
-        lumaRegion.planes = nri::PlaneBits::PLANE_0;
-
-        nri::TextureDataLayoutDesc lumaLayout = {};
-        lumaLayout.rowPitch = layout.yRowPitchBytes;
-        lumaLayout.slicePitch = layout.ySlicePitchBytes;
-        core.CmdUploadBufferToTexture(commandBuffer, dst, lumaRegion, src, lumaLayout);
-
-        nri::TextureRegionDesc chromaRegion = {};
-        chromaRegion.width = (nri::Dim_t)width;
-        chromaRegion.height = (nri::Dim_t)height;
-        chromaRegion.depth = 1;
-        chromaRegion.planes = nri::PlaneBits::PLANE_1;
-
-        nri::TextureDataLayoutDesc chromaLayout = {};
-        chromaLayout.offset = layout.uvOffsetBytes;
-        chromaLayout.rowPitch = layout.uvRowPitchBytes;
-        chromaLayout.slicePitch = layout.uvSlicePitchBytes;
-        core.CmdUploadBufferToTexture(commandBuffer, dst, chromaRegion, src, chromaLayout);
-
-        textureBarrier.before = textureBarrier.after;
-        textureBarrier.after = {nri::AccessBits::NONE, nri::Layout::GENERAL, nri::StageBits::NONE};
-        bufferBarrier.before = bufferBarrier.after;
-        bufferBarrier.after = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
-        core.CmdBarrier(commandBuffer, barrierDesc);
-    });
-}
 
 } // namespace
 
@@ -229,14 +71,13 @@ public:
 private:
     bool InitializeGraphics(nri::GraphicsAPI graphicsAPI);
     bool TryInitializePreviewTextures(nri::GraphicsAPI graphicsAPI);
-    void InitializeGeneratedFrames(float timeSec, bool uploadEncodeTexture = false);
+    void InitializeGeneratedFrames(float timeSec);
     bool CanRunRoundTrip() const;
     void TryInitializeVideo(nri::GraphicsAPI graphicsAPI);
     PatternConstants MakePatternConstants(PatternOperation operation, float timeSec) const;
     bool GeneratePatternWithCompute(const PatternConstants& constants, nri::Descriptor* previewTexture, bool returnSourceBufferToShaderStorage = false, nri::AccessStage uploadBufferBefore = {});
-    bool TrySubmitEncodeAndMetadataReadback(float timeSec);
-    bool TryDecodePendingMetadata(float timeSec);
     bool TryRunRoundTrip(float timeSec);
+    int32_t RunHeadless(nri::GraphicsAPI graphicsAPI);
     void DrawTexturePanel(const char* label, nri::Descriptor* texture, const ImVec2& size);
 
 private:
@@ -274,7 +115,23 @@ private:
     std::vector<SwapChainTexture> m_SwapChainTextures;
 
     Nv12BufferLayout m_Nv12Layout = {};
-    video_sample::Nv12BufferLayout m_SharedNv12Layout = {};
+    std::vector<video_sample::FramePlan> m_Plans;
+    size_t m_PlanIndex = 0;
+    video_sample::StreamOptions m_StreamOptions = {};
+    std::string m_StreamMode; // "", "stream", "matrix", "list"
+    std::string m_CaseFilter;
+    std::string m_GopArg;
+    std::string m_DecodeDpbArg = "auto";
+    std::string m_DpbLayoutArg = "auto";
+    std::string m_EncodeInputArg = "outputOnly";
+    std::string m_FeedbackArg = "on";
+    std::string m_Av1InfoArg = "auto";
+    std::string m_RateControlArg = "cqp";
+    std::string m_RateControlChangeArg;
+    std::string m_H264IdsArg = "0,0";
+    std::string m_H265IdsArg = "0,0,0";
+    std::string m_DumpArg;
+    std::string m_NameArg = "stream";
     nri::Format m_SwapChainFormat = nri::Format::UNKNOWN;
     std::string m_VideoStatus = "Initializing video";
     std::string m_PreviewStatus = "Initializing preview";
@@ -308,6 +165,7 @@ private:
     bool m_ShowDifference = false;
     bool m_HasPendingEncodedPatternConstants = false;
     bool m_RequireVideoRoundTrip = false;
+    bool m_VideoSizeExplicit = false;
     bool m_SmokeRoundTripComplete = false;
     bool m_SmokeRoundTripFailed = false;
     uint32_t m_PatternFrameIndex = 0;
@@ -364,7 +222,8 @@ Sample::~Sample() {
 
     DestroyImgui();
 
-    nri::nriDestroyDevice(m_Device);
+    if (m_Device)
+        nri::nriDestroyDevice(m_Device);
 }
 
 void Sample::InitCmdLine(cmdline::parser& cmdLine) {
@@ -379,6 +238,49 @@ void Sample::InitCmdLine(cmdline::parser& cmdLine) {
     cmdLine.add<uint32_t>("av1BaseQIndex", 0, "AV1 base quantizer index", false, m_AV1BaseQIndex);
     cmdLine.add("lossless", 0, "force zero quantizers for lossless-capable codec modes");
     cmdLine.add("requireVideoRoundTrip", 0, "exit smoke runs only after a real encode/decode round trip");
+
+    // Headless runs: encode -> decode of a generated frame sequence, PSNR check, exit code 0 = pass, 1 = fail, 2 = unsupported (NRI validation is always on)
+    cmdLine.add("stream", 0, "headless: encode and decode a frame sequence with the options below, then exit");
+    cmdLine.add("matrix", 0, "headless: run the built-in case matrix (640x360 base size), then exit");
+    cmdLine.add("listCases", 0, "list the built-in matrix cases and exit");
+    cmdLine.add<std::string>("case", 0, "matrix: run only the case with this name, or the cases whose name contains this text", false, "");
+    cmdLine.add<uint32_t>("frames", 0, "stream: number of frames", false, 8);
+    cmdLine.add<std::string>("gop", 0, "stream: kinds of the frames after the first IDR in display order, repeated: P, p (non-reference P), B (non-reference), I (IDR); e.g. BBP", false, m_GopArg);
+    cmdLine.add<uint32_t>("refs", 0, "stream: maximum number of reference frames, 1..8 (B pictures need 2, AV1 uses 1)", false, 1);
+    cmdLine.add<uint32_t>("idrPeriod", 0, "stream: IDR period in frames, 0 - only the first frame", false, 0);
+    cmdLine.add<std::string>("decodeDpb", 0, "stream: decode output and DPB setup picture", false, m_DecodeDpbArg, cmdline::oneof<std::string>("auto", "coincide", "distinct"));
+    cmdLine.add<std::string>("dpbLayout", 0, "stream: DPB pictures as layers of one texture or separate textures", false, m_DpbLayoutArg, cmdline::oneof<std::string>("auto", "array", "separate"));
+    cmdLine.add<std::string>("encodeInput", 0, "stream: encode source texture usage", false, m_EncodeInputArg, cmdline::oneof<std::string>("outputOnly", "plain"));
+    cmdLine.add<std::string>("rc", 0, "stream: rate control mode", false, m_RateControlArg, cmdline::oneof<std::string>("cqp", "cbr", "vbr"));
+    cmdLine.add<uint32_t>("bitrate", 0, "stream: CBR/VBR target bitrate in kbit/s", false, 4000);
+    cmdLine.add<uint32_t>("maxBitrate", 0, "stream: VBR peak bitrate in kbit/s, 0 - target", false, 0);
+    cmdLine.add<std::string>("rcChange", 0, "stream: change rate control at a coding index, FRAME:MODE:KBPS[:MAXKBPS], e.g. 4:vbr:2000:4000", false, "");
+    cmdLine.add<std::string>("feedback", 0, "stream: resolve encode feedback, 'off' scans the bitstream", false, m_FeedbackArg, cmdline::oneof<std::string>("on", "off"));
+    cmdLine.add<std::string>("av1Info", 0, "stream: AV1 decode info source, metadata uses the submitted descriptions only (D3D12)", false, m_Av1InfoArg, cmdline::oneof<std::string>("auto", "header", "metadata"));
+    cmdLine.add<std::string>("h264Ids", 0, "stream: H.264 SPS,PPS ids", false, m_H264IdsArg);
+    cmdLine.add<std::string>("h265Ids", 0, "stream: H.265 VPS,SPS,PPS ids", false, m_H265IdsArg);
+    cmdLine.add("h265DefaultParams", 0, "stream: create the H.265 encode session without parameter sets (backend defaults, level by size)");
+    cmdLine.add("noH265ListsModification", 0, "stream: clear the H.265 PPS lists_modification_present_flag");
+    cmdLine.add("noReverseRefs", 0, "stream: H.265 references are always passed in the same order");
+    cmdLine.add("verbose", 0, "headless: log every picture before it is submitted");
+    cmdLine.add("encodeOnly", 0, "stream: skip the decoder (the encoded stream is still dumped)");
+    cmdLine.add<std::string>("dump", 0, "headless: write stream, decoded.yuv, source.yuv and frames.csv of every case into this directory", false, "");
+    cmdLine.add<double>("minPsnr", 0, "stream: minimum luma PSNR in dB per frame", false, 30.0);
+    cmdLine.add<std::string>("name", 0, "stream: name of the run (dump subdirectory)", false, m_NameArg);
+}
+
+static bool ParseIds(const std::string& text, uint32_t* values, uint32_t count) {
+    uint32_t parsed = 0;
+    const char* p = text.c_str();
+    while (*p && parsed < count) {
+        char* end = nullptr;
+        const unsigned long value = std::strtoul(p, &end, 10);
+        if (end == p || value > 255)
+            return false;
+        values[parsed++] = (uint32_t)value;
+        p = *end == ',' ? end + 1 : end;
+    }
+    return parsed == count && !*p;
 }
 
 void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
@@ -400,6 +302,75 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     m_Codec = m_CodecArg == "H265" ? SampleCodec::H265 : (m_CodecArg == "AV1" ? SampleCodec::AV1 : SampleCodec::H264);
     m_H26FrameMode = m_H26FrameArg == "B" ? video_sample::VisualFrameMode::B : (m_H26FrameArg == "P" ? video_sample::VisualFrameMode::P : video_sample::VisualFrameMode::IDR);
     m_AV1PFrameVisual = m_Codec == SampleCodec::AV1 && m_AV1FrameArg == "P";
+
+    // Headless
+    m_StreamMode = cmdLine.exist("listCases") ? "list" : (cmdLine.exist("matrix") ? "matrix" : (cmdLine.exist("stream") ? "stream" : ""));
+    m_CaseFilter = cmdLine.get<std::string>("case");
+    m_VideoSizeExplicit = cmdLine.exist("videoWidth") || cmdLine.exist("videoHeight");
+
+    video_sample::StreamOptions& options = m_StreamOptions;
+    options.name = cmdLine.get<std::string>("name");
+    options.config.codec = m_Codec;
+    options.config.videoWidth = m_VideoWidth;
+    options.config.videoHeight = m_VideoHeight;
+    options.config.referenceNum = cmdLine.get<uint32_t>("refs");
+    options.config.h264TransformBypass = m_Lossless;
+    options.config.h265ListsModification = !cmdLine.exist("noH265ListsModification");
+    options.config.reverseReferences = !cmdLine.exist("noReverseRefs");
+    const std::string decodeDpb = cmdLine.get<std::string>("decodeDpb");
+    options.config.decodeDpb = decodeDpb == "coincide" ? video_sample::DecodeDpbMode::COINCIDE : (decodeDpb == "distinct" ? video_sample::DecodeDpbMode::DISTINCT : video_sample::DecodeDpbMode::AUTO);
+    const std::string dpbLayout = cmdLine.get<std::string>("dpbLayout");
+    options.config.dpbLayout = dpbLayout == "array" ? video_sample::DpbLayout::ARRAY : (dpbLayout == "separate" ? video_sample::DpbLayout::SEPARATE : video_sample::DpbLayout::AUTO);
+    options.config.encodeInputOutputOnly = cmdLine.get<std::string>("encodeInput") == "outputOnly";
+    options.config.encodeFeedback = cmdLine.get<std::string>("feedback") == "on";
+    const std::string av1Info = cmdLine.get<std::string>("av1Info");
+    options.config.av1Info = av1Info == "header" ? video_sample::Av1InfoMode::HEADER : (av1Info == "metadata" ? video_sample::Av1InfoMode::METADATA : video_sample::Av1InfoMode::AUTO);
+    options.config.h265DefaultParameters = cmdLine.exist("h265DefaultParams");
+    uint32_t h264Ids[2] = {};
+    uint32_t h265Ids[3] = {};
+    if (!ParseIds(cmdLine.get<std::string>("h264Ids"), h264Ids, 2) || !ParseIds(cmdLine.get<std::string>("h265Ids"), h265Ids, 3))
+        std::fprintf(stderr, "Invalid --h264Ids / --h265Ids, expected comma-separated numbers\n");
+    options.config.h264SpsId = (uint8_t)h264Ids[0];
+    options.config.h264PpsId = (uint8_t)h264Ids[1];
+    options.config.h265VpsId = (uint8_t)h265Ids[0];
+    options.config.h265SpsId = (uint8_t)h265Ids[1];
+    options.config.h265PpsId = (uint8_t)h265Ids[2];
+
+    options.frameNum = cmdLine.get<uint32_t>("frames");
+    options.gop = cmdLine.get<std::string>("gop");
+    options.idrPeriod = cmdLine.get<uint32_t>("idrPeriod");
+    options.minPsnr = cmdLine.get<double>("minPsnr");
+    options.encodeOnly = cmdLine.exist("encodeOnly");
+    options.verbose = cmdLine.exist("verbose");
+    options.dumpDir = cmdLine.get<std::string>("dump");
+
+    options.quality.qpI = m_QpI;
+    options.quality.qpP = m_QpP;
+    options.quality.qpB = m_QpB;
+    options.quality.av1BaseQIndex = m_AV1BaseQIndex;
+    options.quality.lossless = m_Lossless;
+    const std::string rc = cmdLine.get<std::string>("rc");
+    options.quality.rateControl.kind = rc == "cbr" ? video_sample::RateControlKind::CBR : (rc == "vbr" ? video_sample::RateControlKind::VBR : video_sample::RateControlKind::CQP);
+    options.quality.rateControl.bitrateKbps = cmdLine.get<uint32_t>("bitrate");
+    options.quality.rateControl.maxBitrateKbps = cmdLine.get<uint32_t>("maxBitrate");
+
+    // FRAME:MODE:KBPS[:MAXKBPS]
+    const std::string rcChange = cmdLine.get<std::string>("rcChange");
+    if (!rcChange.empty()) {
+        char mode[8] = {};
+        uint32_t frame = 0;
+        uint32_t kbps = 0;
+        uint32_t maxKbps = 0;
+        const int32_t parsed = std::sscanf(rcChange.c_str(), "%u:%7[a-z]:%u:%u", &frame, mode, &kbps, &maxKbps);
+        if (parsed < 2) {
+            std::fprintf(stderr, "Invalid --rcChange, expected FRAME:MODE:KBPS[:MAXKBPS]\n");
+        } else {
+            options.rateControlChangeFrame = (int32_t)frame;
+            options.rateControlB.kind = !std::strcmp(mode, "cbr") ? video_sample::RateControlKind::CBR : (!std::strcmp(mode, "vbr") ? video_sample::RateControlKind::VBR : video_sample::RateControlKind::CQP);
+            options.rateControlB.bitrateKbps = parsed >= 3 ? kbps : 4000;
+            options.rateControlB.maxBitrateKbps = parsed >= 4 ? maxKbps : 0;
+        }
+    }
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
@@ -416,17 +387,29 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         return false;
     }
 
+    if (!m_StreamMode.empty())
+        std::exit(RunHeadless(graphicsAPI));
+
     m_GraphicsAPI = graphicsAPI;
-    m_VideoConfig.codec = m_Codec == SampleCodec::H265 ? video_sample::SampleCodec::H265 : (m_Codec == SampleCodec::AV1 ? video_sample::SampleCodec::AV1 : video_sample::SampleCodec::H264);
+    m_VideoConfig.codec = m_Codec;
     m_VideoConfig.videoWidth = m_VideoWidth;
     m_VideoConfig.videoHeight = m_VideoHeight;
+    m_VideoConfig.h264TransformBypass = m_Lossless;
     m_VideoConfig.av1PFrameVisual = m_AV1PFrameVisual;
     m_VideoConfig.h26FrameMode = m_H26FrameMode;
+    m_VideoConfig.hasBFrames = m_Codec != SampleCodec::AV1 && m_H26FrameMode == video_sample::VisualFrameMode::B;
+    m_VideoConfig.referenceNum = m_VideoConfig.hasBFrames ? 2 : 1;
     m_VideoQuality.qpI = m_QpI;
     m_VideoQuality.qpP = m_QpP;
     m_VideoQuality.qpB = m_QpB;
     m_VideoQuality.av1BaseQIndex = m_AV1BaseQIndex;
     m_VideoQuality.lossless = m_Lossless;
+
+    // Interactive cycle: IDR, IDR + P, or IDR + P + B (decoded as IDR, P, B), the last picture is displayed
+    const char* gop = m_Codec == SampleCodec::AV1 ? (m_AV1PFrameVisual ? "P" : "I") : (m_H26FrameMode == video_sample::VisualFrameMode::B ? "BP" : (m_H26FrameMode == video_sample::VisualFrameMode::P ? "P" : "I"));
+    m_Plans = video_sample::BuildFramePlans(m_VideoConfig, gop, 1 + (uint32_t)std::strlen(gop) - (gop[0] == 'I' ? 1 : 0), 0);
+    for (video_sample::FramePlan& plan : m_Plans)
+        plan.isDisplay = &plan == &m_Plans.back();
 
     if (!InitializeGraphics(graphicsAPI))
         return false;
@@ -479,13 +462,13 @@ bool Sample::InitializeGraphics(nri::GraphicsAPI graphicsAPI) {
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::StreamerInterface), (nri::StreamerInterface*)&NRI));
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI));
     m_Nv12Layout = MakeNv12BufferLayout(NRI.GetDeviceDesc(*m_Device), m_VideoWidth, m_VideoHeight);
-    m_SharedNv12Layout = video_sample::MakeNv12BufferLayout(NRI.GetDeviceDesc(*m_Device), m_VideoWidth, m_VideoHeight);
 
     nri::StreamerDesc streamerDesc = {};
     streamerDesc.dynamicBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
-    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER};
+    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX | nri::BufferUsageBits::INDEX};
     streamerDesc.constantBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
     streamerDesc.queuedFrameNum = GetQueuedFrameNum();
+    streamerDesc.hostDataCapacity = IMGUI_HOST_DATA_CAPACITY;
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
     NRI_ABORT_ON_FAILURE(NRI.GetQueue(*m_Device, nri::QueueType::GRAPHICS, 0, m_GraphicsQueue));
@@ -553,28 +536,11 @@ PatternConstants Sample::MakePatternConstants(PatternOperation operation, float 
     return patternConstants;
 }
 
-void Sample::InitializeGeneratedFrames(float timeSec, bool uploadEncodeTexture) {
+void Sample::InitializeGeneratedFrames(float timeSec) {
     if (!m_SourcePreviewTexture || !m_SourcePreviewStorage || !m_UploadBuffer || !m_UploadBufferView)
         return;
 
     PatternConstants patternConstants = MakePatternConstants(OP_GENERATE_PATTERN, timeSec);
-
-    nri::Texture* encodeTexture = m_Encoder ? m_Encoder->GetInputTexture() : nullptr;
-    if (encodeTexture && uploadEncodeTexture) {
-        if (!GeneratePatternWithCompute(patternConstants, m_SourcePreviewStorage, true)) {
-            m_PreviewStatus = "Failed to generate source pattern via compute";
-            return;
-        }
-
-        if (!CopyNv12BufferToTexture(NRI, *m_GraphicsQueue, m_Nv12Layout, *m_UploadBuffer, *encodeTexture, m_VideoWidth, m_VideoHeight)) {
-            m_PreviewStatus = "Failed to upload NV12 source to video texture";
-            return;
-        }
-        m_PreviewStatus = "Source preview is generated by compute";
-        m_SourcePreviewReady = true;
-        return;
-    }
-
     if (!GeneratePatternWithCompute(patternConstants, m_SourcePreviewStorage, true)) {
         m_PreviewStatus = "Failed to generate source pattern via compute";
         return;
@@ -850,60 +816,10 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
         return;
     }
 
-    nri::VideoSessionDesc encodeSessionDesc = {};
-    encodeSessionDesc.type = nri::VideoSessionType::ENCODE;
-    encodeSessionDesc.codec = GetNriCodec(m_Codec);
-    encodeSessionDesc.format = nri::Format::NV12_UNORM;
-    encodeSessionDesc.width = m_VideoWidth;
-    encodeSessionDesc.height = m_VideoHeight;
-    encodeSessionDesc.maxReferenceNum = 1;
-
-    nri::VideoSessionDesc decodeSessionDesc = encodeSessionDesc;
-    decodeSessionDesc.type = nri::VideoSessionType::DECODE;
-    decodeSessionDesc.maxReferenceNum = m_Codec == SampleCodec::AV1 ? 1 : 16;
-
-    nri::VideoCapabilities encodeCapabilities = {};
-    nri::VideoCapabilities decodeCapabilities = {};
-    nri::Result encodeCapabilitiesResult = Video.GetVideoCapabilities(*m_Device, encodeSessionDesc, encodeCapabilities);
-    nri::Result decodeCapabilitiesResult = Video.GetVideoCapabilities(*m_Device, decodeSessionDesc, decodeCapabilities);
-    const bool hasVideoGranularity = encodeCapabilities.pictureAccessGranularityWidth && encodeCapabilities.pictureAccessGranularityHeight && decodeCapabilities.pictureAccessGranularityWidth && decodeCapabilities.pictureAccessGranularityHeight;
-    if (!hasVideoGranularity) {
-        m_VideoStatus = std::string("Failed to query ") + GetCodecName(m_Codec) + " video capabilities";
-        return;
-    }
-
-    const uint32_t codedWidthAlignment = std::max({encodeCapabilities.pictureAccessGranularityWidth, decodeCapabilities.pictureAccessGranularityWidth, 1u});
-    const uint32_t codedHeightAlignment = std::max({encodeCapabilities.pictureAccessGranularityHeight, decodeCapabilities.pictureAccessGranularityHeight, 1u});
-    m_DecodeBitstreamSizeAlignment = std::max(decodeCapabilities.bitstreamSizeAlignment, 1u);
-    m_CodedVideoWidth = (uint32_t)AlignUp(std::max({m_VideoWidth, encodeCapabilities.widthMin, decodeCapabilities.widthMin}), codedWidthAlignment);
-    m_CodedVideoHeight = (uint32_t)AlignUp(std::max({m_VideoHeight, encodeCapabilities.heightMin, decodeCapabilities.heightMin}), codedHeightAlignment);
-    if ((encodeCapabilities.widthMax && m_CodedVideoWidth > encodeCapabilities.widthMax) || (decodeCapabilities.widthMax && m_CodedVideoWidth > decodeCapabilities.widthMax) || (encodeCapabilities.heightMax && m_CodedVideoHeight > encodeCapabilities.heightMax) || (decodeCapabilities.heightMax && m_CodedVideoHeight > decodeCapabilities.heightMax)) {
-        m_VideoStatus = std::string(GetCodecName(m_Codec)) + " coded video size exceeds backend capabilities after granularity alignment";
-        return;
-    }
-
-    encodeSessionDesc.width = m_CodedVideoWidth;
-    encodeSessionDesc.height = m_CodedVideoHeight;
-    decodeSessionDesc.width = m_CodedVideoWidth;
-    decodeSessionDesc.height = m_CodedVideoHeight;
-    encodeCapabilitiesResult = Video.GetVideoCapabilities(*m_Device, encodeSessionDesc, encodeCapabilities);
-    decodeCapabilitiesResult = Video.GetVideoCapabilities(*m_Device, decodeSessionDesc, decodeCapabilities);
-    if (encodeCapabilitiesResult != nri::Result::SUCCESS || decodeCapabilitiesResult != nri::Result::SUCCESS) {
-        m_VideoStatus = std::string(GetCodecName(m_Codec)) + " coded video size is unsupported";
-        return;
-    }
-
     if (NRI.GetQueue(*m_Device, nri::QueueType::VIDEO_ENCODE, 0, m_VideoEncodeQueue) != nri::Result::SUCCESS || NRI.GetQueue(*m_Device, nri::QueueType::VIDEO_DECODE, 0, m_VideoDecodeQueue) != nri::Result::SUCCESS) {
         m_VideoStatus = "Failed to get video queues";
         return;
     }
-
-    m_VideoSize.videoWidth = m_VideoWidth;
-    m_VideoSize.videoHeight = m_VideoHeight;
-    m_VideoSize.codedWidth = m_CodedVideoWidth;
-    m_VideoSize.codedHeight = m_CodedVideoHeight;
-    m_VideoSize.decodeBitstreamSizeAlignment = m_DecodeBitstreamSizeAlignment;
-    m_CodecParameters = video_sample::MakeCodecParameters(graphicsAPI, m_CodedVideoWidth, m_CodedVideoHeight);
 
     video_sample::VideoContext videoContext = {};
     videoContext.nri = &NRI;
@@ -913,6 +829,14 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
     videoContext.encodeQueue = m_VideoEncodeQueue;
     videoContext.decodeQueue = m_VideoDecodeQueue;
     videoContext.graphicsAPI = graphicsAPI;
+
+    bool isUnsupported = false;
+    if (!video_sample::QueryVideoSize(videoContext, m_VideoConfig, m_VideoSize, isUnsupported, m_VideoStatus))
+        return;
+
+    m_CodedVideoWidth = m_VideoSize.codedWidth;
+    m_CodedVideoHeight = m_VideoSize.codedHeight;
+    m_CodecParameters = video_sample::MakeCodecParameters(graphicsAPI, m_VideoConfig, m_CodedVideoWidth, m_CodedVideoHeight);
 
     m_Encoder = std::make_unique<video_sample::Encoder>();
     if (!m_Encoder->Initialize(videoContext, m_VideoConfig, m_VideoSize, m_CodecParameters)) {
@@ -930,11 +854,15 @@ void Sample::TryInitializeVideo(nri::GraphicsAPI graphicsAPI) {
     m_VideoStatus = std::string("NRI video queues and ") + GetCodecName(m_Codec) + " encode/decode objects initialized";
 }
 
-bool Sample::TrySubmitEncodeAndMetadataReadback(float timeSec) {
+// Encodes and decodes the next picture of the cycle, returns true after the displayed picture
+bool Sample::TryRunRoundTrip(float timeSec) {
     if (!CanRunRoundTrip()) {
         m_VideoStatus = std::string(GetCodecName(m_Codec)) + " round trip is not currently supported in this configuration";
         return false;
     }
+
+    const video_sample::FramePlan& plan = m_Plans[m_PlanIndex];
+    m_PlanIndex = (m_PlanIndex + 1) % m_Plans.size();
 
     m_PatternFrameIndex++;
     PatternConstants patternConstants = MakePatternConstants(OP_GENERATE_PATTERN, timeSec);
@@ -947,37 +875,32 @@ bool Sample::TrySubmitEncodeAndMetadataReadback(float timeSec) {
 
     video_sample::EncodeRequest encodeRequest = {};
     encodeRequest.nv12Buffer = m_UploadBuffer;
-    encodeRequest.nv12Layout = &m_SharedNv12Layout;
+    encodeRequest.nv12BufferState = {nri::AccessBits::SHADER_RESOURCE_STORAGE, nri::StageBits::COMPUTE_SHADER};
+    encodeRequest.nv12Layout = &m_Nv12Layout;
+    encodeRequest.nv12Width = m_VideoWidth;
+    encodeRequest.nv12Height = m_VideoHeight;
     encodeRequest.quality = m_VideoQuality;
-    encodeRequest.timeSec = timeSec;
-    if (!m_Encoder->Encode(encodeRequest)) {
+    encodeRequest.plan = plan;
+    video_sample::EncodedFrame encodedFrame = {};
+    if (!m_Encoder->Encode(encodeRequest, encodedFrame)) {
         m_VideoStatus = m_Encoder->GetStatus();
         return false;
     }
-
-    m_VideoStatus = m_Encoder->GetStatus();
-    return false;
-}
-
-bool Sample::TryDecodePendingMetadata(float timeSec) {
-    video_sample::EncodedFrame encodedFrame = {};
-    if (!m_Encoder->Poll(encodedFrame))
-        return false;
 
     video_sample::DecodedFrame decodedFrame = {};
     video_sample::DecodeRequest decodeRequest = {};
     decodeRequest.frame = &encodedFrame;
     decodeRequest.nv12ReadbackBuffer = m_UploadBuffer;
-    decodeRequest.nv12Layout = &m_SharedNv12Layout;
+    decodeRequest.nv12Layout = &m_Nv12Layout;
     if (!m_Decoder->Decode(decodeRequest, decodedFrame)) {
         m_VideoStatus = m_Decoder->GetStatus();
         return false;
     }
 
-    if (!encodedFrame.isDisplayFrame)
-        return TrySubmitEncodeAndMetadataReadback(timeSec);
+    if (!plan.isDisplay)
+        return false;
 
-    PatternConstants patternConstants = m_HasPendingEncodedPatternConstants ? m_PendingEncodedPatternConstants : MakePatternConstants(OP_NV12_TO_PREVIEW, timeSec);
+    patternConstants = m_HasPendingEncodedPatternConstants ? m_PendingEncodedPatternConstants : MakePatternConstants(OP_NV12_TO_PREVIEW, timeSec);
     patternConstants.operation = OP_NV12_TO_PREVIEW;
     patternConstants.diffStrength = m_DiffStrength;
     patternConstants.showDifference = m_ShowDifference ? 1 : 0;
@@ -986,10 +909,7 @@ bool Sample::TryDecodePendingMetadata(float timeSec) {
         return false;
     }
     m_HasPendingEncodedPatternConstants = false;
-
     m_DecodePreviewReady = true;
-    if (m_AV1PFrameVisual && !encodedFrame.isAv1PFrame)
-        return TrySubmitEncodeAndMetadataReadback(timeSec);
 
     char message[128] = {};
     std::snprintf(message, sizeof(message), "%s encode/decode round trip complete, encoded %llu bytes", GetCodecName(m_Codec), (unsigned long long)encodedFrame.feedback.encodedBitstreamWrittenBytes);
@@ -1001,11 +921,73 @@ bool Sample::TryDecodePendingMetadata(float timeSec) {
     return true;
 }
 
-bool Sample::TryRunRoundTrip(float timeSec) {
-    if (m_Encoder && m_Encoder->HasPendingFeedback())
-        return TryDecodePendingMetadata(timeSec);
+int32_t Sample::RunHeadless(nri::GraphicsAPI graphicsAPI) {
+    using namespace video_sample;
 
-    return TrySubmitEncodeAndMetadataReadback(timeSec);
+    RunEnvironment environment = {};
+    environment.graphicsAPI = graphicsAPI;
+    environment.adapterIndex = m_AdapterIndex;
+    environment.debugAPI = m_DebugAPI;
+    environment.debugNRI = true;
+
+    StreamOptions base = m_StreamOptions;
+    if (m_StreamMode != "stream") {
+        // Matrix base: small, not 16-aligned (cropping), CQP
+        base.config = VideoConfig();
+        base.config.videoWidth = m_VideoSizeExplicit ? m_VideoWidth : 640;
+        base.config.videoHeight = m_VideoSizeExplicit ? m_VideoHeight : 360;
+        base.gop = "P";
+        base.frameNum = 8;
+        base.idrPeriod = 0;
+        base.minPsnr = 30.0;
+        base.rateControlChangeFrame = -1;
+        base.verbose = m_StreamOptions.verbose;
+        base.encodeOnly = m_StreamOptions.encodeOnly;
+    }
+
+    std::vector<StreamOptions> cases;
+    if (m_StreamMode == "stream")
+        cases.push_back(base);
+    else {
+        // An exact name selects one case, otherwise the filter is a substring
+        const std::vector<StreamOptions> all = MakeMatrixCases(base);
+        bool isExact = false;
+        for (const StreamOptions& options : all)
+            isExact = isExact || options.name == m_CaseFilter;
+        for (const StreamOptions& options : all) {
+            if (m_CaseFilter.empty() || (isExact ? options.name == m_CaseFilter : options.name.find(m_CaseFilter) != std::string::npos))
+                cases.push_back(options);
+        }
+    }
+
+    if (m_StreamMode == "list") {
+        for (const StreamOptions& options : cases)
+            std::printf("%s\n", options.name.c_str());
+        return 0;
+    }
+
+    uint32_t passNum = 0;
+    uint32_t failNum = 0;
+    uint32_t skipNum = 0;
+    for (const StreamOptions& options : cases) {
+        const StreamResult result = RunStream(environment, options);
+
+        if (result.status == StreamStatus::PASS)
+            passNum++;
+        else if (result.status == StreamStatus::FAIL)
+            failNum++;
+        else
+            skipNum++;
+
+        std::printf("[%s] %s api=%s adapter=\"%s\" frames=%u bytes=%llu psnrY(min/avg)=%.2f/%.2f nriErrors=%u nriWarnings=%u %s%s%s\n",
+            GetStreamStatusName(result.status), options.name.c_str(), nri::nriGetGraphicsAPIString(graphicsAPI), result.adapterName.c_str(), result.frameNum, (unsigned long long)result.byteNum, result.psnrMin, result.psnrAvg, result.nriErrorNum, result.nriWarningNum,
+            result.notes.c_str(), result.message.empty() ? "" : " | ", result.message.c_str());
+        std::fflush(stdout);
+    }
+
+    std::printf("SUMMARY: pass=%u fail=%u skip=%u\n", passNum, failNum, skipNum);
+    std::fflush(stdout);
+    return failNum ? 1 : (passNum ? 0 : 2);
 }
 
 bool Sample::CanRunRoundTrip() const {
@@ -1163,10 +1145,10 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         renderingDesc.colorNum = 1;
         renderingDesc.colors = &colorAttachmentDesc;
 
-        CmdCopyImguiData(commandBuffer, *m_Streamer);
+        const nri::ImguiRenderData imguiRenderData = CmdCopyImguiData(commandBuffer, *m_Streamer);
 
         NRI.CmdBeginRendering(commandBuffer, renderingDesc);
-        CmdDrawImgui(commandBuffer, swapChainTexture.attachmentFormat, 1.0f, true);
+        CmdDrawImgui(commandBuffer, imguiRenderData, swapChainTexture.attachmentFormat, 1.0f, true);
         NRI.CmdEndRendering(commandBuffer);
 
         textureBarriers.before = textureBarriers.after;
@@ -1192,7 +1174,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.QueueSubmit(*m_GraphicsQueue, queueSubmitDesc);
 
     NRI.EndStreamerFrame(*m_Streamer);
-    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
+    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore, 0);
 
     nri::FenceSubmitDesc signalFence = {};
     signalFence.fence = m_FrameFence;

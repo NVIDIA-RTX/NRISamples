@@ -7,6 +7,16 @@
 
 namespace video_sample {
 
+static const nri::VideoAV1ReferenceName AV1_REFERENCE_NAMES[] = {
+    nri::VideoAV1ReferenceName::LAST,
+    nri::VideoAV1ReferenceName::LAST2,
+    nri::VideoAV1ReferenceName::LAST3,
+    nri::VideoAV1ReferenceName::GOLDEN,
+    nri::VideoAV1ReferenceName::BWDREF,
+    nri::VideoAV1ReferenceName::ALTREF2,
+    nri::VideoAV1ReferenceName::ALTREF,
+};
+
 Encoder::~Encoder() {
     if (!m_Context.nri)
         return;
@@ -15,27 +25,19 @@ Encoder::~Encoder() {
     nri::VideoInterface& video = *m_Context.video;
 
     if (video.DestroyVideoPicture) {
-        if (m_BReconstructedPicture)
-            video.DestroyVideoPicture(m_BReconstructedPicture);
-        if (m_AV1PReconstructedPicture)
-            video.DestroyVideoPicture(m_AV1PReconstructedPicture);
-        if (m_ReconstructedPicture)
-            video.DestroyVideoPicture(m_ReconstructedPicture);
-        if (m_EncodePicture)
-            video.DestroyVideoPicture(m_EncodePicture);
+        for (PictureSlot& slot : m_Dpb) {
+            if (slot.picture)
+                video.DestroyVideoPicture(slot.picture);
+        }
+        if (m_Input.picture)
+            video.DestroyVideoPicture(m_Input.picture);
         if (m_Parameters)
             video.DestroyVideoSessionParameters(m_Parameters);
         if (m_Session)
             video.DestroyVideoSession(m_Session);
     }
 
-    if (m_MetadataReadbackCommandBuffer)
-        nri.DestroyCommandBuffer(m_MetadataReadbackCommandBuffer);
-    if (m_MetadataReadbackCommandAllocator)
-        nri.DestroyCommandAllocator(m_MetadataReadbackCommandAllocator);
-    if (m_MetadataReadbackFence)
-        nri.DestroyFence(m_MetadataReadbackFence);
-    if (m_ResolvedMetadataReadbackBuffer)
+    if (m_ResolvedMetadataReadbackBuffer && m_ResolvedMetadataReadbackBuffer != m_ResolvedMetadataBuffer)
         nri.DestroyBuffer(m_ResolvedMetadataReadbackBuffer);
     if (m_ResolvedMetadataBuffer)
         nri.DestroyBuffer(m_ResolvedMetadataBuffer);
@@ -45,14 +47,8 @@ Encoder::~Encoder() {
         nri.DestroyBuffer(m_BitstreamBuffer);
     if (m_BitstreamHeaderUploadBuffer)
         nri.DestroyBuffer(m_BitstreamHeaderUploadBuffer);
-    if (m_ReconstructedTexture)
-        nri.DestroyTexture(m_ReconstructedTexture);
-    if (m_AV1PReconstructedTexture)
-        nri.DestroyTexture(m_AV1PReconstructedTexture);
-    if (m_BReconstructedTexture)
-        nri.DestroyTexture(m_BReconstructedTexture);
-    if (m_EncodeTexture)
-        nri.DestroyTexture(m_EncodeTexture);
+    for (nri::Texture* texture : m_Textures)
+        nri.DestroyTexture(texture);
 }
 
 bool Encoder::Initialize(const VideoContext& context, const VideoConfig& config, const VideoSize& size, const CodecParameters& codecParameters) {
@@ -70,7 +66,21 @@ bool Encoder::Initialize(const VideoContext& context, const VideoConfig& config,
     sessionDesc.format = nri::Format::NV12_UNORM;
     sessionDesc.width = m_Size.codedWidth;
     sessionDesc.height = m_Size.codedHeight;
-    sessionDesc.maxReferenceNum = NeedsThirdReconstructedPicture() ? 2 : 1;
+    sessionDesc.maxReferenceNum = m_Config.referenceNum;
+
+    if (video.GetVideoCapabilities(*m_Context.device, sessionDesc, m_Capabilities) != nri::Result::SUCCESS || m_Config.referenceNum > m_Capabilities.maxReferenceNum) {
+        m_Status = std::string(GetCodecName(m_Config.codec)) + " encode with " + std::to_string(m_Config.referenceNum) + " reference(s) is unsupported";
+        m_Unsupported = true;
+        return false;
+    }
+
+    m_UseFeedback = m_Config.encodeFeedback && m_Capabilities.encodeFeedbackSupported;
+    const bool useArray = m_Config.dpbLayout == DpbLayout::ARRAY || (m_Config.dpbLayout == DpbLayout::AUTO && m_Capabilities.dpbTextureArrayRequired);
+    if (m_Capabilities.dpbTextureArrayRequired && !useArray) {
+        m_Status = "The backend requires DPB texture arrays";
+        m_Unsupported = true;
+        return false;
+    }
 
     if (video.CreateVideoSession(*m_Context.device, sessionDesc, m_Session) != nri::Result::SUCCESS) {
         m_Status = std::string("Failed to create ") + GetCodecName(m_Config.codec) + " encode session";
@@ -102,17 +112,22 @@ bool Encoder::Initialize(const VideoContext& context, const VideoConfig& config,
     nri::VideoSessionParametersDesc parametersDesc = {};
     parametersDesc.session = m_Session;
     parametersDesc.h264Parameters = m_Config.codec == SampleCodec::H264 ? &h264Parameters : nullptr;
-    parametersDesc.h265Parameters = m_Config.codec == SampleCodec::H265 ? &h265Parameters : nullptr;
+    parametersDesc.h265Parameters = (m_Config.codec == SampleCodec::H265 && !m_Config.h265DefaultParameters) ? &h265Parameters : nullptr;
     parametersDesc.av1Parameters = m_Config.codec == SampleCodec::AV1 ? &av1Parameters : nullptr;
 
-    if (video.CreateVideoSessionParameters(*m_Context.device, parametersDesc, m_Parameters) != nri::Result::SUCCESS) {
+    const nri::Result parametersResult = video.CreateVideoSessionParameters(*m_Context.device, parametersDesc, m_Parameters);
+    if (parametersResult != nri::Result::SUCCESS) {
         m_Status = std::string("Failed to create ") + GetCodecName(m_Config.codec) + " encode parameters";
+        m_Unsupported = parametersResult == nri::Result::UNSUPPORTED;
         return false;
     }
 
+    // Source
     nri::TextureDesc textureDesc = {};
     textureDesc.type = nri::TextureType::TEXTURE_2D;
     textureDesc.usage = nri::TextureUsageBits::VIDEO_ENCODE;
+    if (m_Config.encodeInputOutputOnly)
+        textureDesc.usage |= nri::TextureUsageBits::VIDEO_OUTPUT_ONLY;
     textureDesc.format = nri::Format::NV12_UNORM;
     textureDesc.width = (nri::Dim_t)m_Size.codedWidth;
     textureDesc.height = (nri::Dim_t)m_Size.codedHeight;
@@ -120,80 +135,40 @@ bool Encoder::Initialize(const VideoContext& context, const VideoConfig& config,
     textureDesc.layerNum = 1;
     textureDesc.videoCodec = GetNriCodec(m_Config.codec);
 
-    if (nri.CreateCommittedTexture(*m_Context.device, nri::MemoryLocation::DEVICE, 0.0f, textureDesc, m_EncodeTexture) != nri::Result::SUCCESS) {
-        m_Status = "Failed to create NV12 encode texture";
+    if (!CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::ENCODE_INPUT, false, 1, "VideoEncodeInput", &m_Input, m_Textures)) {
+        m_Status = "Failed to create NV12 encode source";
         return false;
     }
-    nri.SetDebugName(m_EncodeTexture, "VideoEncodeTexture");
 
-    if (nri.CreateCommittedTexture(*m_Context.device, nri::MemoryLocation::DEVICE, 0.0f, textureDesc, m_ReconstructedTexture) != nri::Result::SUCCESS) {
-        m_Status = "Failed to create NV12 reconstructed texture";
+    // Reconstructed pictures (DPB)
+    textureDesc.usage = nri::TextureUsageBits::VIDEO_ENCODE | nri::TextureUsageBits::VIDEO_REFERENCE_ONLY;
+    m_DpbSlotNum = std::max(m_Config.referenceNum + 1, useArray ? m_Capabilities.dpbTextureArrayMinLayerNum : 0u);
+    m_DpbSlotNum = std::min(m_DpbSlotNum, MAX_DPB_SLOT_NUM);
+    if (!CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::ENCODE_REFERENCE, useArray, m_DpbSlotNum, "VideoEncodeDpb", m_Dpb, m_Textures)) {
+        m_Status = "Failed to create NV12 reconstructed pictures";
         return false;
     }
-    nri.SetDebugName(m_ReconstructedTexture, "VideoReconstructedTexture");
 
-    if (NeedsSecondReconstructedPicture()) {
-        if (nri.CreateCommittedTexture(*m_Context.device, nri::MemoryLocation::DEVICE, 0.0f, textureDesc, m_AV1PReconstructedTexture) != nri::Result::SUCCESS) {
-            m_Status = "Failed to create second NV12 reconstructed texture";
-            return false;
-        }
-        nri.SetDebugName(m_AV1PReconstructedTexture, "VideoSecondReconstructedTexture");
-    }
-    if (NeedsThirdReconstructedPicture()) {
-        if (nri.CreateCommittedTexture(*m_Context.device, nri::MemoryLocation::DEVICE, 0.0f, textureDesc, m_BReconstructedTexture) != nri::Result::SUCCESS) {
-            m_Status = "Failed to create third NV12 reconstructed texture";
-            return false;
-        }
-        nri.SetDebugName(m_BReconstructedTexture, "VideoThirdReconstructedTexture");
-    }
-
-    if (!SubmitOneTime(nri, *m_Context.graphicsQueue, [&](nri::CommandBuffer& commandBuffer) {
-            nri::TextureBarrierDesc textureBarriers[4] = {};
-            uint32_t textureBarrierNum = 0;
-            textureBarriers[textureBarrierNum++].texture = m_EncodeTexture;
-            textureBarriers[textureBarrierNum++].texture = m_ReconstructedTexture;
-            if (m_AV1PReconstructedTexture)
-                textureBarriers[textureBarrierNum++].texture = m_AV1PReconstructedTexture;
-            if (m_BReconstructedTexture)
-                textureBarriers[textureBarrierNum++].texture = m_BReconstructedTexture;
-
-            for (nri::TextureBarrierDesc& textureBarrier : textureBarriers) {
-                if (!textureBarrier.texture)
-                    continue;
-                textureBarrier.before = {nri::AccessBits::NONE, nri::Layout::UNDEFINED, nri::StageBits::ALL};
-                textureBarrier.after = {nri::AccessBits::NONE, nri::Layout::GENERAL, nri::StageBits::NONE};
-                textureBarrier.mipNum = nri::REMAINING;
-                textureBarrier.layerNum = nri::REMAINING;
-                textureBarrier.planes = nri::PlaneBits::ALL;
-            }
-
-            nri::BarrierDesc barrierDesc = {};
-            barrierDesc.textures = textureBarriers;
-            barrierDesc.textureNum = textureBarrierNum;
-            nri.CmdBarrier(commandBuffer, barrierDesc);
-        })) {
+    if (!InitializePictureLayouts(nri, *m_Context.graphicsQueue, m_Textures)) {
         m_Status = "Failed to initialize encode texture layouts";
         return false;
     }
 
+    // Buffers
     nri::BufferDesc bitstreamHeaderUploadBufferDesc = {};
     bitstreamHeaderUploadBufferDesc.size = ENCODED_SLICE_OFFSET;
 
     nri::BufferDesc bitstreamBufferDesc = {};
-    bitstreamBufferDesc.size = BITSTREAM_SIZE;
+    bitstreamBufferDesc.size = m_Size.bitstreamSize;
     bitstreamBufferDesc.usage = nri::BufferUsageBits::VIDEO_ENCODE;
 
     nri::BufferDesc metadataBufferDesc = {};
-    metadataBufferDesc.size = METADATA_SIZE;
+    metadataBufferDesc.size = std::max<uint64_t>(m_Capabilities.metadataSize, 4096);
     metadataBufferDesc.usage = nri::BufferUsageBits::VIDEO_ENCODE;
 
     nri::BufferDesc resolvedMetadataBufferDesc = {};
-    resolvedMetadataBufferDesc.size = RESOLVED_METADATA_SIZE;
+    resolvedMetadataBufferDesc.size = std::max<uint64_t>(m_Capabilities.resolvedMetadataSize, RESOLVED_METADATA_SIZE);
     resolvedMetadataBufferDesc.usage = nri::BufferUsageBits::VIDEO_ENCODE;
-
-    nri::BufferDesc resolvedMetadataReadbackBufferDesc = {};
-    resolvedMetadataReadbackBufferDesc.size = RESOLVED_METADATA_SIZE;
-    resolvedMetadataReadbackBufferDesc.usage = nri::BufferUsageBits::NONE;
 
     if (nri.CreateCommittedBuffer(*m_Context.device, nri::MemoryLocation::HOST_UPLOAD, 0.0f, bitstreamHeaderUploadBufferDesc, m_BitstreamHeaderUploadBuffer) != nri::Result::SUCCESS) {
         m_Status = "Failed to create bitstream header upload buffer";
@@ -203,56 +178,30 @@ bool Encoder::Initialize(const VideoContext& context, const VideoConfig& config,
         m_Status = "Failed to create encode bitstream buffer";
         return false;
     }
-    if (nri.CreateCommittedBuffer(*m_Context.device, nri::MemoryLocation::DEVICE, 0.0f, metadataBufferDesc, m_MetadataBuffer) != nri::Result::SUCCESS) {
+    if (m_Capabilities.metadataSize && nri.CreateCommittedBuffer(*m_Context.device, nri::MemoryLocation::DEVICE, 0.0f, metadataBufferDesc, m_MetadataBuffer) != nri::Result::SUCCESS) {
         m_Status = "Failed to create encode metadata buffer";
         return false;
     }
-    if (nri.CreateCommittedBuffer(*m_Context.device, nri::MemoryLocation::DEVICE, 0.0f, resolvedMetadataBufferDesc, m_ResolvedMetadataBuffer) != nri::Result::SUCCESS) {
-        m_Status = "Failed to create resolved encode metadata buffer";
-        return false;
-    }
-    if (nri.CreateCommittedBuffer(*m_Context.device, nri::MemoryLocation::HOST_READBACK, 0.0f, resolvedMetadataReadbackBufferDesc, m_ResolvedMetadataReadbackBuffer) != nri::Result::SUCCESS) {
-        m_Status = "Failed to create resolved encode metadata readback buffer";
-        return false;
-    }
-    if (nri.CreateFence(*m_Context.device, 0, m_MetadataReadbackFence) != nri::Result::SUCCESS) {
-        m_Status = "Failed to create metadata readback fence";
-        return false;
-    }
-    if (nri.CreateCommandAllocator(*m_Context.graphicsQueue, m_MetadataReadbackCommandAllocator) != nri::Result::SUCCESS || nri.CreateCommandBuffer(*m_MetadataReadbackCommandAllocator, m_MetadataReadbackCommandBuffer) != nri::Result::SUCCESS) {
-        m_Status = "Failed to create metadata readback command buffer";
-        return false;
-    }
-
-    nri::VideoPictureDesc encodePictureDesc = {};
-    encodePictureDesc.texture = m_EncodeTexture;
-    encodePictureDesc.usage = nri::VideoPictureUsage::ENCODE_INPUT;
-    encodePictureDesc.width = (nri::Dim_t)m_Size.codedWidth;
-    encodePictureDesc.height = (nri::Dim_t)m_Size.codedHeight;
-
-    nri::VideoPictureDesc reconstructedPictureDesc = encodePictureDesc;
-    reconstructedPictureDesc.texture = m_ReconstructedTexture;
-    reconstructedPictureDesc.usage = nri::VideoPictureUsage::ENCODE_REFERENCE;
-
-    if (video.CreateVideoPicture(*m_Context.device, encodePictureDesc, m_EncodePicture) != nri::Result::SUCCESS) {
-        m_Status = "Failed to create encode picture";
-        return false;
-    }
-    if (video.CreateVideoPicture(*m_Context.device, reconstructedPictureDesc, m_ReconstructedPicture) != nri::Result::SUCCESS) {
-        m_Status = "Failed to create reconstructed picture";
-        return false;
-    }
-    if (NeedsSecondReconstructedPicture()) {
-        reconstructedPictureDesc.texture = m_AV1PReconstructedTexture;
-        if (video.CreateVideoPicture(*m_Context.device, reconstructedPictureDesc, m_AV1PReconstructedPicture) != nri::Result::SUCCESS) {
-            m_Status = "Failed to create second reconstructed picture";
-            return false;
+    {
+        // VK: the query index is recorded in the host-visible buffer. D3D12: resolved on the device, then copied
+        if (m_Context.graphicsAPI == nri::GraphicsAPI::VK) {
+            if (nri.CreateCommittedBuffer(*m_Context.device, nri::MemoryLocation::HOST_READBACK, 0.0f, resolvedMetadataBufferDesc, m_ResolvedMetadataBuffer) != nri::Result::SUCCESS) {
+                m_Status = "Failed to create resolved encode metadata buffer";
+                return false;
+            }
+            m_ResolvedMetadataReadbackBuffer = m_ResolvedMetadataBuffer;
+        } else {
+            nri::BufferDesc readbackDesc = {};
+            readbackDesc.size = resolvedMetadataBufferDesc.size;
+            if (nri.CreateCommittedBuffer(*m_Context.device, nri::MemoryLocation::DEVICE, 0.0f, resolvedMetadataBufferDesc, m_ResolvedMetadataBuffer) != nri::Result::SUCCESS || nri.CreateCommittedBuffer(*m_Context.device, nri::MemoryLocation::HOST_READBACK, 0.0f, readbackDesc, m_ResolvedMetadataReadbackBuffer) != nri::Result::SUCCESS) {
+                m_Status = "Failed to create resolved encode metadata buffers";
+                return false;
+            }
         }
-    }
-    if (NeedsThirdReconstructedPicture()) {
-        reconstructedPictureDesc.texture = m_BReconstructedTexture;
-        if (video.CreateVideoPicture(*m_Context.device, reconstructedPictureDesc, m_BReconstructedPicture) != nri::Result::SUCCESS) {
-            m_Status = "Failed to create third reconstructed picture";
+
+        if (m_UseFeedback && m_Capabilities.encodeFeedbackResolveRequired && nri.GetQueue(*m_Context.device, m_Capabilities.resolvedMetadataQueueType, 0, m_ResolveQueue) != nri::Result::SUCCESS) {
+            m_Status = "The resolved metadata queue is unavailable";
+            m_Unsupported = true;
             return false;
         }
     }
@@ -262,23 +211,32 @@ bool Encoder::Initialize(const VideoContext& context, const VideoConfig& config,
     return true;
 }
 
-bool Encoder::IsEncodingAv1PFrame() const {
-    return m_Config.av1PFrameVisual && m_AV1PFrameStage == 1;
-}
-
-bool Encoder::NeedsSecondReconstructedPicture() const {
-    return m_Config.av1PFrameVisual || (m_Config.codec != SampleCodec::AV1 && m_Config.h26FrameMode != VisualFrameMode::IDR);
-}
-
-bool Encoder::NeedsThirdReconstructedPicture() const {
-    return m_Config.codec != SampleCodec::AV1 && m_Config.h26FrameMode == VisualFrameMode::B;
-}
-
-bool Encoder::WriteAnnexBHeadersToUploadBuffer(std::vector<uint8_t>& annexBHeaders) {
+bool Encoder::UploadHeaders(const FramePlan& plan, std::vector<uint8_t>& headers) {
     NRIInterface& nri = *m_Context.nri;
     nri::VideoInterface& video = *m_Context.video;
+    const bool isKeyFrame = plan.type == nri::VideoFrameType::IDR;
+
+    headers.clear();
 
     if (m_Config.codec == SampleCodec::AV1) {
+        // Temporal delimiter, sequence header on key frames. Not written into the buffer, "VideoEncodeDesc::bitstreamMetadataSize" bytes are skipped
+        if (isKeyFrame) {
+            nri::VideoAV1ObuHeadersDesc obuDesc = {};
+            obuDesc.sequence = m_CodecParameters.av1Sequence;
+            if (video.WriteVideoAV1ObuHeaders(obuDesc) != nri::Result::SUCCESS || !obuDesc.writtenSize) {
+                m_Status = "Failed to query AV1 OBU headers size";
+                return false;
+            }
+            headers.resize((size_t)obuDesc.writtenSize);
+            obuDesc.dst = headers.data();
+            obuDesc.dstSize = headers.size();
+            if (video.WriteVideoAV1ObuHeaders(obuDesc) != nri::Result::SUCCESS) {
+                m_Status = "Failed to build AV1 OBU headers";
+                return false;
+            }
+        } else
+            headers = {0x12, 0x00};
+
         void* headerPtr = nri.MapBuffer(*m_BitstreamHeaderUploadBuffer, 0, ENCODED_SLICE_OFFSET);
         if (!headerPtr) {
             m_Status = "Failed to map bitstream header upload buffer";
@@ -286,7 +244,6 @@ bool Encoder::WriteAnnexBHeadersToUploadBuffer(std::vector<uint8_t>& annexBHeade
         }
         std::memset(headerPtr, 0, (size_t)ENCODED_SLICE_OFFSET);
         nri.UnmapBuffer(*m_BitstreamHeaderUploadBuffer);
-        annexBHeaders.clear();
         return true;
     }
 
@@ -298,6 +255,7 @@ bool Encoder::WriteAnnexBHeadersToUploadBuffer(std::vector<uint8_t>& annexBHeade
     annexBDesc.h265Sps = &m_CodecParameters.h265Sps;
     annexBDesc.h265Pps = &m_CodecParameters.h265Pps;
 
+    std::vector<uint8_t> annexBHeaders;
     if (video.WriteVideoAnnexBParameterSets(annexBDesc) != nri::Result::SUCCESS || annexBDesc.writtenSize == 0 || annexBDesc.writtenSize >= ENCODED_SLICE_OFFSET) {
         m_Status = std::string("Failed to query ") + GetCodecName(m_Config.codec) + " Annex-B parameter-set size";
         return false;
@@ -319,10 +277,138 @@ bool Encoder::WriteAnnexBHeadersToUploadBuffer(std::vector<uint8_t>& annexBHeade
     std::memset(headerPtr, 0, (size_t)ENCODED_SLICE_OFFSET);
     std::memcpy(headerPtr, annexBHeaders.data(), annexBHeaders.size());
     nri.UnmapBuffer(*m_BitstreamHeaderUploadBuffer);
+
+    if (isKeyFrame)
+        headers = annexBHeaders;
     return true;
 }
 
-bool Encoder::Encode(const EncodeRequest& request) {
+bool Encoder::ResolveFeedback(nri::VideoEncodeFeedback& feedback, bool& feedbackResolved) {
+    NRIInterface& nri = *m_Context.nri;
+    nri::VideoInterface& video = *m_Context.video;
+    feedbackResolved = false;
+
+    if (m_Capabilities.encodeFeedbackResolveRequired) {
+        const bool onEncodeQueue = m_Capabilities.resolvedMetadataQueueType == nri::QueueType::VIDEO_ENCODE;
+        if (!SubmitOneTime(nri, *m_ResolveQueue, [&](nri::CommandBuffer& commandBuffer) {
+                nri::BufferBarrierDesc bufferBarriers[2] = {};
+                uint32_t bufferBarrierNum = 0;
+                bufferBarriers[bufferBarrierNum].buffer = m_ResolvedMetadataBuffer;
+                bufferBarriers[bufferBarrierNum++].after = m_Capabilities.resolvedMetadataState;
+                if (onEncodeQueue && m_MetadataBuffer) {
+                    bufferBarriers[bufferBarrierNum].buffer = m_MetadataBuffer;
+                    bufferBarriers[bufferBarrierNum++].after = {nri::AccessBits::VIDEO_ENCODE_READ, nri::StageBits::VIDEO_ENCODE};
+                }
+
+                nri::BarrierDesc barrierDesc = {};
+                barrierDesc.buffers = bufferBarriers;
+                barrierDesc.bufferNum = bufferBarrierNum;
+                nri.CmdBarrier(commandBuffer, barrierDesc);
+                m_Context.video->CmdResolveVideoEncodeFeedback(commandBuffer, *m_Session, *m_ResolvedMetadataBuffer, 0);
+                for (uint32_t i = 0; i < bufferBarrierNum; i++) {
+                    bufferBarriers[i].before = bufferBarriers[i].after;
+                    bufferBarriers[i].after = {};
+                }
+                nri.CmdBarrier(commandBuffer, barrierDesc);
+            })) {
+            m_Status = "Encode feedback resolve submission failed";
+            return false;
+        }
+
+        if (m_ResolvedMetadataReadbackBuffer != m_ResolvedMetadataBuffer) {
+            if (!SubmitOneTime(nri, *m_Context.graphicsQueue, [&](nri::CommandBuffer& commandBuffer) {
+                    nri::BufferBarrierDesc bufferBarriers[2] = {};
+                    bufferBarriers[0].buffer = m_ResolvedMetadataBuffer;
+                    bufferBarriers[0].after = {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY};
+                    bufferBarriers[1].buffer = m_ResolvedMetadataReadbackBuffer;
+                    bufferBarriers[1].after = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
+
+                    nri::BarrierDesc barrierDesc = {};
+                    barrierDesc.buffers = bufferBarriers;
+                    barrierDesc.bufferNum = helper::GetCountOf(bufferBarriers);
+                    nri.CmdBarrier(commandBuffer, barrierDesc);
+                    nri.CmdCopyBuffer(commandBuffer, *m_ResolvedMetadataReadbackBuffer, 0, *m_ResolvedMetadataBuffer, 0, nri.GetBufferDesc(*m_ResolvedMetadataBuffer).size);
+                    for (nri::BufferBarrierDesc& bufferBarrier : bufferBarriers) {
+                        bufferBarrier.before = bufferBarrier.after;
+                        bufferBarrier.after = {};
+                    }
+                    nri.CmdBarrier(commandBuffer, barrierDesc);
+                })) {
+                m_Status = "Encode feedback readback submission failed";
+                return false;
+            }
+        }
+    }
+
+    const nri::Result result = video.GetVideoEncodeFeedback(*m_Session, *m_ResolvedMetadataReadbackBuffer, 0, feedback);
+    if (result != nri::Result::SUCCESS) {
+        m_Status = result == nri::Result::UNSUPPORTED ? std::string(GetCodecName(m_Config.codec)) + " encode metadata feedback is unsupported" : "Failed to read resolved encode metadata";
+        return false;
+    }
+
+    feedbackResolved = true;
+    return true;
+}
+
+// No feedback: the bitstream buffer is zeroed before each frame, so the payload ends at the last non-zero byte
+bool Encoder::ScanFeedback(nri::VideoEncodeFeedback& feedback) {
+    NRIInterface& nri = *m_Context.nri;
+    const uint8_t* bitstream = (const uint8_t*)nri.MapBuffer(*m_BitstreamBuffer, ENCODED_SLICE_OFFSET, m_Size.bitstreamSize - ENCODED_SLICE_OFFSET);
+    if (!bitstream) {
+        m_Status = "Failed to map the encode bitstream";
+        return false;
+    }
+
+    uint64_t size = m_Size.bitstreamSize - ENCODED_SLICE_OFFSET;
+    while (size && !bitstream[size - 1])
+        size--;
+    nri.UnmapBuffer(*m_BitstreamBuffer);
+
+    feedback = {};
+    feedback.encodedBitstreamWrittenBytes = size;
+    feedback.writtenSubregionNum = 1;
+    return true;
+}
+
+bool Encoder::BuildAv1DecodeInfo(EncodedFrame& frame, const nri::VideoEncodePictureDesc& pictureDesc, const nri::VideoAV1EncodePictureDesc& av1PictureDesc, const nri::VideoAV1ReferenceDesc* av1References, uint32_t av1ReferenceNum) {
+    nri::VideoInterface& video = *m_Context.video;
+
+    nri::VideoAV1EncodeDecodeInfoDesc av1InfoDesc = {};
+    av1InfoDesc.feedback = &frame.feedback;
+    av1InfoDesc.sequence = &m_CodecParameters.av1Sequence;
+    av1InfoDesc.references = av1References;
+    av1InfoDesc.referenceNum = av1ReferenceNum;
+    av1InfoDesc.pictureDesc = &pictureDesc;
+    av1InfoDesc.av1PictureDesc = &av1PictureDesc;
+
+    Av1InfoMode mode = m_Config.av1Info;
+    if (mode == Av1InfoMode::AUTO)
+        mode = m_Context.graphicsAPI == nri::GraphicsAPI::VK ? Av1InfoMode::HEADER : Av1InfoMode::METADATA;
+
+    nri::Result result = nri::Result::UNSUPPORTED;
+    if (mode == Av1InfoMode::METADATA) {
+        // Submitted descriptions only, no payload header
+        result = video.GetVideoAV1EncodeDecodeInfo(*m_Session, *m_ResolvedMetadataReadbackBuffer, 0, av1InfoDesc, frame.av1DecodeInfo);
+        if (result == nri::Result::UNSUPPORTED)
+            frame.av1MetadataUnsupported = true;
+    }
+
+    if (result != nri::Result::SUCCESS) {
+        av1InfoDesc.encodedPayloadHeader = frame.payload.data();
+        av1InfoDesc.encodedPayloadHeaderSize = frame.payload.size();
+        result = video.GetVideoAV1EncodeDecodeInfo(*m_Session, *m_ResolvedMetadataReadbackBuffer, 0, av1InfoDesc, frame.av1DecodeInfo);
+    }
+
+    if (result != nri::Result::SUCCESS) {
+        m_Status = "Failed to prepare AV1 decode metadata";
+        return false;
+    }
+
+    frame.hasAv1DecodeInfo = true;
+    return true;
+}
+
+bool Encoder::Encode(const EncodeRequest& request, EncodedFrame& frame) {
     if (!m_Ready || !request.nv12Buffer || !request.nv12Layout) {
         m_Status = std::string(GetCodecName(m_Config.codec)) + " encoder is not ready";
         return false;
@@ -330,52 +416,77 @@ bool Encoder::Encode(const EncodeRequest& request) {
 
     NRIInterface& nri = *m_Context.nri;
     nri::VideoInterface& video = *m_Context.video;
-    const bool av1PFrame = IsEncodingAv1PFrame();
-    const bool h26Codec = m_Config.codec != SampleCodec::AV1;
+    const FramePlan& plan = request.plan;
+    const bool isH26 = m_Config.codec != SampleCodec::AV1;
+    const bool isKeyFrame = plan.type == nri::VideoFrameType::IDR;
+    const uint32_t minQ = m_Config.codec == SampleCodec::AV1 ? 1 : 0;
 
-    nri::VideoEncodeFrameType frameType = av1PFrame ? nri::VideoEncodeFrameType::P : nri::VideoEncodeFrameType::IDR;
-    uint32_t frameIndex = av1PFrame ? 1 : 0;
-    int32_t pictureOrderCount = av1PFrame ? 1 : 0;
-    uint32_t outputSlot = av1PFrame ? 1 : 0;
-    bool displayFrame = true;
-    if (h26Codec) {
-        if (m_Config.h26FrameMode == VisualFrameMode::P) {
-            frameType = m_H26FrameStage == 0 ? nri::VideoEncodeFrameType::IDR : nri::VideoEncodeFrameType::P;
-            frameIndex = m_H26FrameStage == 0 ? 0 : 1;
-            pictureOrderCount = m_H26FrameStage == 0 ? 0 : 1;
-            outputSlot = m_H26FrameStage == 0 ? 0 : 1;
-            displayFrame = m_H26FrameStage == 1;
-        } else if (m_Config.h26FrameMode == VisualFrameMode::B) {
-            frameType = m_H26FrameStage == 0 ? nri::VideoEncodeFrameType::IDR : (m_H26FrameStage == 1 ? nri::VideoEncodeFrameType::P : nri::VideoEncodeFrameType::B);
-            frameIndex = m_H26FrameStage == 0 ? 0 : (m_H26FrameStage == 1 ? 2 : 1);
-            pictureOrderCount = m_H26FrameStage == 0 ? 0 : (m_H26FrameStage == 1 ? 2 : 1);
-            outputSlot = m_H26FrameStage == 0 ? 0 : (m_H26FrameStage == 1 ? 1 : 2);
-            displayFrame = m_H26FrameStage == 2;
-        }
-    }
+    frame = {};
+    frame.plan = plan;
 
-    if (!CopyNv12BufferToTexture(nri, *m_Context.graphicsQueue, *request.nv12Layout, *request.nv12Buffer, *m_EncodeTexture, m_Size.videoWidth, m_Size.videoHeight)) {
+    // Source
+    if (!CopyNv12BufferToTexture(nri, *m_Context.graphicsQueue, *request.nv12Layout, *request.nv12Buffer, request.nv12BufferState, m_Input, request.nv12Width, request.nv12Height)) {
         m_Status = "Failed to upload NV12 source to video texture";
         return false;
     }
 
-    std::vector<uint8_t> annexBHeaders;
-    if (!WriteAnnexBHeadersToUploadBuffer(annexBHeaders))
+    if (!UploadHeaders(plan, frame.headers))
         return false;
 
     if (!SubmitOneTime(nri, *m_Context.graphicsQueue, [&](nri::CommandBuffer& commandBuffer) {
-            nri.CmdZeroBuffer(commandBuffer, *m_BitstreamBuffer, 0, BITSTREAM_SIZE);
+            nri.CmdZeroBuffer(commandBuffer, *m_BitstreamBuffer, 0, m_Size.bitstreamSize);
             nri.CmdCopyBuffer(commandBuffer, *m_BitstreamBuffer, 0, *m_BitstreamHeaderUploadBuffer, 0, ENCODED_SLICE_OFFSET);
         })) {
         m_Status = std::string("Failed to upload ") + GetCodecName(m_Config.codec) + " Annex-B parameter sets";
         return false;
     }
 
+    // References, in the order of the plan (reversed on odd H.265 pictures to test RPS ordering)
+    nri::VideoReference references[MAX_REFERENCE_NUM] = {};
+    nri::VideoH264EncodeReferenceDesc h264References[MAX_REFERENCE_NUM] = {};
+    nri::VideoH265ReferenceDesc h265References[MAX_REFERENCE_NUM] = {};
+    PlanReference orderedReferences[MAX_REFERENCE_NUM] = {};
+    for (uint32_t i = 0; i < plan.referenceNum; i++)
+        orderedReferences[i] = plan.references[plan.reverseReferenceOrder ? plan.referenceNum - 1 - i : i];
+    for (uint32_t i = 0; i < plan.referenceNum; i++) {
+        const PlanReference& reference = orderedReferences[i];
+        references[i] = {m_Dpb[reference.slot].picture, reference.slot};
+        h264References[i] = {reference.type, 0, reference.listIndex, 0, reference.frameNum, reference.poc, reference.slot, 0, 0};
+        h265References[i] = {reference.slot, reference.poc, 0, reference.type, 0, reference.listIndex};
+    }
+
     nri::VideoEncodePictureDesc pictureDesc = {};
-    pictureDesc.frameType = frameType;
-    pictureDesc.frameIndex = frameIndex;
-    pictureDesc.pictureOrderCount = pictureOrderCount;
-    pictureDesc.idrPictureId = frameType == nri::VideoEncodeFrameType::IDR ? 1 : 0;
+    pictureDesc.frameType = plan.type;
+    pictureDesc.frameIndex = plan.frameNum;
+    pictureDesc.pictureOrderCount = plan.poc;
+    pictureDesc.idrPictureId = (uint16_t)plan.idrPictureId;
+
+    nri::VideoH264EncodePictureDesc h264PictureDesc = {};
+    h264PictureDesc.sequenceParameterSetId = m_CodecParameters.h264Sps.sequenceParameterSetId;
+    h264PictureDesc.pictureParameterSetId = m_CodecParameters.h264Pps.pictureParameterSetId;
+    h264PictureDesc.references = plan.referenceNum ? h264References : nullptr;
+    h264PictureDesc.referenceNum = plan.referenceNum;
+
+    nri::VideoH265EncodePictureDesc h265PictureDesc = {};
+    h265PictureDesc.videoParameterSetId = m_CodecParameters.h265Vps.videoParameterSetId;
+    h265PictureDesc.sequenceParameterSetId = m_CodecParameters.h265Sps.sequenceParameterSetId;
+    h265PictureDesc.pictureParameterSetId = m_CodecParameters.h265Pps.pictureParameterSetId;
+
+    // AV1: all reference names map to the latest reference picture (DPB slots alternate, "refFrameIndex" 0 is always the latest)
+    nri::VideoAV1ReferenceDesc av1References[8] = {};
+    uint32_t av1ReferenceNum = 0;
+    if (m_Config.codec == SampleCodec::AV1 && plan.referenceNum) {
+        const PlanReference& reference = plan.references[0];
+        for (nri::VideoAV1ReferenceName name : AV1_REFERENCE_NAMES) {
+            nri::VideoAV1ReferenceDesc& av1Reference = av1References[av1ReferenceNum++];
+            av1Reference.name = name;
+            av1Reference.refFrameIndex = 0;
+            av1Reference.frameType = reference.type;
+            av1Reference.orderHint = reference.orderHint;
+            av1Reference.frameId = reference.frameId;
+            av1Reference.slot = reference.slot;
+        }
+    }
 
     uint16_t av1MiColumnStarts[] = {0, (uint16_t)(2 * ((m_Size.codedWidth + 7) >> 3))};
     uint16_t av1MiRowStarts[] = {0, (uint16_t)(2 * ((m_Size.codedHeight + 7) >> 3))};
@@ -402,324 +513,135 @@ bool Encoder::Encode(const EncodeRequest& request) {
         params[2] = 1 << 16;
         params[5] = 1 << 16;
     }
-    nri::VideoAV1PictureDesc av1PictureDesc = {};
-    av1PictureDesc.currentFrameId = av1PFrame ? 1 : 0;
-    av1PictureDesc.orderHint = av1PFrame ? 1 : 0;
-    av1PictureDesc.refreshFrameFlags = av1PFrame ? 0x1 : 0xFF;
-    av1PictureDesc.primaryReferenceName = av1PFrame ? nri::VideoAV1ReferenceName::LAST : nri::VideoAV1ReferenceName::NONE;
+
+    const bool isVK = m_Context.graphicsAPI == nri::GraphicsAPI::VK;
+    const bool av1LosslessFallback = m_Config.codec == SampleCodec::AV1 && request.quality.lossless;
     nri::VideoAV1PictureBits av1CommonPictureFlags = nri::VideoAV1PictureBits::SHOW_FRAME;
     if (m_Context.graphicsAPI == nri::GraphicsAPI::D3D12)
         av1CommonPictureFlags |= nri::VideoAV1PictureBits::SEGMENTATION_ENABLED;
-    av1PictureDesc.flags = av1PFrame ? av1CommonPictureFlags
-                                     : av1CommonPictureFlags | nri::VideoAV1PictureBits::ERROR_RESILIENT_MODE;
-    av1PictureDesc.renderWidthMinus1 = (uint16_t)((m_Context.graphicsAPI == nri::GraphicsAPI::VK ? m_Size.codedWidth : m_Size.videoWidth) - 1);
-    av1PictureDesc.renderHeightMinus1 = (uint16_t)((m_Context.graphicsAPI == nri::GraphicsAPI::VK ? m_Size.codedHeight : m_Size.videoHeight) - 1);
-    const bool av1LosslessFallback = m_Config.codec == SampleCodec::AV1 && request.quality.lossless;
-    const uint8_t minQ = m_Config.codec == SampleCodec::AV1 ? 1 : 0;
-    const uint8_t av1BaseQIndex = (uint8_t)(request.quality.lossless ? 1 : std::max(request.quality.av1BaseQIndex, (uint32_t)minQ));
-    av1PictureDesc.baseQIndex = av1BaseQIndex;
+
+    nri::VideoAV1EncodePictureDesc av1PictureDesc = {};
+    av1PictureDesc.currentFrameId = plan.frameNum;
+    av1PictureDesc.orderHint = plan.av1OrderHint;
+    av1PictureDesc.refreshFrameFlags = plan.av1RefreshFrameFlags;
+    av1PictureDesc.primaryReferenceName = isKeyFrame ? nri::VideoAV1ReferenceName::NONE : nri::VideoAV1ReferenceName::LAST;
+    av1PictureDesc.flags = isKeyFrame ? av1CommonPictureFlags | nri::VideoAV1PictureBits::ERROR_RESILIENT_MODE : av1CommonPictureFlags;
+    av1PictureDesc.renderWidthMinus1 = (uint16_t)((isVK ? m_Size.codedWidth : m_Size.videoWidth) - 1);
+    av1PictureDesc.renderHeightMinus1 = (uint16_t)((isVK ? m_Size.codedHeight : m_Size.videoHeight) - 1);
+    av1PictureDesc.baseQIndex = (uint8_t)(request.quality.lossless ? 1 : std::max(request.quality.av1BaseQIndex, minQ));
     av1PictureDesc.interpolationFilter = 0;
     av1PictureDesc.txMode = 2;
     av1PictureDesc.cdefDampingMinus3 = 3;
-    av1PictureDesc.tileLayout = m_Context.graphicsAPI == nri::GraphicsAPI::VK ? nullptr : &av1TileLayout;
-    av1PictureDesc.loopFilter = m_Context.graphicsAPI == nri::GraphicsAPI::VK ? nullptr : &av1LoopFilter;
-    av1PictureDesc.cdef = m_Context.graphicsAPI == nri::GraphicsAPI::VK ? nullptr : &av1Cdef;
-    av1PictureDesc.loopRestoration = m_Context.graphicsAPI == nri::GraphicsAPI::VK ? nullptr : &av1LoopRestoration;
-    av1PictureDesc.globalMotion = m_Context.graphicsAPI == nri::GraphicsAPI::VK ? nullptr : &av1GlobalMotion;
-    nri::VideoReference av1Reference = {m_ReconstructedPicture, 0};
-    nri::VideoReference h26References[2] = {};
-    nri::VideoH264ReferenceDesc h264References[2] = {};
-    nri::VideoH264PictureDesc h264PictureDesc = {};
-    nri::VideoH265ReferenceDesc h265References[2] = {};
-    uint32_t h26ReferenceNum = 0;
-    if (h26Codec && frameType != nri::VideoEncodeFrameType::IDR) {
-        h26References[h26ReferenceNum] = {m_ReconstructedPicture, 0};
-        h264References[h26ReferenceNum] = {nri::VideoEncodeFrameType::IDR, 0, 0, 0, 0, 0, 0, 0, 0};
-        h265References[h26ReferenceNum] = {0, 0, 0, nri::VideoEncodeFrameType::IDR, 0, 0};
-        h26ReferenceNum++;
-        if (frameType == nri::VideoEncodeFrameType::B) {
-            h26References[h26ReferenceNum] = {m_AV1PReconstructedPicture, 1};
-            h264References[h26ReferenceNum] = {nri::VideoEncodeFrameType::P, 0, 1, 0, 2, 2, 1, 0, 0};
-            h265References[h26ReferenceNum] = {1, 2, 0, nri::VideoEncodeFrameType::P, 0, 1};
-            h26ReferenceNum++;
-        }
-        h264PictureDesc.sequenceParameterSetId = m_CodecParameters.h264Sps.sequenceParameterSetId;
-        h264PictureDesc.pictureParameterSetId = m_CodecParameters.h264Pps.pictureParameterSetId;
-        h264PictureDesc.references = h264References;
-        h264PictureDesc.referenceNum = h26ReferenceNum;
-    }
-    nri::VideoAV1ReferenceDesc av1References[8] = {};
-    if (av1PFrame) {
-        const nri::VideoAV1ReferenceName av1ReferenceNames[] = {
-            nri::VideoAV1ReferenceName::LAST,
-            nri::VideoAV1ReferenceName::LAST2,
-            nri::VideoAV1ReferenceName::LAST3,
-            nri::VideoAV1ReferenceName::GOLDEN,
-            nri::VideoAV1ReferenceName::BWDREF,
-            nri::VideoAV1ReferenceName::ALTREF2,
-            nri::VideoAV1ReferenceName::ALTREF,
-        };
-        for (uint32_t i = 0; i < helper::GetCountOf(av1ReferenceNames); i++) {
-            av1References[i].name = av1ReferenceNames[i];
-            av1References[i].refFrameIndex = 0;
-            av1References[i].frameType = nri::VideoEncodeFrameType::IDR;
-            av1References[i].orderHint = 0;
-            av1References[i].frameId = 0;
-            av1References[i].slot = 0;
-        }
-        av1PictureDesc.references = av1References;
-        av1PictureDesc.referenceNum = helper::GetCountOf(av1ReferenceNames);
-    }
+    av1PictureDesc.tileLayout = isVK ? nullptr : &av1TileLayout;
+    av1PictureDesc.loopFilter = isVK ? nullptr : &av1LoopFilter;
+    av1PictureDesc.cdef = isVK ? nullptr : &av1Cdef;
+    av1PictureDesc.loopRestoration = isVK ? nullptr : &av1LoopRestoration;
+    av1PictureDesc.globalMotion = isVK ? nullptr : &av1GlobalMotion;
+    av1PictureDesc.references = av1ReferenceNum ? av1References : nullptr;
+    av1PictureDesc.referenceNum = av1ReferenceNum;
 
+    // Rate control
+    const RateControlSetting& rateControl = request.quality.rateControl;
+    auto getQp = [&](uint32_t qp) {
+        return (uint8_t)(request.quality.lossless ? (av1LosslessFallback ? 1 : 0) : std::max(qp, minQ));
+    };
     nri::VideoEncodeRateControlDesc rateControlDesc = {};
-    rateControlDesc.mode = nri::VideoEncodeRateControlMode::CQP;
-    rateControlDesc.qpI = (uint8_t)(request.quality.lossless ? (av1LosslessFallback ? 1 : 0) : std::max(request.quality.qpI, (uint32_t)minQ));
-    rateControlDesc.qpP = (uint8_t)(request.quality.lossless ? (av1LosslessFallback ? 1 : 0) : std::max(request.quality.qpP, (uint32_t)minQ));
-    rateControlDesc.qpB = (uint8_t)(request.quality.lossless ? (av1LosslessFallback ? 1 : 0) : std::max(request.quality.qpB, (uint32_t)minQ));
+    rateControlDesc.mode = rateControl.kind == RateControlKind::CBR ? nri::VideoEncodeRateControlMode::CBR : (rateControl.kind == RateControlKind::VBR ? nri::VideoEncodeRateControlMode::VBR : nri::VideoEncodeRateControlMode::CQP);
+    rateControlDesc.qpI = getQp(request.quality.qpI);
+    rateControlDesc.qpP = getQp(request.quality.qpP);
+    rateControlDesc.qpB = getQp(request.quality.qpB);
     rateControlDesc.frameRateNumerator = 30;
     rateControlDesc.frameRateDenominator = 1;
+    if (rateControl.kind != RateControlKind::CQP) {
+        rateControlDesc.targetBitrate = uint64_t(rateControl.bitrateKbps) * 1000;
+        rateControlDesc.maxBitrate = uint64_t(rateControl.maxBitrateKbps ? rateControl.maxBitrateKbps : rateControl.bitrateKbps) * 1000;
+    }
+
+    // Encode
+    // Non-reference pictures (B frames, AV1 "refreshFrameFlags = 0") still write the setup slot
+    PictureSlot* reconstructed = &m_Dpb[plan.setupSlot];
 
     nri::VideoEncodeDesc encodeDesc = {};
     encodeDesc.session = m_Session;
     encodeDesc.parameters = m_Parameters;
-    encodeDesc.srcPicture = m_EncodePicture;
+    encodeDesc.srcPicture = m_Input.picture;
     encodeDesc.dstBitstream.buffer = m_BitstreamBuffer;
     encodeDesc.dstBitstream.offset = ENCODED_SLICE_OFFSET;
-    encodeDesc.dstBitstream.size = BITSTREAM_SIZE - ENCODED_SLICE_OFFSET;
+    encodeDesc.dstBitstream.size = m_Size.bitstreamSize - ENCODED_SLICE_OFFSET;
     encodeDesc.bitstreamMetadataSize = ENCODED_SLICE_OFFSET;
     encodeDesc.pictureDesc = &pictureDesc;
     encodeDesc.rateControlDesc = &rateControlDesc;
-    encodeDesc.reconstructedPicture = outputSlot == 2 ? m_BReconstructedPicture : (outputSlot == 1 ? m_AV1PReconstructedPicture : m_ReconstructedPicture);
-    encodeDesc.reconstructedSlot = outputSlot;
-    if (av1PFrame) {
-        encodeDesc.reconstructedPicture = m_AV1PReconstructedPicture;
-        encodeDesc.references = &av1Reference;
-        encodeDesc.referenceNum = 1;
-        encodeDesc.reconstructedSlot = 1;
-    } else if (h26ReferenceNum) {
-        encodeDesc.references = h26References;
-        encodeDesc.referenceNum = h26ReferenceNum;
-        encodeDesc.h264PictureDesc = m_Config.codec == SampleCodec::H264 ? &h264PictureDesc : nullptr;
-        encodeDesc.h265ReferenceDescs = m_Config.codec == SampleCodec::H265 ? h265References : nullptr;
-    }
+    encodeDesc.reconstructedPicture = reconstructed ? reconstructed->picture : nullptr;
+    encodeDesc.reconstructedSlot = plan.setupSlot;
+    encodeDesc.references = plan.referenceNum ? references : nullptr;
+    encodeDesc.referenceNum = plan.referenceNum;
     encodeDesc.metadata = m_MetadataBuffer;
-    encodeDesc.resolvedMetadata = m_Context.graphicsAPI == nri::GraphicsAPI::VK ? m_ResolvedMetadataReadbackBuffer : m_ResolvedMetadataBuffer;
+    encodeDesc.resolvedMetadata = m_UseFeedback ? m_ResolvedMetadataBuffer : nullptr;
+    encodeDesc.h264PictureDesc = m_Config.codec == SampleCodec::H264 ? &h264PictureDesc : nullptr;
+    encodeDesc.h265PictureDesc = m_Config.codec == SampleCodec::H265 ? &h265PictureDesc : nullptr;
+    encodeDesc.h265ReferenceDescs = (m_Config.codec == SampleCodec::H265 && plan.referenceNum) ? h265References : nullptr;
     encodeDesc.av1PictureDesc = m_Config.codec == SampleCodec::AV1 ? &av1PictureDesc : nullptr;
 
-    nri::VideoEncodePictureStates srcPictureStates = {};
-    nri::VideoEncodePictureStates reconstructedPictureStates = {};
-    nri::VideoPicture* reconstructedPicture = outputSlot == 2 ? m_BReconstructedPicture : (outputSlot == 1 ? m_AV1PReconstructedPicture : m_ReconstructedPicture);
-    if (video.GetVideoEncodePictureStates(*m_EncodePicture, srcPictureStates) != nri::Result::SUCCESS || video.GetVideoEncodePictureStates(*reconstructedPicture, reconstructedPictureStates) != nri::Result::SUCCESS) {
+    // Picture states
+    PictureSlot* pictures[2 + MAX_REFERENCE_NUM] = {};
+    nri::VideoPictureState states[2 + MAX_REFERENCE_NUM] = {};
+    uint32_t pictureNum = 0;
+    bool statesOk = true;
+    auto addPicture = [&](PictureSlot* slot, nri::VideoPictureRole role) {
+        statesOk = statesOk && video.GetVideoPictureState(*slot->picture, role, states[pictureNum]) == nri::Result::SUCCESS;
+        pictures[pictureNum++] = slot;
+    };
+    addPicture(&m_Input, nri::VideoPictureRole::ENCODE_INPUT);
+    if (reconstructed)
+        addPicture(reconstructed, nri::VideoPictureRole::ENCODE_RECONSTRUCTED);
+    for (uint32_t i = 0; i < plan.referenceNum; i++)
+        addPicture(&m_Dpb[plan.references[i].slot], nri::VideoPictureRole::ENCODE_REFERENCE);
+    if (!statesOk) {
         m_Status = "Failed to query video encode picture states";
         return false;
     }
 
     if (!SubmitOneTime(nri, *m_Context.encodeQueue, [&](nri::CommandBuffer& commandBuffer) {
-            nri::BufferBarrierDesc bufferBarriers[2] = {};
-            bufferBarriers[0].buffer = m_MetadataBuffer;
-            bufferBarriers[0].after = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
-            bufferBarriers[1].buffer = encodeDesc.resolvedMetadata;
-            bufferBarriers[1].after = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
+            nri::BufferBarrierDesc bufferBarrier = {};
+            bufferBarrier.buffer = m_MetadataBuffer;
+            bufferBarrier.after = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
 
-            nri::TextureBarrierDesc textureBarriers[4] = {};
-            textureBarriers[0].texture = m_EncodeTexture;
-            textureBarriers[0].before = {nri::AccessBits::NONE, nri::Layout::GENERAL, nri::StageBits::NONE};
-            textureBarriers[0].after = srcPictureStates.encodeRead;
-            textureBarriers[0].mipNum = nri::REMAINING;
-            textureBarriers[0].layerNum = nri::REMAINING;
-            textureBarriers[0].planes = nri::PlaneBits::ALL;
-            textureBarriers[1].texture = outputSlot == 2 ? m_BReconstructedTexture : (outputSlot == 1 ? m_AV1PReconstructedTexture : m_ReconstructedTexture);
-            textureBarriers[1].before = {nri::AccessBits::NONE, nri::Layout::GENERAL, nri::StageBits::NONE};
-            textureBarriers[1].after = reconstructedPictureStates.encodeWrite;
-            textureBarriers[1].mipNum = nri::REMAINING;
-            textureBarriers[1].layerNum = nri::REMAINING;
-            textureBarriers[1].planes = nri::PlaneBits::ALL;
-            textureBarriers[2].texture = m_ReconstructedTexture;
-            textureBarriers[2].before = reconstructedPictureStates.graphicsBefore;
-            textureBarriers[2].after = {nri::AccessBits::VIDEO_ENCODE_READ, nri::Layout::VIDEO_ENCODE_DPB, nri::StageBits::VIDEO_ENCODE};
-            textureBarriers[2].mipNum = nri::REMAINING;
-            textureBarriers[2].layerNum = nri::REMAINING;
-            textureBarriers[2].planes = nri::PlaneBits::ALL;
-            textureBarriers[3] = textureBarriers[2];
-            textureBarriers[3].texture = m_AV1PReconstructedTexture;
+            nri::TextureBarrierDesc textureBarriers[2 + MAX_REFERENCE_NUM] = {};
+            for (uint32_t i = 0; i < pictureNum; i++)
+                textureBarriers[i] = MakePictureBarrier(*pictures[i], pictures[i]->state, states[i].required);
 
             nri::BarrierDesc barrierDesc = {};
-            barrierDesc.buffers = bufferBarriers;
-            barrierDesc.bufferNum = helper::GetCountOf(bufferBarriers);
+            barrierDesc.buffers = m_MetadataBuffer ? &bufferBarrier : nullptr;
+            barrierDesc.bufferNum = m_MetadataBuffer ? 1 : 0;
             barrierDesc.textures = textureBarriers;
-            uint32_t textureBarrierNum = 2;
-            if (av1PFrame || (h26Codec && frameType == nri::VideoEncodeFrameType::P))
-                textureBarrierNum = 3;
-            else if (h26Codec && frameType == nri::VideoEncodeFrameType::B)
-                textureBarrierNum = 4;
-            barrierDesc.textureNum = textureBarrierNum;
+            barrierDesc.textureNum = pictureNum;
             nri.CmdBarrier(commandBuffer, barrierDesc);
+
             video.CmdEncodeVideo(commandBuffer, encodeDesc);
-            bufferBarriers[0].before = {nri::AccessBits::VIDEO_ENCODE_READ, nri::StageBits::VIDEO_ENCODE};
-            bufferBarriers[0].after = {};
-            bufferBarriers[1].before = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
-            bufferBarriers[1].after = {};
-            textureBarriers[0].before = srcPictureStates.encodeRead;
-            textureBarriers[0].after = {nri::AccessBits::NONE, nri::Layout::GENERAL, nri::StageBits::NONE};
-            uint32_t postEncodeTextureBarrierNum = 1;
-            if (reconstructedPictureStates.releaseAfterEncode) {
-                textureBarriers[1].before = reconstructedPictureStates.encodeWrite;
-                textureBarriers[1].after = reconstructedPictureStates.afterEncode;
-                textureBarriers[2].before = {nri::AccessBits::VIDEO_ENCODE_READ, nri::Layout::VIDEO_ENCODE_DPB, nri::StageBits::VIDEO_ENCODE};
-                textureBarriers[2].after = reconstructedPictureStates.afterEncode;
-                textureBarriers[3].before = {nri::AccessBits::VIDEO_ENCODE_READ, nri::Layout::VIDEO_ENCODE_DPB, nri::StageBits::VIDEO_ENCODE};
-                textureBarriers[3].after = reconstructedPictureStates.afterEncode;
-                postEncodeTextureBarrierNum = textureBarrierNum;
+
+            bufferBarrier.before = bufferBarrier.after;
+            bufferBarrier.after = {};
+            uint32_t postTextureNum = 0;
+            for (uint32_t i = 0; i < pictureNum; i++) {
+                if (!states[i].transitionOnVideoQueue)
+                    continue;
+                textureBarriers[postTextureNum++] = MakePictureBarrier(*pictures[i], states[i].required, states[i].videoQueueAfter);
             }
-            barrierDesc.textures = textureBarriers;
-            barrierDesc.textureNum = postEncodeTextureBarrierNum;
+            barrierDesc.textureNum = postTextureNum;
             nri.CmdBarrier(commandBuffer, barrierDesc);
         })) {
         m_Status = std::string(GetCodecName(m_Config.codec)) + " encode submission failed";
         return false;
     }
+    for (uint32_t i = 0; i < pictureNum; i++)
+        ApplyVideoPictureState(*pictures[i], states[i]);
 
-    m_PendingFrameType = frameType;
-    m_PendingFrameIndex = frameIndex;
-    m_PendingPictureOrderCount = pictureOrderCount;
-    m_PendingOutputSlot = outputSlot;
-    m_PendingDisplayFrame = displayFrame;
-
-    if (m_MetadataReadbackPending)
-        return true;
-
-    if (m_Context.graphicsAPI == nri::GraphicsAPI::VK) {
-        m_MetadataReadbackPending = true;
-        return true;
-    }
-
-    return SubmitMetadataReadback();
-}
-
-bool Encoder::SubmitMetadataReadback() {
-    NRIInterface& nri = *m_Context.nri;
-
-    nri.ResetCommandAllocator(*m_MetadataReadbackCommandAllocator);
-    if (nri.BeginCommandBuffer(*m_MetadataReadbackCommandBuffer, nullptr) != nri::Result::SUCCESS) {
-        m_Status = "Failed to begin metadata readback command buffer";
+    // Feedback
+    if (m_UseFeedback) {
+        if (!ResolveFeedback(frame.feedback, frame.feedbackResolved))
+            return false;
+    } else if (!ScanFeedback(frame.feedback))
         return false;
-    }
-
-    nri::BufferBarrierDesc metadataBarriers[2] = {};
-    metadataBarriers[0].buffer = m_ResolvedMetadataBuffer;
-    metadataBarriers[0].before = {nri::AccessBits::NONE, nri::StageBits::NONE};
-    metadataBarriers[0].after = {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY};
-    metadataBarriers[1].buffer = m_ResolvedMetadataReadbackBuffer;
-    metadataBarriers[1].after = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-
-    nri::BarrierDesc metadataBarrierDesc = {};
-    metadataBarrierDesc.buffers = metadataBarriers;
-    metadataBarrierDesc.bufferNum = helper::GetCountOf(metadataBarriers);
-    nri.CmdBarrier(*m_MetadataReadbackCommandBuffer, metadataBarrierDesc);
-    nri.CmdCopyBuffer(*m_MetadataReadbackCommandBuffer, *m_ResolvedMetadataReadbackBuffer, 0, *m_ResolvedMetadataBuffer, 0, RESOLVED_METADATA_SIZE);
-    metadataBarriers[0].before = {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY};
-    metadataBarriers[0].after = {nri::AccessBits::NONE, nri::StageBits::NONE};
-    metadataBarriers[1].before = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-    metadataBarriers[1].after = {nri::AccessBits::NONE, nri::StageBits::NONE};
-    nri.CmdBarrier(*m_MetadataReadbackCommandBuffer, metadataBarrierDesc);
-
-    if (nri.EndCommandBuffer(*m_MetadataReadbackCommandBuffer) != nri::Result::SUCCESS) {
-        m_Status = "Failed to end metadata readback command buffer";
-        return false;
-    }
-
-    m_MetadataReadbackFenceValue++;
-    nri::FenceSubmitDesc signalFence = {};
-    signalFence.fence = m_MetadataReadbackFence;
-    signalFence.value = m_MetadataReadbackFenceValue;
-
-    const nri::CommandBuffer* commandBuffers[] = {m_MetadataReadbackCommandBuffer};
-    nri::QueueSubmitDesc submit = {};
-    submit.commandBuffers = commandBuffers;
-    submit.commandBufferNum = helper::GetCountOf(commandBuffers);
-    submit.signalFences = &signalFence;
-    submit.signalFenceNum = 1;
-    if (nri.QueueSubmit(*m_Context.graphicsQueue, submit) != nri::Result::SUCCESS) {
-        m_Status = "Failed to submit async metadata readback";
-        return false;
-    }
-
-    m_MetadataReadbackPending = true;
-    return true;
-}
-
-bool Encoder::BuildAv1DecodeInfo(nri::VideoEncodeFeedback& feedback, nri::VideoAV1EncodeDecodeInfo& av1DecodeInfo) {
-    NRIInterface& nri = *m_Context.nri;
-    nri::VideoInterface& video = *m_Context.video;
-
-    nri::VideoAV1EncodeDecodeInfoDesc av1InfoDesc = {};
-    av1InfoDesc.feedback = &feedback;
-    av1InfoDesc.sequence = &m_CodecParameters.av1Sequence;
-    nri::VideoAV1ReferenceDesc av1InfoReferences[8] = {};
-    if (IsEncodingAv1PFrame()) {
-        const nri::VideoAV1ReferenceName av1ReferenceNames[] = {
-            nri::VideoAV1ReferenceName::LAST,
-            nri::VideoAV1ReferenceName::LAST2,
-            nri::VideoAV1ReferenceName::LAST3,
-            nri::VideoAV1ReferenceName::GOLDEN,
-            nri::VideoAV1ReferenceName::BWDREF,
-            nri::VideoAV1ReferenceName::ALTREF2,
-            nri::VideoAV1ReferenceName::ALTREF,
-        };
-        for (uint32_t i = 0; i < helper::GetCountOf(av1ReferenceNames); i++) {
-            av1InfoReferences[i].name = av1ReferenceNames[i];
-            av1InfoReferences[i].refFrameIndex = 0;
-            av1InfoReferences[i].frameType = nri::VideoEncodeFrameType::IDR;
-            av1InfoReferences[i].orderHint = 0;
-            av1InfoReferences[i].frameId = 0;
-            av1InfoReferences[i].slot = 0;
-        }
-        av1InfoDesc.references = av1InfoReferences;
-        av1InfoDesc.referenceNum = helper::GetCountOf(av1ReferenceNames);
-    }
-
-    const uint8_t* encodedPayloadHeader = nullptr;
-    const uint64_t encodedPayloadOffset = ENCODED_SLICE_OFFSET + feedback.encodedBitstreamOffset;
-    const uint64_t encodedPayloadSize = feedback.encodedBitstreamWrittenBytes;
-    if (m_Context.graphicsAPI == nri::GraphicsAPI::VK && encodedPayloadOffset <= BITSTREAM_SIZE && encodedPayloadSize <= BITSTREAM_SIZE - encodedPayloadOffset) {
-        encodedPayloadHeader = (const uint8_t*)nri.MapBuffer(*m_BitstreamBuffer, encodedPayloadOffset, encodedPayloadSize);
-        av1InfoDesc.encodedPayloadHeader = encodedPayloadHeader;
-        av1InfoDesc.encodedPayloadHeaderSize = encodedPayloadHeader ? encodedPayloadSize : 0;
-    }
-    const nri::Result av1InfoResult = video.GetVideoEncodeAV1DecodeInfo(*m_Session, *m_ResolvedMetadataReadbackBuffer, 0, av1InfoDesc, av1DecodeInfo);
-    if (encodedPayloadHeader)
-        nri.UnmapBuffer(*m_BitstreamBuffer);
-    if (av1InfoResult != nri::Result::SUCCESS) {
-        m_Status = "Failed to prepare AV1 decode metadata";
-        return false;
-    }
-    feedback.encodedBitstreamWrittenBytes = av1DecodeInfo.bitstreamOffset + av1DecodeInfo.bitstreamSize;
-    return true;
-}
-
-bool Encoder::Poll(EncodedFrame& frame) {
-    if (!m_MetadataReadbackPending)
-        return false;
-
-    NRIInterface& nri = *m_Context.nri;
-    nri::VideoInterface& video = *m_Context.video;
-
-    const uint64_t completedFence = nri.GetFenceValue(*m_MetadataReadbackFence);
-    if (completedFence < m_MetadataReadbackFenceValue)
-        return false;
-
-    m_MetadataReadbackPending = false;
-
-    frame = {};
-    frame.bitstreamBuffer = m_BitstreamBuffer;
-    const nri::Result feedbackResult = video.GetVideoEncodeFeedback(*m_Session, *m_ResolvedMetadataReadbackBuffer, 0, frame.feedback);
-    if (feedbackResult != nri::Result::SUCCESS) {
-        if (feedbackResult == nri::Result::UNSUPPORTED)
-            m_Status = std::string(GetCodecName(m_Config.codec)) + " encode metadata feedback is unsupported";
-        else
-            m_Status = "Failed to read resolved encode metadata";
-        return false;
-    }
 
     if (frame.feedback.errorFlags || !frame.feedback.encodedBitstreamWrittenBytes) {
         char message[160] = {};
@@ -729,28 +651,26 @@ bool Encoder::Poll(EncodedFrame& frame) {
         return false;
     }
 
+    // Payload
+    const uint64_t payloadOffset = ENCODED_SLICE_OFFSET + frame.feedback.encodedBitstreamOffset;
+    const uint64_t payloadSize = frame.feedback.encodedBitstreamWrittenBytes;
+    if (payloadOffset > m_Size.bitstreamSize || payloadSize > m_Size.bitstreamSize - payloadOffset) {
+        m_Status = "Encoded bitstream range exceeds the bitstream buffer";
+        return false;
+    }
+    const uint8_t* payload = (const uint8_t*)nri.MapBuffer(*m_BitstreamBuffer, payloadOffset, payloadSize);
+    if (!payload) {
+        m_Status = "Failed to map the encode bitstream";
+        return false;
+    }
+    frame.payload.assign(payload, payload + payloadSize);
+    nri.UnmapBuffer(*m_BitstreamBuffer);
+
     if (m_Config.codec == SampleCodec::AV1) {
-        frame.hasAv1DecodeInfo = true;
-        if (!BuildAv1DecodeInfo(frame.feedback, frame.av1DecodeInfo))
+        if (!BuildAv1DecodeInfo(frame, pictureDesc, av1PictureDesc, av1ReferenceNum ? av1References : nullptr, av1ReferenceNum))
             return false;
     }
-
-    frame.frameType = m_PendingFrameType;
-    frame.frameIndex = m_PendingFrameIndex;
-    frame.pictureOrderCount = m_PendingPictureOrderCount;
-    frame.outputSlot = m_PendingOutputSlot;
-    frame.isDisplayFrame = m_PendingDisplayFrame;
-    frame.isAv1PFrame = IsEncodingAv1PFrame();
-    if (m_Config.av1PFrameVisual && m_AV1PFrameStage == 0)
-        m_AV1PFrameStage = 1;
-    else if (frame.isAv1PFrame)
-        m_AV1PFrameStage = 0;
-    if (m_Config.codec != SampleCodec::AV1) {
-        if (m_Config.h26FrameMode == VisualFrameMode::P)
-            m_H26FrameStage = frame.isDisplayFrame ? 0 : 1;
-        else if (m_Config.h26FrameMode == VisualFrameMode::B)
-            m_H26FrameStage = frame.isDisplayFrame ? 0 : std::min(m_H26FrameStage + 1, 2u);
-    }
+    (void)isH26;
 
     m_Status = std::string(GetCodecName(m_Config.codec)) + " encode complete";
     return true;

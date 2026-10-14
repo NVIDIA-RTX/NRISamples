@@ -27,6 +27,18 @@ public:
         return m_Ready;
     }
 
+    bool IsUnsupported() const {
+        return m_Unsupported;
+    }
+
+    bool IsDistinct() const {
+        return m_IsDistinct;
+    }
+
+    const nri::VideoCapabilities& GetCapabilities() const {
+        return m_Capabilities;
+    }
+
     const std::string& GetStatus() const {
         return m_Status;
     }
@@ -40,20 +52,20 @@ private:
     VideoConfig m_Config = {};
     VideoSize m_Size = {};
     CodecParameters m_CodecParameters = {};
+    nri::VideoCapabilities m_Capabilities = {};
     std::string m_Status = "Initializing decoder";
 
     nri::VideoSession* m_Session = nullptr;
     nri::VideoSessionParameters* m_Parameters = nullptr;
-    nri::Texture* m_DecodeTexture = nullptr;
-    nri::Texture* m_AV1PDecodeTexture = nullptr;
-    nri::Texture* m_BDecodeTexture = nullptr;
+    std::vector<nri::Texture*> m_Textures;
+    PictureSlot m_Dpb[MAX_DPB_SLOT_NUM] = {};
+    PictureSlot m_Output = {}; // distinct mode only
+    uint32_t m_DpbSlotNum = 0;
     nri::Buffer* m_DecodeBitstreamBuffer = nullptr;
-    nri::VideoPicture* m_DecodePicture = nullptr;
-    nri::VideoPicture* m_AV1PDecodePicture = nullptr;
-    nri::VideoPicture* m_BDecodePicture = nullptr;
 
-    uint32_t m_DecodeFrameIndex = 0;
     bool m_Ready = false;
+    bool m_Unsupported = false;
+    bool m_IsDistinct = false;
 };
 
 } // namespace video_sample
