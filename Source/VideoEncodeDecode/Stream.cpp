@@ -6,7 +6,7 @@
 #include "Encoder.h"
 
 // Header-only AV1 frame header parser of NRI (the public "GetVideoAV1EncodeDecodeInfo" needs an AV1 encode session)
-#include "../../External/NRIFramework/External/NRI/Source/Shared/SharedVideo.h"
+#include "SharedVideo.h"
 
 #include <cmath>
 #include <cstdlib>
@@ -73,6 +73,18 @@ struct DpbEntry {
     uint8_t orderHint = 0;
     nri::VideoFrameType type = nri::VideoFrameType::IDR;
 };
+
+// SPS max_num_reorder_pics: the most pictures that precede a picture in decode order and follow it in output order
+uint32_t GetReorderNum(const std::vector<FramePlan>& plans) {
+    uint32_t reorderNum = 0;
+    for (size_t i = 0; i < plans.size(); i++) {
+        uint32_t num = 0;
+        for (size_t j = 0; j < i; j++)
+            num += plans[j].displayIndex > plans[i].displayIndex;
+        reorderNum = std::max(reorderNum, num);
+    }
+    return reorderNum;
+}
 
 std::vector<FramePlan> BuildFramePlans(const VideoConfig& config, const std::string& gop, uint32_t frameNum, uint32_t idrPeriod) {
     const uint32_t referenceNum = std::clamp(config.referenceNum, 1u, MAX_REFERENCE_NUM);
@@ -399,10 +411,6 @@ StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& o
     VideoConfig config = options.config;
     const bool hasB = options.gop.find('B') != std::string::npos && config.codec != SampleCodec::AV1;
     config.hasBFrames = hasB;
-    for (size_t i = 0, run = 0; i <= options.gop.size(); i++) {
-        run = (i < options.gop.size() && options.gop[i] == 'B') ? run + 1 : 0;
-        config.reorderNum = std::max<uint32_t>(config.reorderNum, (uint32_t)run);
-    }
     if (hasB)
         config.referenceNum = std::max(config.referenceNum, 2u);
     if (config.codec == SampleCodec::AV1)
@@ -452,9 +460,8 @@ StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& o
     deviceCreationDesc.graphicsAPI = environment.graphicsAPI;
     deviceCreationDesc.enableGraphicsAPIValidation = environment.debugAPI;
     deviceCreationDesc.enableNRIValidation = environment.debugNRI;
-    deviceCreationDesc.disableD3D12EnhancedBarriers = environment.graphicsAPI == nri::GraphicsAPI::D3D12; // D3D12 video encode command lists fail to close with enhanced barriers enabled
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
-    deviceCreationDesc.disableD3D12EnhancedBarriers = environment.graphicsAPI == nri::GraphicsAPI::D3D12 ? !std::getenv("VIDEO_SAMPLE_ENHANCED_BARRIERS") : false; // legacy barriers by default
+    deviceCreationDesc.disableD3D12EnhancedBarriers = environment.graphicsAPI == nri::GraphicsAPI::D3D12 && !environment.enhancedBarriers; // legacy barriers by default
     deviceCreationDesc.adapterDesc = &adapter;
     deviceCreationDesc.queueFamilies = queueFamilies;
     deviceCreationDesc.queueFamilyNum = helper::GetCountOf(queueFamilies);
@@ -488,9 +495,10 @@ StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& o
     if (!QueryVideoSize(context, config, size, isUnsupported, status))
         return finish(isUnsupported ? StreamStatus::UNSUPPORTED : StreamStatus::FAIL, status);
 
+    std::vector<FramePlan> plans = BuildFramePlans(config, options.gop, options.frameNum, options.idrPeriod);
+    config.reorderNum = GetReorderNum(plans);
     CodecParameters codecParameters = MakeCodecParameters(environment.graphicsAPI, config, size.codedWidth, size.codedHeight);
 
-    std::vector<FramePlan> plans = BuildFramePlans(config, options.gop, options.frameNum, options.idrPeriod);
     if (plans.empty())
         return finish(StreamStatus::FAIL, "Empty frame plan");
 
@@ -830,12 +838,6 @@ std::vector<StreamOptions> MakeMatrixCases(const StreamOptions& base) {
                 o.config.reverseReferences = false;
                 o.frameNum = 8;
             });
-            // SPS scaling_list_enabled_flag without lists: the decode uses the default lists, the encoders do not, hence the PSNR limit
-            add("scaling-default", [](StreamOptions& o) {
-                o.config.h265ScalingListEnabled = true;
-                o.config.h265ListsModification = false;
-                o.minPsnr = 20.0;
-            });
             add("ids", [](StreamOptions& o) {
                 o.config.h265VpsId = 3;
                 o.config.h265SpsId = 5;
@@ -1099,10 +1101,11 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
 
     std::vector<uint8_t> fileBytes;
     std::vector<uint8_t> refBytes;
+    const bool hasReference = !refYuvPath.empty();
     if (!readFile(path, fileBytes))
         return finish(StreamStatus::FAIL, "Failed to read " + path);
-    if (!refYuvPath.empty() && !readFile(refYuvPath, refBytes))
-        return finish(StreamStatus::FAIL, "Failed to read " + refYuvPath);
+    if (hasReference && (!readFile(refYuvPath, refBytes) || refBytes.empty()))
+        return finish(StreamStatus::FAIL, "Failed to read or empty reference " + refYuvPath);
 
     std::vector<ObuSpan> obus;
     if (!ReadObus(fileBytes, obus))
@@ -1156,6 +1159,7 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
     nri::DeviceCreationDesc deviceCreationDesc = {};
     deviceCreationDesc.graphicsAPI = environment.graphicsAPI;
     deviceCreationDesc.enableGraphicsAPIValidation = environment.debugAPI;
+    deviceCreationDesc.disableD3D12EnhancedBarriers = environment.graphicsAPI == nri::GraphicsAPI::D3D12 && !environment.enhancedBarriers; // legacy barriers by default
     deviceCreationDesc.enableNRIValidation = environment.debugNRI;
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapter;
@@ -1396,7 +1400,7 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
             NRI.UnmapBuffer(*readbackBuffer);
 
             double psnr = 99.0;
-            if (!refBytes.empty()) {
+            if (hasReference) {
                 if (offset + frameSize > refBytes.size()) {
                     failure = "Reference has fewer frames";
                     break;
@@ -1437,7 +1441,7 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
         std::filesystem::create_directories(directory, errorCode);
         WriteFile(directory / "stream.obu", fileBytes);
         WriteFile(directory / "decoded.yuv", decodedBytes);
-        if (!refBytes.empty())
+        if (hasReference)
             WriteFile(directory / "source.yuv", refBytes);
         char info[256] = {};
         std::snprintf(info, sizeof(info), "codec=AV1\nvideo=%ux%u\ncoded=%ux%u\nframes=%u\nencodeOnly=0\n", width, height, size.codedWidth, size.codedHeight, outputNum);
@@ -1452,11 +1456,13 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
     result.byteNum = byteNum;
     result.psnrMin = outputNum ? psnrMin : 0.0;
     result.psnrAvg = outputNum ? psnrSum / outputNum : 0.0;
-    result.notes = "coded=" + std::to_string(size.codedWidth) + "x" + std::to_string(size.codedHeight) + " refs=8 external-av1" + (refBytes.empty() ? " (no reference)" : " (bit-exact vs reference required)");
+    result.notes = "coded=" + std::to_string(size.codedWidth) + "x" + std::to_string(size.codedHeight) + " refs=8 external-av1" + (hasReference ? " (bit-exact vs reference required)" : " (no reference)");
 
     if (!failure.empty())
         return finish(StreamStatus::FAIL, failure);
-    if (!refBytes.empty() && (outputNum * frameSize != refBytes.size() || result.psnrMin < 99.0)) {
+    if (!outputNum)
+        return finish(StreamStatus::FAIL, "No picture was decoded");
+    if (hasReference && (outputNum * frameSize != refBytes.size() || result.psnrMin < 99.0)) {
         char message[128] = {};
         std::snprintf(message, sizeof(message), "decoded %u frames, reference has %llu; min PSNR vs reference %.2f dB (bit-exact is 99)", outputNum, (unsigned long long)(refBytes.size() / frameSize), result.psnrMin);
         return finish(StreamStatus::FAIL, message);

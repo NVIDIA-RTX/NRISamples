@@ -214,6 +214,8 @@ target_sources(VideoEncodeDecode PRIVATE
     Source/VideoEncodeDecode/Stream.cpp
     Source/VideoEncodeDecode/Stream.h
 )
+# "SharedVideo.h" of the NRI that is built (NRI_SOURCE_OVERRIDE_DIR aware)
+target_include_directories(VideoEncodeDecode PRIVATE "${NRI_SOURCE_DIR}/Source/Shared")
 
 if(WIN32)
     target_link_libraries(VideoEncodeDecode PRIVATE d3d12)

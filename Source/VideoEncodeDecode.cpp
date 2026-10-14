@@ -268,7 +268,6 @@ void Sample::InitCmdLine(cmdline::parser& cmdLine) {
     cmdLine.add<uint32_t>("maxFrameBits", 0, "stream: CBR/VBR maximum frame size in bits", false, 0);
     cmdLine.add<uint32_t>("vbvMs", 0, "stream: CBR/VBR virtual buffer size in ms", false, 0);
     cmdLine.add<uint32_t>("vbvInitialMs", 0, "stream: CBR/VBR initial virtual buffer fullness in ms", false, 0);
-    cmdLine.add("h265ScalingList", 0, "stream: set the H.265 SPS scaling_list_enabled_flag (default lists)");
     cmdLine.add<std::string>("picturePlanes", 0, "video picture barriers address the planes with ALL, COLOR or PLANES (PLANE_0 | PLANE_1)", false, "all", cmdline::oneof<std::string>("all", "color", "planes"));
     cmdLine.add("enhancedBarriers", 0, "D3D12: use enhanced barriers (off by default for the video queues)");
     cmdLine.add<std::string>("h265Ids", 0, "stream: H.265 VPS,SPS,PPS ids", false, m_H265IdsArg);
@@ -382,7 +381,6 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     options.quality.rateControl.maxFrameBits = cmdLine.get<uint32_t>("maxFrameBits");
     options.quality.rateControl.vbvMs = cmdLine.get<uint32_t>("vbvMs");
     options.quality.rateControl.vbvInitialMs = cmdLine.get<uint32_t>("vbvInitialMs");
-    options.config.h265ScalingListEnabled = cmdLine.exist("h265ScalingList");
     m_EnhancedBarriers = cmdLine.exist("enhancedBarriers");
     const std::string picturePlanes = cmdLine.get<std::string>("picturePlanes");
     video_sample::g_PicturePlanes = picturePlanes == "color" ? nri::PlaneBits::COLOR : (picturePlanes == "planes" ? (nri::PlaneBits::PLANE_0 | nri::PlaneBits::PLANE_1) : nri::PlaneBits::ALL);
@@ -441,6 +439,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     // Interactive cycle: IDR, IDR + P, or IDR + P + B (decoded as IDR, P, B), the last picture is displayed
     const char* gop = m_Codec == SampleCodec::AV1 ? (m_AV1PFrameVisual ? "P" : "I") : (m_H26FrameMode == video_sample::VisualFrameMode::B ? "BP" : (m_H26FrameMode == video_sample::VisualFrameMode::P ? "P" : "I"));
     m_Plans = video_sample::BuildFramePlans(m_VideoConfig, gop, 1 + (uint32_t)std::strlen(gop) - (gop[0] == 'I' ? 1 : 0), 0);
+    m_VideoConfig.reorderNum = video_sample::GetReorderNum(m_Plans);
     for (video_sample::FramePlan& plan : m_Plans)
         plan.isDisplay = &plan == &m_Plans.back();
 
@@ -962,6 +961,7 @@ int32_t Sample::RunHeadless(nri::GraphicsAPI graphicsAPI) {
     environment.adapterIndex = m_AdapterIndex;
     environment.debugAPI = m_DebugAPI;
     environment.debugNRI = true;
+    environment.enhancedBarriers = m_EnhancedBarriers;
 
     if (m_StreamMode == "decodeFile") {
         const StreamResult result = RunDecodeFile(environment, m_DecodeFile, m_RefYuv, m_StreamOptions.name, m_StreamOptions.dumpDir, m_StreamOptions.verbose);

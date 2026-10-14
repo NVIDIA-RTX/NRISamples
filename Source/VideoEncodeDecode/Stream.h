@@ -27,6 +27,7 @@ struct RunEnvironment {
     uint32_t adapterIndex = 0;
     bool debugAPI = false;
     bool debugNRI = false;
+    bool enhancedBarriers = false; // D3D12
 };
 
 enum class StreamStatus : uint8_t {
@@ -52,6 +53,7 @@ struct StreamResult {
 void GenerateNv12Pattern(uint8_t* dst, const Nv12BufferLayout& layout, uint32_t width, uint32_t height, uint32_t patternWidth, uint32_t patternHeight, uint32_t frame);
 
 // Frame plans in decode order
+uint32_t GetReorderNum(const std::vector<FramePlan>& plans);
 std::vector<FramePlan> BuildFramePlans(const VideoConfig& config, const std::string& gop, uint32_t frameNum, uint32_t idrPeriod);
 
 // Query capabilities, derive the coded size and bitstream limits

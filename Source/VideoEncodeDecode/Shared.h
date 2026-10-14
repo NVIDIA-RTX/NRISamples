@@ -111,12 +111,11 @@ struct VideoConfig {
     // Stream configuration
     uint32_t referenceNum = 1; // "VideoSessionDesc::maxReferenceNum" of both sessions, DPB has "referenceNum + 1" slots
     bool hasBFrames = false;
-    uint32_t reorderNum = 0; // longest run of B pictures of the GOP: SPS max_num_reorder_pics (output order for the decoders that bump pictures)
+    uint32_t reorderNum = 0; // SPS max_num_reorder_pics, from the frame plan ("GetReorderNum")
     DecodeDpbMode decodeDpb = DecodeDpbMode::AUTO;
     DpbLayout dpbLayout = DpbLayout::AUTO;
     bool encodeInputOutputOnly = true; // "VIDEO_OUTPUT_ONLY" encode source
     bool h265ListsModification = true; // PPS lists_modification_present_flag
-    bool h265ScalingListEnabled = false; // SPS scaling_list_enabled_flag without lists (default scaling lists, the encoders do not apply them)
     bool reverseDecodeReferences = true; // H.265: pass the decode references of every second picture in the opposite POC order, also without list modification
     bool reverseReferences = true;     // H.265: pass the references of every second picture in the opposite POC order (the backend sorts them)
     bool encodeFeedback = true;        // "CmdResolveVideoEncodeFeedback" + "GetVideoEncodeFeedback", otherwise the bitstream is scanned
@@ -441,8 +440,6 @@ inline CodecParameters MakeCodecParameters(nri::GraphicsAPI graphicsAPI, const V
         if (config.h265ListsModification)
             params.h265Pps.flags |= nri::VideoH265PictureParameterSetBits::LISTS_MODIFICATION_PRESENT;
     }
-    if (config.h265ScalingListEnabled)
-        params.h265Sps.flags |= nri::VideoH265SequenceParameterSetBits::SCALING_LIST_ENABLED;
     params.h265Vps.videoParameterSetId = config.h265VpsId;
     params.h265Sps.videoParameterSetId = config.h265VpsId;
     params.h265Sps.sequenceParameterSetId = config.h265SpsId;
