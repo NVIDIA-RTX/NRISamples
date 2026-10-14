@@ -111,6 +111,7 @@ struct VideoConfig {
     // Stream configuration
     uint32_t referenceNum = 1; // "VideoSessionDesc::maxReferenceNum" of both sessions, DPB has "referenceNum + 1" slots
     bool hasBFrames = false;
+    uint32_t reorderNum = 0; // longest run of B pictures of the GOP: SPS max_num_reorder_pics (output order for the decoders that bump pictures)
     DecodeDpbMode decodeDpb = DecodeDpbMode::AUTO;
     DpbLayout dpbLayout = DpbLayout::AUTO;
     bool encodeInputOutputOnly = true; // "VIDEO_OUTPUT_ONLY" encode source
@@ -419,7 +420,7 @@ inline CodecParameters MakeCodecParameters(nri::GraphicsAPI graphicsAPI, const V
         params.h265Vps.profileTierLevel.generalProfileIdc = 1;
         params.h265Vps.profileTierLevel.generalLevelIdc = GetH265GeneralLevelIdc(codedWidth, codedHeight);
         params.h265Vps.decPicBufMgr.maxDecPicBufferingMinus1[0] = (uint8_t)std::min(referenceNum + 1, 15u);
-        params.h265Vps.decPicBufMgr.maxNumReorderPics[0] = config.hasBFrames ? 1 : 0;
+        params.h265Vps.decPicBufMgr.maxNumReorderPics[0] = (uint8_t)std::min<uint32_t>(config.reorderNum, params.h265Vps.decPicBufMgr.maxDecPicBufferingMinus1[0]);
 
         params.h265Sps.flags = nri::VideoH265SequenceParameterSetBits::TEMPORAL_ID_NESTING | nri::VideoH265SequenceParameterSetBits::AMP_ENABLED | nri::VideoH265SequenceParameterSetBits::SAMPLE_ADAPTIVE_OFFSET_ENABLED;
         params.h265Sps.maxSubLayersMinus1 = params.h265Vps.maxSubLayersMinus1;

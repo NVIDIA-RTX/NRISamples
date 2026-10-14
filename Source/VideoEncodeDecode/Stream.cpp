@@ -399,8 +399,16 @@ StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& o
     VideoConfig config = options.config;
     const bool hasB = options.gop.find('B') != std::string::npos && config.codec != SampleCodec::AV1;
     config.hasBFrames = hasB;
+    for (size_t i = 0, run = 0; i <= options.gop.size(); i++) {
+        run = (i < options.gop.size() && options.gop[i] == 'B') ? run + 1 : 0;
+        config.reorderNum = std::max<uint32_t>(config.reorderNum, (uint32_t)run);
+    }
     if (hasB)
         config.referenceNum = std::max(config.referenceNum, 2u);
+    // The H.265 slice header RPS is built from the references passed to the encoder: with a B List0 limited to 1 the DPB may only hold the pictures a B can use,
+    // otherwise later pictures reference pictures the RPS dropped (ffmpeg: "Could not find ref")
+    if (hasB && config.codec == SampleCodec::H265)
+        config.referenceNum = 2;
     if (config.codec == SampleCodec::AV1)
         config.referenceNum = 1; // the AV1 picture layout uses the latest reference only
     config.referenceNum = std::clamp(config.referenceNum, 1u, MAX_REFERENCE_NUM);
