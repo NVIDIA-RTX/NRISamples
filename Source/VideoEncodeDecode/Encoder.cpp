@@ -314,7 +314,10 @@ bool Encoder::ResolveFeedback(nri::VideoEncodeFeedback& feedback, bool& feedback
             m_Status = "Encode feedback resolve submission failed";
             return false;
         }
+    }
 
+    // D3D12: the resolved metadata lives on the device (written by the encode or by the resolve), copy it to the readback buffer
+    {
         if (m_ResolvedMetadataReadbackBuffer != m_ResolvedMetadataBuffer) {
             if (!SubmitOneTime(nri, *m_Context.graphicsQueue, [&](nri::CommandBuffer& commandBuffer) {
                     nri::BufferBarrierDesc bufferBarriers[2] = {};
@@ -555,6 +558,11 @@ bool Encoder::Encode(const EncodeRequest& request, EncodedFrame& frame) {
     if (rateControl.kind != RateControlKind::CQP) {
         rateControlDesc.targetBitrate = uint64_t(rateControl.bitrateKbps) * 1000;
         rateControlDesc.maxBitrate = uint64_t(rateControl.maxBitrateKbps ? rateControl.maxBitrateKbps : rateControl.bitrateKbps) * 1000;
+        rateControlDesc.qpMin = (uint8_t)rateControl.qpMin;
+        rateControlDesc.qpMax = (uint8_t)rateControl.qpMax;
+        rateControlDesc.maxFrameBitSize = rateControl.maxFrameBits;
+        rateControlDesc.virtualBufferSizeMs = rateControl.vbvMs;
+        rateControlDesc.initialVirtualBufferSizeMs = rateControl.vbvInitialMs;
     }
 
     // Encode
@@ -602,25 +610,37 @@ bool Encoder::Encode(const EncodeRequest& request, EncodedFrame& frame) {
     }
 
     if (!SubmitOneTime(nri, *m_Context.encodeQueue, [&](nri::CommandBuffer& commandBuffer) {
-            nri::BufferBarrierDesc bufferBarrier = {};
-            bufferBarrier.buffer = m_MetadataBuffer;
-            bufferBarrier.after = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
+            // D3D12 resolves the metadata inside the encode: the resolved buffer is written in the advertised state
+            const bool resolveInEncode = m_UseFeedback && !m_Capabilities.encodeFeedbackResolveRequired && m_ResolvedMetadataReadbackBuffer != m_ResolvedMetadataBuffer;
+
+            nri::BufferBarrierDesc bufferBarriers[2] = {};
+            uint32_t bufferBarrierNum = 0;
+            if (m_MetadataBuffer) {
+                bufferBarriers[bufferBarrierNum].buffer = m_MetadataBuffer;
+                bufferBarriers[bufferBarrierNum++].after = {nri::AccessBits::VIDEO_ENCODE_WRITE, nri::StageBits::VIDEO_ENCODE};
+            }
+            if (resolveInEncode) {
+                bufferBarriers[bufferBarrierNum].buffer = m_ResolvedMetadataBuffer;
+                bufferBarriers[bufferBarrierNum++].after = m_Capabilities.resolvedMetadataState;
+            }
 
             nri::TextureBarrierDesc textureBarriers[2 + MAX_REFERENCE_NUM] = {};
             for (uint32_t i = 0; i < pictureNum; i++)
                 textureBarriers[i] = MakePictureBarrier(*pictures[i], pictures[i]->state, states[i].required);
 
             nri::BarrierDesc barrierDesc = {};
-            barrierDesc.buffers = m_MetadataBuffer ? &bufferBarrier : nullptr;
-            barrierDesc.bufferNum = m_MetadataBuffer ? 1 : 0;
+            barrierDesc.buffers = bufferBarriers;
+            barrierDesc.bufferNum = bufferBarrierNum;
             barrierDesc.textures = textureBarriers;
             barrierDesc.textureNum = pictureNum;
             nri.CmdBarrier(commandBuffer, barrierDesc);
 
             video.CmdEncodeVideo(commandBuffer, encodeDesc);
 
-            bufferBarrier.before = bufferBarrier.after;
-            bufferBarrier.after = {};
+            for (uint32_t i = 0; i < bufferBarrierNum; i++) {
+                bufferBarriers[i].before = bufferBarriers[i].after;
+                bufferBarriers[i].after = {};
+            }
             uint32_t postTextureNum = 0;
             for (uint32_t i = 0; i < pictureNum; i++) {
                 if (!states[i].transitionOnVideoQueue)

@@ -115,13 +115,17 @@ struct VideoConfig {
     DpbLayout dpbLayout = DpbLayout::AUTO;
     bool encodeInputOutputOnly = true; // "VIDEO_OUTPUT_ONLY" encode source
     bool h265ListsModification = true; // PPS lists_modification_present_flag
+    bool h265ScalingListEnabled = false; // SPS scaling_list_enabled_flag without lists (default scaling lists, the encoders do not apply them)
+    bool reverseDecodeReferences = true; // H.265: pass the decode references of every second picture in the opposite POC order, also without list modification
     bool reverseReferences = true;     // H.265: pass the references of every second picture in the opposite POC order (the backend sorts them)
     bool encodeFeedback = true;        // "CmdResolveVideoEncodeFeedback" + "GetVideoEncodeFeedback", otherwise the bitstream is scanned
     Av1InfoMode av1Info = Av1InfoMode::AUTO;
     bool h265DefaultParameters = false; // encode session parameters are created by the backend (decode and Annex-B headers mirror them)
     bool decodePictureAtVideoSize = false; // decode pictures cover the video size (external streams) instead of the coded texture size
     bool h264TransformBypass = false;   // SPS qpprime_y_zero_transform_bypass_flag (lossless with QP 0), not allowed by the High profile
+    uint32_t codedAlignment = 1;       // minimum alignment of the coded size, e.g. 16 (macroblocks) for drivers that code aligned pictures
     uint8_t h264SpsId = 0;
+    uint8_t h264PpsRefIdxL0DefaultActiveMinus1 = 0; // PPS num_ref_idx_l0_default_active_minus1
     uint8_t h264PpsId = 0;
     uint8_t h265VpsId = 0;
     uint8_t h265SpsId = 0;
@@ -132,6 +136,11 @@ struct RateControlSetting {
     RateControlKind kind = RateControlKind::CQP;
     uint32_t bitrateKbps = 4000;
     uint32_t maxBitrateKbps = 0; // VBR peak, 0 = target
+    uint32_t qpMin = 0;          // CBR/VBR QP range, 0 = backend default
+    uint32_t qpMax = 0;
+    uint32_t maxFrameBits = 0;   // 0 = unlimited
+    uint32_t vbvMs = 0;          // virtual buffer size, 0 = backend default
+    uint32_t vbvInitialMs = 0;
 };
 
 struct VideoQuality {
@@ -195,6 +204,7 @@ struct FramePlan {
     bool isReference = true;
     bool isDisplay = true; // interactive: the last picture of a cycle
     bool reverseReferenceOrder = false; // H.265 RPS order independence (references are passed in POC-unsorted order)
+    bool reverseDecodeReferenceOrder = false; // the same for the decode only (encode lists are order dependent without "lists_modification_present_flag")
     uint8_t av1RefreshFrameFlags = 0xFF;
     uint8_t av1OrderHint = 0;
     uint32_t referenceNum = 0;
@@ -383,17 +393,20 @@ inline CodecParameters MakeCodecParameters(nri::GraphicsAPI graphicsAPI, const V
     params.h264Sps.referenceFrameNum = (uint8_t)referenceNum;
     params.h264Sps.pictureWidthInMbsMinus1 = (uint16_t)((codedWidth + 15) / 16 - 1);
     params.h264Sps.pictureHeightInMapUnitsMinus1 = (uint16_t)((codedHeight + 15) / 16 - 1);
-    if (isCropped) {
+    // The coded size can be smaller than the macroblock-aligned picture (D3D12 codes the video size)
+    const uint32_t h264AlignedWidth = (codedWidth + 15) & ~15u;
+    const uint32_t h264AlignedHeight = (codedHeight + 15) & ~15u;
+    if (h264AlignedWidth != config.videoWidth || h264AlignedHeight != config.videoHeight) {
         // CropUnitX/Y are 2 luma samples (4:2:0, frame_mbs_only)
         params.h264Sps.flags |= nri::VideoH264SequenceParameterSetBits::FRAME_CROPPING;
-        params.h264Sps.frameCropRightOffset = (uint16_t)((codedWidth - config.videoWidth) / 2);
-        params.h264Sps.frameCropBottomOffset = (uint16_t)((codedHeight - config.videoHeight) / 2);
+        params.h264Sps.frameCropRightOffset = (uint16_t)((h264AlignedWidth - config.videoWidth) / 2);
+        params.h264Sps.frameCropBottomOffset = (uint16_t)((h264AlignedHeight - config.videoHeight) / 2);
     }
 
     params.h264Pps.flags = nri::VideoH264PictureParameterSetBits::DEBLOCKING_FILTER_CONTROL_PRESENT;
     params.h264Pps.sequenceParameterSetId = config.h264SpsId;
     params.h264Pps.pictureParameterSetId = config.h264PpsId;
-    params.h264Pps.refIndexL0DefaultActiveMinus1 = 0;
+    params.h264Pps.refIndexL0DefaultActiveMinus1 = config.h264PpsRefIdxL0DefaultActiveMinus1;
     params.h264Pps.refIndexL1DefaultActiveMinus1 = 0;
 
     // H.265
@@ -427,6 +440,8 @@ inline CodecParameters MakeCodecParameters(nri::GraphicsAPI graphicsAPI, const V
         if (config.h265ListsModification)
             params.h265Pps.flags |= nri::VideoH265PictureParameterSetBits::LISTS_MODIFICATION_PRESENT;
     }
+    if (config.h265ScalingListEnabled)
+        params.h265Sps.flags |= nri::VideoH265SequenceParameterSetBits::SCALING_LIST_ENABLED;
     params.h265Vps.videoParameterSetId = config.h265VpsId;
     params.h265Sps.videoParameterSetId = config.h265VpsId;
     params.h265Sps.sequenceParameterSetId = config.h265SpsId;
@@ -625,6 +640,9 @@ inline bool InitializePictureLayouts(nri::CoreInterface& core, nri::Queue& queue
     });
 }
 
+// "ALL" by default; "COLOR" and "PLANE_0 | PLANE_1" cover the other ways to address both planes of an NV12 picture
+inline nri::PlaneBits g_PicturePlanes = nri::PlaneBits::ALL;
+
 inline nri::TextureBarrierDesc MakePictureBarrier(const PictureSlot& slot, nri::AccessLayoutStage before, nri::AccessLayoutStage after) {
     nri::TextureBarrierDesc barrier = {};
     barrier.texture = slot.texture;
@@ -633,7 +651,7 @@ inline nri::TextureBarrierDesc MakePictureBarrier(const PictureSlot& slot, nri::
     barrier.layerOffset = (nri::Dim_t)slot.layer;
     barrier.layerNum = 1;
     barrier.mipNum = 1;
-    barrier.planes = nri::PlaneBits::ALL;
+    barrier.planes = g_PicturePlanes;
     return barrier;
 }
 

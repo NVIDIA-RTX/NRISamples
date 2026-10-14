@@ -279,7 +279,7 @@ bool Decoder::Decode(const DecodeRequest& request, DecodedFrame& decodedFrame) {
     nri::VideoH264DecodeReferenceDesc h264References[MAX_REFERENCE_NUM] = {};
     nri::VideoH265ReferenceDesc h265References[MAX_REFERENCE_NUM] = {};
     for (uint32_t i = 0; i < plan.referenceNum; i++)
-        orderedReferences[i] = plan.references[plan.reverseReferenceOrder ? plan.referenceNum - 1 - i : i];
+        orderedReferences[i] = plan.references[plan.reverseDecodeReferenceOrder ? plan.referenceNum - 1 - i : i];
     for (uint32_t i = 0; i < plan.referenceNum; i++) {
         const PlanReference& reference = orderedReferences[i];
         references[i] = {m_Dpb[reference.slot].picture, reference.slot};

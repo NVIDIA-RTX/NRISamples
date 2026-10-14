@@ -9,6 +9,7 @@
 #include "../../External/NRIFramework/External/NRI/Source/Shared/SharedVideo.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <filesystem>
 #include <memory>
@@ -167,6 +168,7 @@ std::vector<FramePlan> BuildFramePlans(const VideoConfig& config, const std::str
         }
 
         plan.reverseReferenceOrder = config.reverseReferences && config.codec == SampleCodec::H265 && plan.referenceNum > 1 && (plan.codingIndex & 1);
+        plan.reverseDecodeReferenceOrder = config.reverseDecodeReferences && config.codec == SampleCodec::H265 && plan.referenceNum > 1 && (plan.codingIndex & 1);
 
         if (plan.isReference) {
             DpbEntry entry = {};
@@ -227,8 +229,11 @@ bool QueryVideoSize(const VideoContext& context, const VideoConfig& config, Vide
     encodeSessionDesc.type = nri::VideoSessionType::ENCODE;
     encodeSessionDesc.codec = GetNriCodec(config.codec);
     encodeSessionDesc.format = nri::Format::NV12_UNORM;
-    encodeSessionDesc.width = config.videoWidth;
-    encodeSessionDesc.height = config.videoHeight;
+    // NVIDIA D3D12 H.265 encode corrupts the bottom partial CTB row (driver 617.42, 360, 368, 376 and 400 lines at 32x32 CTBs): code multiples of 32 lines and crop
+    const uint32_t widthAlignment = config.codedAlignment;
+    const uint32_t heightAlignment = (context.graphicsAPI == nri::GraphicsAPI::D3D12 && config.codec == SampleCodec::H265) ? std::max(config.codedAlignment, 32u) : config.codedAlignment;
+    encodeSessionDesc.width = (uint32_t)AlignUp(config.videoWidth, widthAlignment); // the backends that echo the extents need the aligned size
+    encodeSessionDesc.height = (uint32_t)AlignUp(config.videoHeight, heightAlignment);
     encodeSessionDesc.maxReferenceNum = config.referenceNum;
 
     nri::VideoSessionDesc decodeSessionDesc = encodeSessionDesc;
@@ -243,8 +248,8 @@ bool QueryVideoSize(const VideoContext& context, const VideoConfig& config, Vide
         return false;
     }
 
-    const uint32_t codedWidthAlignment = std::max({encodeCapabilities.pictureAccessGranularityWidth, decodeCapabilities.pictureAccessGranularityWidth, 1u});
-    const uint32_t codedHeightAlignment = std::max({encodeCapabilities.pictureAccessGranularityHeight, decodeCapabilities.pictureAccessGranularityHeight, 1u});
+    const uint32_t codedWidthAlignment = std::max({encodeCapabilities.pictureAccessGranularityWidth, decodeCapabilities.pictureAccessGranularityWidth, widthAlignment});
+    const uint32_t codedHeightAlignment = std::max({encodeCapabilities.pictureAccessGranularityHeight, decodeCapabilities.pictureAccessGranularityHeight, heightAlignment});
     const uint32_t codedWidth = (uint32_t)AlignUp(std::max({config.videoWidth, encodeCapabilities.widthMin, decodeCapabilities.widthMin}), codedWidthAlignment);
     const uint32_t codedHeight = (uint32_t)AlignUp(std::max({config.videoHeight, encodeCapabilities.heightMin, decodeCapabilities.heightMin}), codedHeightAlignment);
     if ((encodeCapabilities.widthMax && codedWidth > encodeCapabilities.widthMax) || (decodeCapabilities.widthMax && codedWidth > decodeCapabilities.widthMax) || (encodeCapabilities.heightMax && codedHeight > encodeCapabilities.heightMax) || (decodeCapabilities.heightMax && codedHeight > decodeCapabilities.heightMax)) {
@@ -433,6 +438,7 @@ StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& o
     deviceCreationDesc.enableNRIValidation = environment.debugNRI;
     deviceCreationDesc.disableD3D12EnhancedBarriers = environment.graphicsAPI == nri::GraphicsAPI::D3D12; // D3D12 video encode command lists fail to close with enhanced barriers enabled
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
+    deviceCreationDesc.disableD3D12EnhancedBarriers = environment.graphicsAPI == nri::GraphicsAPI::D3D12 ? !std::getenv("VIDEO_SAMPLE_ENHANCED_BARRIERS") : false; // legacy barriers by default
     deviceCreationDesc.adapterDesc = &adapter;
     deviceCreationDesc.queueFamilies = queueFamilies;
     deviceCreationDesc.queueFamilyNum = helper::GetCountOf(queueFamilies);
@@ -727,6 +733,21 @@ std::vector<StreamOptions> MakeMatrixCases(const StreamOptions& base) {
             o.rateControlB = {RateControlKind::CBR, 3000, 0};
             o.minPsnr = 25.0;
         });
+        // Rate control limits: D3D12 enables them by flags, VK by the CBR/VBR structures
+        add("cbr-qp-range", [&](StreamOptions& o) {
+            setRate(o, RateControlKind::CBR, 4000, 0);
+            o.quality.rateControl.qpMin = 30;
+            o.quality.rateControl.qpMax = 30;
+        });
+        add("cbr-max-frame", [&](StreamOptions& o) {
+            setRate(o, RateControlKind::CBR, 4000, 0);
+            o.quality.rateControl.maxFrameBits = 120000;
+        });
+        add("vbr-vbv", [&](StreamOptions& o) {
+            setRate(o, RateControlKind::VBR, 3000, 6000);
+            o.quality.rateControl.vbvMs = 200;
+            o.quality.rateControl.vbvInitialMs = 100;
+        });
         add("no-feedback", [](StreamOptions& o) { o.config.encodeFeedback = false; });
         add("1080p", [](StreamOptions& o) {
             o.config.videoWidth = 1920;
@@ -778,6 +799,27 @@ std::vector<StreamOptions> MakeMatrixCases(const StreamOptions& base) {
         }
 
         if (codec == SampleCodec::H265) {
+            add("ids-nolistmod", [](StreamOptions& o) {
+                o.config.h265VpsId = 3;
+                o.config.h265SpsId = 5;
+                o.config.h265PpsId = 7;
+                o.config.referenceNum = 2;
+                o.config.h265ListsModification = false;
+                o.config.reverseReferences = false;
+            });
+            add("b-nolistmod", [](StreamOptions& o) {
+                o.gop = "BP";
+                o.config.referenceNum = 2;
+                o.config.h265ListsModification = false;
+                o.config.reverseReferences = false;
+                o.frameNum = 8;
+            });
+            // SPS scaling_list_enabled_flag without lists: the decode uses the default lists, the encoders do not, hence the PSNR limit
+            add("scaling-default", [](StreamOptions& o) {
+                o.config.h265ScalingListEnabled = true;
+                o.config.h265ListsModification = false;
+                o.minPsnr = 20.0;
+            });
             add("ids", [](StreamOptions& o) {
                 o.config.h265VpsId = 3;
                 o.config.h265SpsId = 5;
