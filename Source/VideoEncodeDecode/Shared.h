@@ -115,6 +115,7 @@ struct VideoConfig {
     DpbLayout dpbLayout = DpbLayout::AUTO;
     bool encodeInputOutputOnly = true; // "VIDEO_OUTPUT_ONLY" encode source
     bool h265ListsModification = true; // PPS lists_modification_present_flag
+    bool reverseDecodeReferences = true; // H.265: pass the decode references of every second picture in the opposite POC order, also without list modification
     bool reverseReferences = true;     // H.265: pass the references of every second picture in the opposite POC order (the backend sorts them)
     bool encodeFeedback = true;        // "CmdResolveVideoEncodeFeedback" + "GetVideoEncodeFeedback", otherwise the bitstream is scanned
     Av1InfoMode av1Info = Av1InfoMode::AUTO;
@@ -196,6 +197,7 @@ struct FramePlan {
     bool isReference = true;
     bool isDisplay = true; // interactive: the last picture of a cycle
     bool reverseReferenceOrder = false; // H.265 RPS order independence (references are passed in POC-unsorted order)
+    bool reverseDecodeReferenceOrder = false; // the same for the decode only (encode lists are order dependent without "lists_modification_present_flag")
     uint8_t av1RefreshFrameFlags = 0xFF;
     uint8_t av1OrderHint = 0;
     uint32_t referenceNum = 0;

@@ -162,6 +162,7 @@ std::vector<FramePlan> BuildFramePlans(const VideoConfig& config, const std::str
         }
 
         plan.reverseReferenceOrder = config.reverseReferences && config.codec == SampleCodec::H265 && plan.referenceNum > 1 && (plan.codingIndex & 1);
+        plan.reverseDecodeReferenceOrder = config.reverseDecodeReferences && config.codec == SampleCodec::H265 && plan.referenceNum > 1 && (plan.codingIndex & 1);
 
         if (plan.isReference) {
             DpbEntry entry = {};

@@ -263,7 +263,8 @@ void Sample::InitCmdLine(cmdline::parser& cmdLine) {
     cmdLine.add<std::string>("h265Ids", 0, "stream: H.265 VPS,SPS,PPS ids", false, m_H265IdsArg);
     cmdLine.add("h265DefaultParams", 0, "stream: create the H.265 encode session without parameter sets (backend defaults, level by size)");
     cmdLine.add("noH265ListsModification", 0, "stream: clear the H.265 PPS lists_modification_present_flag");
-    cmdLine.add("noReverseRefs", 0, "stream: H.265 references are always passed in the same order");
+    cmdLine.add("noReverseRefs", 0, "stream: H.265 encode references are always passed in the same order");
+    cmdLine.add("noReverseDecodeRefs", 0, "stream: H.265 decode references are always passed in the same order");
     cmdLine.add("verbose", 0, "headless: log every picture before it is submitted");
     cmdLine.add("encodeOnly", 0, "stream: skip the decoder (the encoded stream is still dumped)");
     cmdLine.add<std::string>("dump", 0, "headless: write stream, decoded.yuv, source.yuv and frames.csv of every case into this directory", false, "");
@@ -319,6 +320,7 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     options.config.h264TransformBypass = m_Lossless;
     options.config.h265ListsModification = !cmdLine.exist("noH265ListsModification");
     options.config.reverseReferences = !cmdLine.exist("noReverseRefs");
+    options.config.reverseDecodeReferences = !cmdLine.exist("noReverseDecodeRefs");
     options.config.codedAlignment = std::max(cmdLine.get<uint32_t>("codedAlign"), 1u);
     options.config.h264PpsRefIdxL0DefaultActiveMinus1 = (uint8_t)cmdLine.get<uint32_t>("h264PpsRefs");
     const std::string decodeDpb = cmdLine.get<std::string>("decodeDpb");
