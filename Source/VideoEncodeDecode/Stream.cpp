@@ -222,8 +222,11 @@ bool QueryVideoSize(const VideoContext& context, const VideoConfig& config, Vide
     encodeSessionDesc.type = nri::VideoSessionType::ENCODE;
     encodeSessionDesc.codec = GetNriCodec(config.codec);
     encodeSessionDesc.format = nri::Format::NV12_UNORM;
-    encodeSessionDesc.width = config.videoWidth;
-    encodeSessionDesc.height = config.videoHeight;
+    // NVIDIA D3D12 H.265 encode corrupts the bottom partial CTB row (driver 617.42, 360, 368, 376 and 400 lines at 32x32 CTBs): code multiples of 32 lines and crop
+    const uint32_t widthAlignment = config.codedAlignment;
+    const uint32_t heightAlignment = (context.graphicsAPI == nri::GraphicsAPI::D3D12 && config.codec == SampleCodec::H265) ? std::max(config.codedAlignment, 32u) : config.codedAlignment;
+    encodeSessionDesc.width = (uint32_t)AlignUp(config.videoWidth, widthAlignment); // the backends that echo the extents need the aligned size
+    encodeSessionDesc.height = (uint32_t)AlignUp(config.videoHeight, heightAlignment);
     encodeSessionDesc.maxReferenceNum = config.referenceNum;
 
     nri::VideoSessionDesc decodeSessionDesc = encodeSessionDesc;
@@ -238,8 +241,8 @@ bool QueryVideoSize(const VideoContext& context, const VideoConfig& config, Vide
         return false;
     }
 
-    const uint32_t codedWidthAlignment = std::max({encodeCapabilities.pictureAccessGranularityWidth, decodeCapabilities.pictureAccessGranularityWidth, config.codedAlignment});
-    const uint32_t codedHeightAlignment = std::max({encodeCapabilities.pictureAccessGranularityHeight, decodeCapabilities.pictureAccessGranularityHeight, config.codedAlignment});
+    const uint32_t codedWidthAlignment = std::max({encodeCapabilities.pictureAccessGranularityWidth, decodeCapabilities.pictureAccessGranularityWidth, widthAlignment});
+    const uint32_t codedHeightAlignment = std::max({encodeCapabilities.pictureAccessGranularityHeight, decodeCapabilities.pictureAccessGranularityHeight, heightAlignment});
     const uint32_t codedWidth = (uint32_t)AlignUp(std::max({config.videoWidth, encodeCapabilities.widthMin, decodeCapabilities.widthMin}), codedWidthAlignment);
     const uint32_t codedHeight = (uint32_t)AlignUp(std::max({config.videoHeight, encodeCapabilities.heightMin, decodeCapabilities.heightMin}), codedHeightAlignment);
     if ((encodeCapabilities.widthMax && codedWidth > encodeCapabilities.widthMax) || (decodeCapabilities.widthMax && codedWidth > decodeCapabilities.widthMax) || (encodeCapabilities.heightMax && codedHeight > encodeCapabilities.heightMax) || (decodeCapabilities.heightMax && codedHeight > decodeCapabilities.heightMax)) {
