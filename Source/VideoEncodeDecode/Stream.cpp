@@ -405,10 +405,6 @@ StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& o
     }
     if (hasB)
         config.referenceNum = std::max(config.referenceNum, 2u);
-    // The H.265 slice header RPS is built from the references passed to the encoder: with a B List0 limited to 1 the DPB may only hold the pictures a B can use,
-    // otherwise later pictures reference pictures the RPS dropped (ffmpeg: "Could not find ref")
-    if (hasB && config.codec == SampleCodec::H265)
-        config.referenceNum = 2;
     if (config.codec == SampleCodec::AV1)
         config.referenceNum = 1; // the AV1 picture layout uses the latest reference only
     config.referenceNum = std::clamp(config.referenceNum, 1u, MAX_REFERENCE_NUM);
