@@ -5,6 +5,9 @@
 #include "Decoder.h"
 #include "Encoder.h"
 
+// Header-only AV1 frame header parser of NRI (the public "GetVideoAV1EncodeDecodeInfo" needs an AV1 encode session)
+#include "../../External/NRIFramework/External/NRI/Source/Shared/SharedVideo.h"
+
 #include <cmath>
 #include <cstdio>
 #include <filesystem>
@@ -816,6 +819,592 @@ std::vector<StreamOptions> MakeMatrixCases(const StreamOptions& base) {
     }
 
     return cases;
+}
+
+
+//==================================================================================================
+// Decode of an external AV1 stream (OBU file, e.g. "ffmpeg -c:v libaom-av1 -f obu")
+//==================================================================================================
+
+namespace {
+
+struct BitReader {
+    const uint8_t* data = nullptr;
+    size_t size = 0;
+    size_t pos = 0;
+    bool ok = true;
+
+    uint32_t Bits(uint32_t n) {
+        uint64_t v = 0;
+        for (uint32_t i = 0; i < n; i++) {
+            uint32_t bit = 0;
+            if (pos < size * 8)
+                bit = (data[pos >> 3] >> (7 - (pos & 7))) & 1;
+            else
+                ok = false;
+            pos++;
+            v = (v << 1) | bit;
+        }
+        return (uint32_t)v;
+    }
+
+    uint32_t Uvlc() {
+        uint32_t zeros = 0;
+        while (ok && !Bits(1)) {
+            if (++zeros >= 32)
+                return UINT32_MAX;
+        }
+        return Bits(zeros) + ((1u << zeros) - 1u);
+    }
+};
+
+struct ObuSpan {
+    uint8_t type = 0;
+    size_t begin = 0;   // OBU header
+    size_t payload = 0; // first payload byte
+    size_t end = 0;
+};
+
+bool ReadObus(const std::vector<uint8_t>& data, std::vector<ObuSpan>& obus) {
+    size_t pos = 0;
+    while (pos < data.size()) {
+        const uint8_t header = data[pos];
+        const bool hasExtension = (header >> 2) & 1;
+        const bool hasSize = (header >> 1) & 1;
+        if ((header >> 7) || !hasSize)
+            return false;
+
+        size_t p = pos + 1 + (hasExtension ? 1 : 0);
+        uint64_t size = 0;
+        for (uint32_t i = 0; i < 8; i++) {
+            if (p >= data.size())
+                return false;
+            const uint8_t byte = data[p++];
+            size |= uint64_t(byte & 0x7F) << (7 * i);
+            if (!(byte & 0x80))
+                break;
+        }
+        if (p + size > data.size())
+            return false;
+
+        obus.push_back({(uint8_t)((header >> 3) & 15), pos, p, (size_t)(p + size)});
+        pos = (size_t)(p + size);
+    }
+
+    return true;
+}
+
+// Sequence header OBU payload -> neutral description (AV1 5.5)
+bool ParseSequenceHeader(const uint8_t* data, size_t size, nri::VideoAV1SequenceDesc& desc) {
+    BitReader r = {data, size};
+    desc = {};
+    auto flag = [&](nri::VideoAV1SequenceBits bit) {
+        if (r.Bits(1))
+            desc.flags |= bit;
+    };
+
+    desc.seqProfile = (uint8_t)r.Bits(3);
+    flag(nri::VideoAV1SequenceBits::STILL_PICTURE);
+    if (r.Bits(1))
+        return false; // reduced_still_picture_header
+    if (r.Bits(1)) {  // timing_info_present_flag
+        desc.flags |= nri::VideoAV1SequenceBits::TIMING_INFO_PRESENT;
+        desc.numUnitsInDisplayTick = r.Bits(32);
+        desc.timeScale = r.Bits(32);
+        if (r.Bits(1))
+            desc.numTicksPerPictureMinus1 = r.Uvlc();
+        if (r.Bits(1))
+            return false; // decoder_model_info_present_flag
+    }
+    const bool initialDisplayDelayPresent = r.Bits(1);
+    if (initialDisplayDelayPresent)
+        desc.flags |= nri::VideoAV1SequenceBits::INITIAL_DISPLAY_DELAY_PRESENT;
+    const uint32_t operatingPointNum = r.Bits(5) + 1;
+    for (uint32_t i = 0; i < operatingPointNum; i++) {
+        r.Bits(12); // operating_point_idc
+        const uint32_t level = r.Bits(5);
+        if (i == 0)
+            desc.level = (uint8_t)level;
+        if (level > 7)
+            r.Bits(1); // seq_tier
+        if (initialDisplayDelayPresent && r.Bits(1))
+            r.Bits(4);
+    }
+    desc.frameWidthBitsMinus1 = (uint8_t)r.Bits(4);
+    desc.frameHeightBitsMinus1 = (uint8_t)r.Bits(4);
+    desc.maxFrameWidthMinus1 = (uint16_t)r.Bits(desc.frameWidthBitsMinus1 + 1);
+    desc.maxFrameHeightMinus1 = (uint16_t)r.Bits(desc.frameHeightBitsMinus1 + 1);
+    if (r.Bits(1)) { // frame_id_numbers_present_flag
+        desc.flags |= nri::VideoAV1SequenceBits::FRAME_ID_NUMBERS_PRESENT;
+        desc.deltaFrameIdLengthMinus2 = (uint8_t)r.Bits(4);
+        desc.additionalFrameIdLengthMinus1 = (uint8_t)r.Bits(3);
+    }
+    flag(nri::VideoAV1SequenceBits::USE_128X128_SUPERBLOCK);
+    flag(nri::VideoAV1SequenceBits::ENABLE_FILTER_INTRA);
+    flag(nri::VideoAV1SequenceBits::ENABLE_INTRA_EDGE_FILTER);
+    flag(nri::VideoAV1SequenceBits::ENABLE_INTERINTRA_COMPOUND);
+    flag(nri::VideoAV1SequenceBits::ENABLE_MASKED_COMPOUND);
+    flag(nri::VideoAV1SequenceBits::ENABLE_WARPED_MOTION);
+    flag(nri::VideoAV1SequenceBits::ENABLE_DUAL_FILTER);
+    const bool enableOrderHint = r.Bits(1);
+    if (enableOrderHint) {
+        desc.flags |= nri::VideoAV1SequenceBits::ENABLE_ORDER_HINT;
+        flag(nri::VideoAV1SequenceBits::ENABLE_JNT_COMP);
+        flag(nri::VideoAV1SequenceBits::ENABLE_REF_FRAME_MVS);
+    }
+    desc.seqForceScreenContentTools = r.Bits(1) ? 2 : (uint8_t)r.Bits(1);
+    desc.seqForceIntegerMv = 2;
+    if (desc.seqForceScreenContentTools > 0)
+        desc.seqForceIntegerMv = r.Bits(1) ? 2 : (uint8_t)r.Bits(1);
+    if (enableOrderHint)
+        desc.orderHintBitsMinus1 = (uint8_t)r.Bits(3);
+    flag(nri::VideoAV1SequenceBits::ENABLE_SUPERRES);
+    flag(nri::VideoAV1SequenceBits::ENABLE_CDEF);
+    flag(nri::VideoAV1SequenceBits::ENABLE_RESTORATION);
+
+    // color_config()
+    const bool highBitDepth = r.Bits(1);
+    desc.bitDepth = highBitDepth ? 10 : 8;
+    if (desc.seqProfile == 2 && highBitDepth && r.Bits(1))
+        desc.bitDepth = 12;
+    const bool monochrome = desc.seqProfile == 1 ? false : r.Bits(1);
+    if (monochrome)
+        desc.flags |= nri::VideoAV1SequenceBits::MONO_CHROME;
+    uint32_t colorPrimaries = 2, transfer = 2, matrix = 2;
+    if (r.Bits(1)) {
+        desc.flags |= nri::VideoAV1SequenceBits::COLOR_DESCRIPTION_PRESENT;
+        colorPrimaries = r.Bits(8);
+        transfer = r.Bits(8);
+        matrix = r.Bits(8);
+    }
+    desc.colorPrimaries = (uint8_t)colorPrimaries;
+    desc.transferCharacteristics = (uint8_t)transfer;
+    desc.matrixCoefficients = (uint8_t)matrix;
+    if (monochrome) {
+        flag(nri::VideoAV1SequenceBits::COLOR_RANGE);
+        desc.subsamplingX = desc.subsamplingY = 1;
+    } else if (colorPrimaries == 1 && transfer == 13 && matrix == 0) {
+        desc.flags |= nri::VideoAV1SequenceBits::COLOR_RANGE;
+    } else {
+        flag(nri::VideoAV1SequenceBits::COLOR_RANGE);
+        if (desc.seqProfile == 0)
+            desc.subsamplingX = desc.subsamplingY = 1;
+        else if (desc.seqProfile == 1)
+            desc.subsamplingX = desc.subsamplingY = 0;
+        else if (desc.bitDepth == 12) {
+            desc.subsamplingX = (uint8_t)r.Bits(1);
+            desc.subsamplingY = desc.subsamplingX ? (uint8_t)r.Bits(1) : 0;
+        } else {
+            desc.subsamplingX = 1;
+            desc.subsamplingY = 0;
+        }
+        if (desc.subsamplingX && desc.subsamplingY)
+            desc.chromaSamplePosition = (uint8_t)r.Bits(2);
+    }
+    if (!monochrome)
+        flag(nri::VideoAV1SequenceBits::SEPARATE_UV_DELTA_Q);
+    flag(nri::VideoAV1SequenceBits::FILM_GRAIN_PARAMS_PRESENT);
+
+    return r.ok;
+}
+
+} // namespace
+
+StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string& path, const std::string& refYuvPath, const std::string& name, const std::string& dumpDir, bool verbose) {
+    StreamResult result = {};
+    MessageStats stats;
+
+    auto finish = [&](StreamStatus status, const std::string& message) {
+        result.status = status;
+        result.message = message;
+        result.nriErrorNum = stats.errorNum;
+        result.nriWarningNum = stats.warningNum;
+        if (status == StreamStatus::PASS && stats.errorNum) {
+            result.status = StreamStatus::FAIL;
+            result.message = "NRI reported " + std::to_string(stats.errorNum) + " error(s): " + (stats.errors.empty() ? "" : stats.errors[0]);
+        }
+        return result;
+    };
+
+    auto readFile = [](const std::string& filePath, std::vector<uint8_t>& bytes) {
+        FILE* file = std::fopen(filePath.c_str(), "rb");
+        if (!file)
+            return false;
+        std::fseek(file, 0, SEEK_END);
+        const long size = std::ftell(file);
+        std::fseek(file, 0, SEEK_SET);
+        bytes.resize(size > 0 ? (size_t)size : 0);
+        const bool ok = bytes.empty() || std::fread(bytes.data(), 1, bytes.size(), file) == bytes.size();
+        std::fclose(file);
+        return ok;
+    };
+
+    std::vector<uint8_t> fileBytes;
+    std::vector<uint8_t> refBytes;
+    if (!readFile(path, fileBytes))
+        return finish(StreamStatus::FAIL, "Failed to read " + path);
+    if (!refYuvPath.empty() && !readFile(refYuvPath, refBytes))
+        return finish(StreamStatus::FAIL, "Failed to read " + refYuvPath);
+
+    std::vector<ObuSpan> obus;
+    if (!ReadObus(fileBytes, obus))
+        return finish(StreamStatus::FAIL, "Not a low-overhead OBU stream (every OBU needs obu_size)");
+
+    nri::VideoAV1SequenceDesc sequence = {};
+    bool hasSequence = false;
+    for (const ObuSpan& obu : obus) {
+        if (obu.type == 1 && !hasSequence) {
+            if (!ParseSequenceHeader(fileBytes.data() + obu.payload, obu.end - obu.payload, sequence))
+                return finish(StreamStatus::FAIL, "Unsupported AV1 sequence header");
+            hasSequence = true;
+        }
+    }
+    if (!hasSequence)
+        return finish(StreamStatus::FAIL, "No AV1 sequence header");
+
+    if (verbose)
+        std::fprintf(stderr, "[%s] sequence: flags=0x%X profile=%u bitDepth=%u ss=%u%u size=%ux%u bits=%u/%u orderHintBitsMinus1=%u sct=%u imv=%u level=%u cp=%u tc=%u mc=%u csp=%u\n", name.c_str(), (uint32_t)sequence.flags, sequence.seqProfile, sequence.bitDepth, sequence.subsamplingX, sequence.subsamplingY, sequence.maxFrameWidthMinus1 + 1u, sequence.maxFrameHeightMinus1 + 1u, sequence.frameWidthBitsMinus1, sequence.frameHeightBitsMinus1, sequence.orderHintBitsMinus1, sequence.seqForceScreenContentTools, sequence.seqForceIntegerMv, sequence.level, sequence.colorPrimaries, sequence.transferCharacteristics, sequence.matrixCoefficients, sequence.chromaSamplePosition);
+
+    VideoConfig config = {};
+    config.codec = SampleCodec::AV1;
+    config.videoWidth = sequence.maxFrameWidthMinus1 + 1u;
+    config.videoHeight = sequence.maxFrameHeightMinus1 + 1u;
+    config.referenceNum = 8;
+    config.decodePictureAtVideoSize = true; // the AV1 frame size is the picture extent (not the texture size)
+
+    // Device
+    nri::AdapterDesc adapters[8] = {};
+    uint32_t adapterNum = helper::GetCountOf(adapters);
+    if (nri::nriEnumerateAdapters(adapters, adapterNum) != nri::Result::SUCCESS || !adapterNum)
+        return finish(StreamStatus::UNSUPPORTED, "No graphics adapters");
+    uint32_t apiAdapterNum = 0;
+    for (uint32_t i = 0; i < adapterNum; i++) {
+        if (adapters[i].supportedGraphicsAPIs & environment.graphicsAPI)
+            adapters[apiAdapterNum++] = adapters[i];
+    }
+    if (!apiAdapterNum)
+        return finish(StreamStatus::UNSUPPORTED, "No adapters support the requested graphics API");
+    const nri::AdapterDesc& adapter = adapters[std::min(environment.adapterIndex, apiAdapterNum - 1)];
+    result.adapterName = adapter.name;
+    if (!adapter.queueNum[(uint32_t)nri::QueueType::VIDEO_DECODE])
+        return finish(StreamStatus::UNSUPPORTED, "The adapter has no NRI video decode queue");
+
+    nri::QueueFamilyDesc queueFamilies[2] = {};
+    queueFamilies[0].queueNum = 1;
+    queueFamilies[0].queueType = nri::QueueType::GRAPHICS;
+    queueFamilies[1].queueNum = 1;
+    queueFamilies[1].queueType = nri::QueueType::VIDEO_DECODE;
+
+    nri::DeviceCreationDesc deviceCreationDesc = {};
+    deviceCreationDesc.graphicsAPI = environment.graphicsAPI;
+    deviceCreationDesc.enableGraphicsAPIValidation = environment.debugAPI;
+    deviceCreationDesc.enableNRIValidation = environment.debugNRI;
+    deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
+    deviceCreationDesc.adapterDesc = &adapter;
+    deviceCreationDesc.queueFamilies = queueFamilies;
+    deviceCreationDesc.queueFamilyNum = helper::GetCountOf(queueFamilies);
+    deviceCreationDesc.callbackInterface.MessageCallback = MessageCallback;
+    deviceCreationDesc.callbackInterface.AbortExecution = AbortCallback;
+    deviceCreationDesc.callbackInterface.userArg = &stats;
+
+    DeviceHolder deviceHolder;
+    if (nri::nriCreateDevice(deviceCreationDesc, deviceHolder.device) != nri::Result::SUCCESS)
+        return finish(StreamStatus::FAIL, "Failed to create the device");
+    nri::Device& device = *deviceHolder.device;
+
+    NRIInterface NRI = {};
+    nri::VideoInterface Video = {};
+    if (nri::nriGetInterface(device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI) != nri::Result::SUCCESS || nri::nriGetInterface(device, NRI_INTERFACE(nri::HelperInterface), (nri::HelperInterface*)&NRI) != nri::Result::SUCCESS)
+        return finish(StreamStatus::FAIL, "Failed to get NRI interfaces");
+    if (nri::nriGetInterface(device, NRI_INTERFACE(nri::VideoInterface), &Video) != nri::Result::SUCCESS || !Video.CreateVideoSession)
+        return finish(StreamStatus::UNSUPPORTED, "NRI video interface is unavailable");
+
+    VideoContext context = {};
+    context.nri = &NRI;
+    context.video = &Video;
+    context.device = &device;
+    context.graphicsAPI = environment.graphicsAPI;
+    if (NRI.GetQueue(device, nri::QueueType::GRAPHICS, 0, context.graphicsQueue) != nri::Result::SUCCESS || NRI.GetQueue(device, nri::QueueType::VIDEO_DECODE, 0, context.decodeQueue) != nri::Result::SUCCESS)
+        return finish(StreamStatus::FAIL, "Failed to get queues");
+
+    // Decode-only video size
+    nri::VideoSessionDesc sessionDesc = {};
+    sessionDesc.type = nri::VideoSessionType::DECODE;
+    sessionDesc.codec = nri::VideoCodec::AV1;
+    sessionDesc.format = nri::Format::NV12_UNORM;
+    sessionDesc.width = config.videoWidth;
+    sessionDesc.height = config.videoHeight;
+    sessionDesc.maxReferenceNum = config.referenceNum;
+    nri::VideoCapabilities capabilities = {};
+    Video.GetVideoCapabilities(device, sessionDesc, capabilities);
+    if (!capabilities.pictureAccessGranularityWidth || !capabilities.pictureAccessGranularityHeight)
+        return finish(StreamStatus::UNSUPPORTED, "AV1 decode is unsupported");
+    VideoSize size = {};
+    size.videoWidth = config.videoWidth;
+    size.videoHeight = config.videoHeight;
+    size.codedWidth = (uint32_t)AlignUp(std::max(config.videoWidth, capabilities.widthMin), capabilities.pictureAccessGranularityWidth);
+    size.codedHeight = (uint32_t)AlignUp(std::max(config.videoHeight, capabilities.heightMin), capabilities.pictureAccessGranularityHeight);
+    size.decodeBitstreamSizeAlignment = std::max(capabilities.bitstreamSizeAlignment, 1u);
+    size.bitstreamSize = AlignUp(std::max<uint64_t>(2 * 1024 * 1024, uint64_t(size.codedWidth) * size.codedHeight), 1024 * 1024);
+
+    CodecParameters codecParameters = {};
+    codecParameters.av1Sequence = sequence;
+
+    auto decoder = std::make_unique<Decoder>();
+    nri::Buffer* readbackBuffer = nullptr;
+    auto cleanup = [&]() {
+        NRI.DeviceWaitIdle(&device);
+        decoder.reset();
+        if (readbackBuffer)
+            NRI.DestroyBuffer(readbackBuffer);
+    };
+
+    if (!decoder->Initialize(context, config, size, codecParameters)) {
+        const bool isUnsupported = decoder->IsUnsupported();
+        const std::string message = decoder->GetStatus();
+        cleanup();
+        return finish(isUnsupported ? StreamStatus::UNSUPPORTED : StreamStatus::FAIL, message);
+    }
+
+    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(device);
+    const Nv12BufferLayout readbackLayout = MakeNv12BufferLayout(deviceDesc, size.videoWidth, size.videoHeight);
+    nri::BufferDesc readbackBufferDesc = {};
+    readbackBufferDesc.size = readbackLayout.totalSizeBytes;
+    if (NRI.CreateCommittedBuffer(device, nri::MemoryLocation::HOST_READBACK, 0.0f, readbackBufferDesc, readbackBuffer) != nri::Result::SUCCESS) {
+        cleanup();
+        return finish(StreamStatus::FAIL, "Failed to create the readback buffer");
+    }
+
+    const uint32_t width = size.videoWidth;
+    const uint32_t height = size.videoHeight;
+    const uint64_t lumaSize = uint64_t(width) * height;
+    const uint64_t frameSize = lumaSize * 3 / 2;
+
+    struct RefSlot {
+        bool valid = false;
+        uint32_t dpbSlot = 0;
+        nri::VideoFrameType type = nri::VideoFrameType::IDR;
+        uint8_t orderHint = 0;
+        uint32_t frameId = 0;
+        uint8_t saved[8] = {};
+    };
+    RefSlot refs[8] = {};
+
+    std::vector<uint8_t> decodedBytes;
+    std::vector<std::string> frameLines;
+    double psnrMin = 99.0;
+    double psnrSum = 0.0;
+    uint32_t outputNum = 0;
+    uint32_t codingIndex = 0;
+    uint64_t byteNum = 0;
+    std::string failure;
+
+    for (const ObuSpan& obu : obus) {
+        if (obu.type != 6) {
+            if (obu.type == 3 || obu.type == 4 || obu.type == 8) {
+                failure = "Unsupported OBU layout (OBU_FRAME_HEADER / OBU_TILE_GROUP): use a single OBU_FRAME per picture";
+                break;
+            }
+            continue;
+        }
+
+        EncodedFrame frame = {};
+        frame.payload.assign(fileBytes.begin() + obu.begin, fileBytes.begin() + obu.end);
+        frame.feedback.encodedBitstreamWrittenBytes = frame.payload.size();
+        byteNum += frame.payload.size();
+
+        nri::VideoAV1ReferenceDesc snapshot[8] = {};
+        for (uint32_t j = 0; j < 8; j++) {
+            snapshot[j].name = nri::VideoAV1ReferenceName::NONE;
+            snapshot[j].refFrameIndex = (uint8_t)j;
+            snapshot[j].frameType = refs[j].type;
+            snapshot[j].orderHint = refs[j].orderHint;
+            snapshot[j].frameId = refs[j].frameId;
+            snapshot[j].slot = refs[j].dpbSlot;
+            snapshot[j].savedOrderHints = refs[j].saved;
+        }
+        const bool hasReferences = refs[0].valid;
+
+        nri::VideoAV1EncodeDecodeInfoDesc infoDesc = {};
+        infoDesc.feedback = &frame.feedback;
+        infoDesc.sequence = &sequence;
+        infoDesc.encodedPayloadHeader = frame.payload.data();
+        infoDesc.encodedPayloadHeaderSize = frame.payload.size();
+        infoDesc.references = hasReferences ? snapshot : nullptr;
+        infoDesc.referenceNum = hasReferences ? 8 : 0;
+        const nri::Result infoResult = nri::video::av1::GetEncodeDecodeInfoFromHeader(infoDesc, frame.av1DecodeInfo);
+        if (infoResult != nri::Result::SUCCESS) {
+            failure = "Picture " + std::to_string(codingIndex) + ": the AV1 frame header is not supported by the NRI parser";
+            break;
+        }
+        frame.hasAv1DecodeInfo = true;
+
+        const nri::VideoAV1DecodePictureDesc& picture = frame.av1DecodeInfo.picture;
+        const bool isKey = picture.frameType == nri::VideoFrameType::IDR;
+
+        FramePlan& plan = frame.plan;
+        plan.type = isKey ? nri::VideoFrameType::IDR : nri::VideoFrameType::P;
+        plan.codingIndex = codingIndex;
+        plan.displayIndex = outputNum;
+        plan.isReference = picture.refreshFrameFlags != 0;
+        plan.isDisplay = true;
+
+        bool used[MAX_DPB_SLOT_NUM] = {};
+        for (const RefSlot& ref : refs)
+            used[ref.dpbSlot] = used[ref.dpbSlot] || ref.valid;
+        plan.setupSlot = MAX_DPB_SLOT_NUM;
+        for (uint32_t slot = 0; slot < MAX_DPB_SLOT_NUM; slot++) {
+            if (!used[slot]) {
+                plan.setupSlot = slot;
+                break;
+            }
+        }
+        if (plan.setupSlot == MAX_DPB_SLOT_NUM) {
+            failure = "No free DPB slot";
+            break;
+        }
+
+        // Distinct DPB slots referenced by the picture
+        if (!isKey) {
+            for (uint32_t i = 0; i < picture.referenceNum; i++) {
+                const uint32_t slot = picture.references[i].slot;
+                bool found = false;
+                for (uint32_t k = 0; k < plan.referenceNum; k++)
+                    found = found || plan.references[k].slot == slot;
+                if (!found && plan.referenceNum < MAX_REFERENCE_NUM) {
+                    PlanReference& reference = plan.references[plan.referenceNum++];
+                    reference.slot = slot;
+                    reference.type = picture.references[i].frameType;
+                    reference.orderHint = picture.references[i].orderHint;
+                    reference.frameId = picture.references[i].frameId;
+                }
+            }
+        }
+
+        // "SavedOrderHints" of this picture (AV1 7.20): OrderHints[] indexed by reference name
+        uint8_t savedOrderHints[8] = {};
+        savedOrderHints[0] = picture.orderHint;
+        if (isKey) {
+            for (uint8_t& hint : savedOrderHints)
+                hint = picture.orderHint;
+        } else {
+            for (uint32_t i = 0; i < picture.referenceNum; i++) {
+                const uint8_t nameIndex = nri::video::av1::GetReferenceNameIndex(picture.references[i].name);
+                if (nameIndex < 7)
+                    savedOrderHints[1 + nameIndex] = picture.references[i].orderHint;
+            }
+        }
+        frame.hasAv1SavedOrderHints = true;
+        for (const RefSlot& ref : refs) {
+            if (ref.valid)
+                std::memcpy(frame.av1SavedOrderHints[ref.dpbSlot], ref.saved, sizeof(ref.saved));
+        }
+
+        if (verbose) {
+            std::fprintf(stderr, "[%s] picture %u: %s orderHint=%u refresh=0x%02X setupSlot=%u refs:", name.c_str(), codingIndex, isKey ? "KEY" : "INTER", picture.orderHint, picture.refreshFrameFlags, plan.setupSlot);
+            for (uint32_t i = 0; i < picture.referenceNum; i++)
+                std::fprintf(stderr, " [name=%u idx=%u slot=%u hint=%u]", (uint32_t)picture.references[i].name, picture.references[i].refFrameIndex, picture.references[i].slot, picture.references[i].orderHint);
+            std::fprintf(stderr, "\n    payload=%zu bitstreamOffset=%llu bitstreamSize=%llu tileNum=%u", frame.payload.size(), (unsigned long long)frame.av1DecodeInfo.bitstreamOffset, (unsigned long long)frame.av1DecodeInfo.bitstreamSize, picture.tileNum);
+            for (uint32_t i = 0; i < picture.tileNum && i < 4; i++)
+                std::fprintf(stderr, " tile%u=[off=%u size=%u r=%u c=%u]", i, picture.tiles[i].offset, picture.tiles[i].size, picture.tiles[i].row, picture.tiles[i].column);
+            std::fprintf(stderr, "\n    flags=0x%X baseQ=%u txMode=%u interp=%u cdefBits=%u frameHeaderOffset=%u lr=[%u %u %u]", (uint32_t)picture.flags, picture.baseQIndex, picture.txMode, picture.interpolationFilter, picture.cdefBits, picture.frameHeaderOffset, picture.loopRestoration ? picture.loopRestoration->frameRestorationType[0] : 9, picture.loopRestoration ? picture.loopRestoration->frameRestorationType[1] : 9, picture.loopRestoration ? picture.loopRestoration->frameRestorationType[2] : 9);
+            std::fprintf(stderr, " skipMode=%d [%u %u]\n", !!(picture.flags & nri::VideoAV1PictureBits::SKIP_MODE_PRESENT), (uint32_t)picture.skipModeFrames[0], (uint32_t)picture.skipModeFrames[1]);
+        }
+
+        DecodeRequest decodeRequest = {};
+        decodeRequest.frame = &frame;
+        decodeRequest.nv12ReadbackBuffer = readbackBuffer;
+        decodeRequest.nv12Layout = &readbackLayout;
+        DecodedFrame decodedFrame = {};
+        if (!decoder->Decode(decodeRequest, decodedFrame)) {
+            failure = "Picture " + std::to_string(codingIndex) + ": " + decoder->GetStatus();
+            break;
+        }
+
+        // Shown pictures only (the first frame header bits: show_existing_frame, frame_type, show_frame)
+        const bool isShown = !!(picture.flags & nri::VideoAV1PictureBits::SHOW_FRAME);
+        if (isShown) {
+            const uint8_t* readback = (const uint8_t*)NRI.MapBuffer(*readbackBuffer, 0, readbackLayout.totalSizeBytes);
+            if (!readback) {
+                failure = "Failed to map the readback buffer";
+                break;
+            }
+            const size_t offset = decodedBytes.size();
+            decodedBytes.resize(offset + frameSize);
+            for (uint32_t y = 0; y < height; y++)
+                std::memcpy(decodedBytes.data() + offset + uint64_t(y) * width, readback + uint64_t(y) * readbackLayout.yRowPitchBytes, width);
+            for (uint32_t y = 0; y < height / 2; y++)
+                std::memcpy(decodedBytes.data() + offset + lumaSize + uint64_t(y) * width, readback + readbackLayout.uvOffsetBytes + uint64_t(y) * readbackLayout.uvRowPitchBytes, width);
+            NRI.UnmapBuffer(*readbackBuffer);
+
+            double psnr = 99.0;
+            if (!refBytes.empty()) {
+                if (offset + frameSize > refBytes.size()) {
+                    failure = "Reference has fewer frames";
+                    break;
+                }
+                double lumaError = 0.0;
+                ComputeSquaredError(refBytes.data() + offset, decodedBytes.data() + offset, lumaSize, lumaError);
+                double chromaError = 0.0;
+                ComputeSquaredError(refBytes.data() + offset + lumaSize, decodedBytes.data() + offset + lumaSize, lumaSize / 2, chromaError);
+                psnr = (lumaError == 0.0 && chromaError == 0.0) ? 99.0 : std::min(98.0, GetPsnr(lumaError + chromaError, lumaSize * 3 / 2));
+            }
+            psnrMin = std::min(psnrMin, psnr);
+            psnrSum += psnr;
+            outputNum++;
+            char line[128] = {};
+            std::snprintf(line, sizeof(line), "%u,%s,%u,%u,%u,%zu,0,%.2f,0", codingIndex, isKey ? "IDR" : "P", plan.displayIndex, picture.orderHint, plan.setupSlot, frame.payload.size(), psnr);
+            frameLines.push_back(line);
+        }
+
+        // Reference update (AV1 7.20)
+        for (uint32_t j = 0; j < 8; j++) {
+            if (picture.refreshFrameFlags & (1u << j)) {
+                refs[j].valid = true;
+                refs[j].dpbSlot = plan.setupSlot;
+                refs[j].type = plan.type;
+                refs[j].orderHint = picture.orderHint;
+                refs[j].frameId = picture.currentFrameId;
+                std::memcpy(refs[j].saved, savedOrderHints, sizeof(savedOrderHints));
+            }
+        }
+        codingIndex++;
+    }
+
+    cleanup();
+
+    if (!dumpDir.empty()) {
+        const std::filesystem::path directory = std::filesystem::path(dumpDir) / name;
+        std::error_code errorCode;
+        std::filesystem::create_directories(directory, errorCode);
+        WriteFile(directory / "stream.obu", fileBytes);
+        WriteFile(directory / "decoded.yuv", decodedBytes);
+        if (!refBytes.empty())
+            WriteFile(directory / "source.yuv", refBytes);
+        char info[256] = {};
+        std::snprintf(info, sizeof(info), "codec=AV1\nvideo=%ux%u\ncoded=%ux%u\nframes=%u\nencodeOnly=0\n", width, height, size.codedWidth, size.codedHeight, outputNum);
+        WriteFile(directory / "info.txt", std::vector<uint8_t>(info, info + std::strlen(info)));
+        std::string csv = "coding,type,display,poc,setupSlot,bytes,averageQp,psnrY,psnrUV\n";
+        for (const std::string& line : frameLines)
+            csv += line + "\n";
+        WriteFile(directory / "frames.csv", std::vector<uint8_t>(csv.begin(), csv.end()));
+    }
+
+    result.frameNum = outputNum;
+    result.byteNum = byteNum;
+    result.psnrMin = outputNum ? psnrMin : 0.0;
+    result.psnrAvg = outputNum ? psnrSum / outputNum : 0.0;
+    result.notes = "coded=" + std::to_string(size.codedWidth) + "x" + std::to_string(size.codedHeight) + " refs=8 external-av1" + (refBytes.empty() ? " (no reference)" : " (bit-exact vs reference required)");
+
+    if (!failure.empty())
+        return finish(StreamStatus::FAIL, failure);
+    if (!refBytes.empty() && (outputNum * frameSize != refBytes.size() || result.psnrMin < 99.0)) {
+        char message[128] = {};
+        std::snprintf(message, sizeof(message), "decoded %u frames, reference has %llu; min PSNR vs reference %.2f dB (bit-exact is 99)", outputNum, (unsigned long long)(refBytes.size() / frameSize), result.psnrMin);
+        return finish(StreamStatus::FAIL, message);
+    }
+
+    return finish(StreamStatus::PASS, "");
 }
 
 } // namespace video_sample

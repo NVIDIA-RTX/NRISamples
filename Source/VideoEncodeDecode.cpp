@@ -118,7 +118,9 @@ private:
     std::vector<video_sample::FramePlan> m_Plans;
     size_t m_PlanIndex = 0;
     video_sample::StreamOptions m_StreamOptions = {};
-    std::string m_StreamMode; // "", "stream", "matrix", "list"
+    std::string m_StreamMode; // "", "stream", "matrix", "list", "decodeFile"
+    std::string m_DecodeFile;
+    std::string m_RefYuv;
     std::string m_CaseFilter;
     std::string m_GopArg;
     std::string m_DecodeDpbArg = "auto";
@@ -262,6 +264,8 @@ void Sample::InitCmdLine(cmdline::parser& cmdLine) {
     cmdLine.add("h265DefaultParams", 0, "stream: create the H.265 encode session without parameter sets (backend defaults, level by size)");
     cmdLine.add("noH265ListsModification", 0, "stream: clear the H.265 PPS lists_modification_present_flag");
     cmdLine.add("noReverseRefs", 0, "stream: H.265 references are always passed in the same order");
+    cmdLine.add<std::string>("decodeFile", 0, "headless: decode an AV1 OBU file (one OBU_FRAME per picture, e.g. from libaom) instead of encoding", false, "");
+    cmdLine.add<std::string>("refYuv", 0, "decodeFile: NV12 reference of the shown pictures, the decode must be bit-exact", false, "");
     cmdLine.add("verbose", 0, "headless: log every picture before it is submitted");
     cmdLine.add("encodeOnly", 0, "stream: skip the decoder (the encoded stream is still dumped)");
     cmdLine.add<std::string>("dump", 0, "headless: write stream, decoded.yuv, source.yuv and frames.csv of every case into this directory", false, "");
@@ -305,6 +309,11 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
 
     // Headless
     m_StreamMode = cmdLine.exist("listCases") ? "list" : (cmdLine.exist("matrix") ? "matrix" : (cmdLine.exist("stream") ? "stream" : ""));
+    if (cmdLine.exist("decodeFile")) {
+        m_StreamMode = "decodeFile";
+        m_DecodeFile = cmdLine.get<std::string>("decodeFile");
+        m_RefYuv = cmdLine.get<std::string>("refYuv");
+    }
     m_CaseFilter = cmdLine.get<std::string>("case");
     m_VideoSizeExplicit = cmdLine.exist("videoWidth") || cmdLine.exist("videoHeight");
 
@@ -929,6 +938,15 @@ int32_t Sample::RunHeadless(nri::GraphicsAPI graphicsAPI) {
     environment.adapterIndex = m_AdapterIndex;
     environment.debugAPI = m_DebugAPI;
     environment.debugNRI = true;
+
+    if (m_StreamMode == "decodeFile") {
+        const StreamResult result = RunDecodeFile(environment, m_DecodeFile, m_RefYuv, m_StreamOptions.name, m_StreamOptions.dumpDir, m_StreamOptions.verbose);
+        std::printf("[%s] %s api=%s adapter=\"%s\" frames=%u bytes=%llu psnrY(min/avg)=%.2f/%.2f nriErrors=%u nriWarnings=%u %s%s%s\n",
+            GetStreamStatusName(result.status), m_StreamOptions.name.c_str(), nri::nriGetGraphicsAPIString(graphicsAPI), result.adapterName.c_str(), result.frameNum, (unsigned long long)result.byteNum, result.psnrMin, result.psnrAvg, result.nriErrorNum, result.nriWarningNum,
+            result.notes.c_str(), result.message.empty() ? "" : " | ", result.message.c_str());
+        std::fflush(stdout);
+        return result.status == StreamStatus::PASS ? 0 : (result.status == StreamStatus::FAIL ? 1 : 2);
+    }
 
     StreamOptions base = m_StreamOptions;
     if (m_StreamMode != "stream") {

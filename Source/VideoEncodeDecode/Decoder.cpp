@@ -133,15 +133,17 @@ bool Decoder::Initialize(const VideoContext& context, const VideoConfig& config,
     m_DpbSlotNum = std::max(m_Config.referenceNum + 1, useArray ? m_Capabilities.dpbTextureArrayMinLayerNum : 0u);
     m_DpbSlotNum = std::min(m_DpbSlotNum, MAX_DPB_SLOT_NUM);
 
+    const uint32_t pictureWidth = m_Config.decodePictureAtVideoSize ? m_Size.videoWidth : 0;
+    const uint32_t pictureHeight = m_Config.decodePictureAtVideoSize ? m_Size.videoHeight : 0;
     bool isCreated = false;
     if (m_IsDistinct) {
         textureDesc.usage |= nri::TextureUsageBits::VIDEO_REFERENCE_ONLY;
-        isCreated = CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::DECODE_REFERENCE, useArray, m_DpbSlotNum, "VideoDecodeDpb", m_Dpb, m_Textures);
+        isCreated = CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::DECODE_REFERENCE, useArray, m_DpbSlotNum, "VideoDecodeDpb", m_Dpb, m_Textures, pictureWidth, pictureHeight);
 
         textureDesc.usage = nri::TextureUsageBits::VIDEO_DECODE | nri::TextureUsageBits::VIDEO_OUTPUT_ONLY;
-        isCreated = isCreated && CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::DECODE_OUTPUT, false, 1, "VideoDecodeOutput", &m_Output, m_Textures);
+        isCreated = isCreated && CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::DECODE_OUTPUT, false, 1, "VideoDecodeOutput", &m_Output, m_Textures, pictureWidth, pictureHeight);
     } else
-        isCreated = CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::DECODE_OUTPUT, useArray, m_DpbSlotNum, "VideoDecodeDpb", m_Dpb, m_Textures);
+        isCreated = CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::DECODE_OUTPUT, useArray, m_DpbSlotNum, "VideoDecodeDpb", m_Dpb, m_Textures, pictureWidth, pictureHeight);
     if (!isCreated) {
         m_Status = "Failed to create NV12 decode pictures";
         return false;
@@ -336,9 +338,10 @@ bool Decoder::Decode(const DecodeRequest& request, DecodedFrame& decodedFrame) {
         if (av1Info.picture.references && av1Info.picture.referenceNum)
             av1Info.picture.references = av1Info.references;
         if (!isKeyFrame) {
+            av1DecodeOrderHints[0] = frame.hasAv1SavedOrderHints ? av1Info.picture.orderHint : 0;
             av1Info.picture.orderHints = av1DecodeOrderHints;
             for (uint32_t i = 0; i < av1Info.picture.referenceNum && i < helper::GetCountOf(av1Info.references); i++)
-                av1Info.references[i].savedOrderHints = av1DecodeOrderHints;
+                av1Info.references[i].savedOrderHints = frame.hasAv1SavedOrderHints ? frame.av1SavedOrderHints[av1Info.references[i].slot % MAX_DPB_SLOT_NUM] : av1DecodeOrderHints;
         }
     }
 
