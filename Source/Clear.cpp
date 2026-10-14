@@ -71,6 +71,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
+
+    if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & graphicsAPI))
+        exit(0);
+
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
     // NRI
@@ -229,7 +233,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     }
 
     // Present
-    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
+    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore, 0);
 
     { // Signaling after "Present" improves D3D11 performance a bit
         nri::FenceSubmitDesc signalFence = {};

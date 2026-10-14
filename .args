@@ -12,6 +12,9 @@
         },
         {
           "Command": "--api=VULKAN"
+        },
+        {
+          "Command": "--api=WGPU"
         }
       ]
     },

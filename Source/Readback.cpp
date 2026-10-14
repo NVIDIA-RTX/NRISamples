@@ -86,6 +86,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
+
+    if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & graphicsAPI))
+        exit(0);
+
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
     // NRI
@@ -97,9 +101,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     // Create streamer
     nri::StreamerDesc streamerDesc = {};
     streamerDesc.dynamicBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
-    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER};
+    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX | nri::BufferUsageBits::INDEX};
     streamerDesc.constantBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
     streamerDesc.queuedFrameNum = GetQueuedFrameNum();
+    streamerDesc.hostDataCapacity = IMGUI_HOST_DATA_CAPACITY;
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
     // Command queue
@@ -237,7 +242,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     {
         nri::TextureBarrierDesc textureBarriers = {};
         textureBarriers.texture = swapChainTexture.texture;
-        textureBarriers.after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE};
+        textureBarriers.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
         textureBarriers.layerNum = 1;
         textureBarriers.mipNum = 1;
 
@@ -246,22 +251,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         barrierDesc.textures = &textureBarriers;
         NRI.CmdBarrier(commandBuffer, barrierDesc);
 
-        nri::TextureDataLayoutDesc dstDataLayoutDesc = {};
-        dstDataLayoutDesc.rowPitch = helper::Align(4, NRI.GetDeviceDesc(*m_Device).memoryAlignment.uploadBufferTextureRow);
-
-        nri::TextureRegionDesc srcRegionDesc = {};
-        srcRegionDesc.x = (uint16_t)clamp(ImGui::GetMousePos().x, 0.0f, float(windowWidth - 1));
-        srcRegionDesc.y = (uint16_t)clamp(ImGui::GetMousePos().y, 0.0f, float(windowHeight - 1));
-        srcRegionDesc.width = 1;
-        srcRegionDesc.height = 1;
-        srcRegionDesc.depth = 1;
-
-        // before clearing the texture read back contents under the mouse cursor
-        NRI.CmdReadbackTextureToBuffer(commandBuffer, *m_ReadbackBuffer, dstDataLayoutDesc, *swapChainTexture.texture, srcRegionDesc);
-
-        textureBarriers.before = textureBarriers.after;
-        textureBarriers.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
-        NRI.CmdBarrier(commandBuffer, barrierDesc);
+        const nri::ImguiRenderData imguiRenderData = CmdCopyImguiData(commandBuffer, *m_Streamer);
 
         nri::AttachmentDesc colorAttachmentDesc = {};
         colorAttachmentDesc.descriptor = swapChainTexture.colorAttachment;
@@ -269,8 +259,6 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         nri::RenderingDesc renderingDesc = {};
         renderingDesc.colorNum = 1;
         renderingDesc.colors = &colorAttachmentDesc;
-
-        CmdCopyImguiData(commandBuffer, *m_Streamer);
 
         NRI.CmdBeginRendering(commandBuffer, renderingDesc);
         {
@@ -296,8 +284,33 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             clearDesc.value.color.f = {0.0f, 0.0f, 1.0f, 1.0f};
             nri::Rect rect3 = {0, static_cast<int16_t>(y * 2), w, h3};
             NRI.CmdClearAttachments(commandBuffer, &clearDesc, 1, &rect3, 1);
+        }
+        NRI.CmdEndRendering(commandBuffer);
 
-            CmdDrawImgui(commandBuffer, swapChainTexture.attachmentFormat, 1.0f, true);
+        textureBarriers.before = textureBarriers.after;
+        textureBarriers.after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE};
+        NRI.CmdBarrier(commandBuffer, barrierDesc);
+
+        nri::TextureDataLayoutDesc dstDataLayoutDesc = {};
+        dstDataLayoutDesc.rowPitch = helper::Align(4, NRI.GetDeviceDesc(*m_Device).memoryAlignment.uploadBufferTextureRow);
+
+        nri::TextureRegionDesc srcRegionDesc = {};
+        srcRegionDesc.x = (uint16_t)clamp(ImGui::GetMousePos().x, 0.0f, float(windowWidth - 1));
+        srcRegionDesc.y = (uint16_t)clamp(ImGui::GetMousePos().y, 0.0f, float(windowHeight - 1));
+        srcRegionDesc.width = 1;
+        srcRegionDesc.height = 1;
+        srcRegionDesc.depth = 1;
+
+        // Read back contents under the mouse cursor before drawing UI.
+        NRI.CmdReadbackTextureToBuffer(commandBuffer, *m_ReadbackBuffer, dstDataLayoutDesc, *swapChainTexture.texture, srcRegionDesc);
+
+        textureBarriers.before = textureBarriers.after;
+        textureBarriers.after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT};
+        NRI.CmdBarrier(commandBuffer, barrierDesc);
+
+        NRI.CmdBeginRendering(commandBuffer, renderingDesc);
+        {
+            CmdDrawImgui(commandBuffer, imguiRenderData, swapChainTexture.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(commandBuffer);
 
@@ -330,7 +343,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.EndStreamerFrame(*m_Streamer);
 
     // Present
-    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
+    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore, 0);
 
     { // Signaling after "Present" improves D3D11 performance a bit
         nri::FenceSubmitDesc signalFence = {};

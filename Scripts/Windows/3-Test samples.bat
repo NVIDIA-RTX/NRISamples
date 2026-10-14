@@ -1,4 +1,8 @@
 @echo off
+setlocal
+for %%I in ("%~dp0..\..") do set "ROOT=%%~fI"
+
+pushd "%ROOT%" || exit /B 1
 
 set DIR_DATA=_Data
 set DIR_BIN=_Bin\Release
@@ -11,7 +15,8 @@ if not exist "%DIR_BIN%" (
 if not exist "%DIR_BIN%" (
     echo The project is not compiled!
     pause
-    exit /b
+    popd
+    exit /b 1
 )
 echo Running samples from '%DIR_BIN%'...
 echo.
@@ -33,23 +38,36 @@ call :TestSample BindlessSceneViewer
 call :TestSample Buffers
 call :TestSample Clear
 call :TestSample ClearStorage
+call :TestSample CopyTests
+call :TestSample DescriptorPoolIndexing
 call :TestSample DescriptorHeapIndexing
+call :TestSample DescriptorManagement
+call :TestSample DedicatedQueues
+call :TestSample GraphicsPipelineStates
 call :TestSample InputAttachment
+call :TestSample IndirectCommands
 call :TestSample LowLatency
+call :TestSample MemoryAliasing
+call :TestSample MeshShader
 call :TestSample Multisample
 call :TestSample MultiThreading
 call :TestSample Multiview
+call :TestSample Queries
+call :TestSample RayTracingAdvanced
 call :TestSample RayTracingBoxes
 call :TestSample RayTracingTriangle
 call :TestSample Readback
 call :TestSample Resize
 call :TestSample Resources
 call :TestSample SceneViewer
+call :TestSample Streamer
+call :TestSample TextureTypes
 call :TestSample Triangle
 call :TestSample Wrapper
 
 pause
 
+popd
 exit /b
 
 ::========================================================================================
@@ -75,6 +93,15 @@ echo.
 
 echo %1 [VULKAN]
 "%DIR_BIN%\%1.exe" --api=VULKAN --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER%
+if %ERRORLEVEL% equ 0 (
+    echo =^> OK
+) else (
+    echo =^> FAILED!
+)
+echo.
+
+echo %1 [WGPU]
+"%DIR_BIN%\%1.exe" --api=WGPU --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER%
 if %ERRORLEVEL% equ 0 (
     echo =^> OK
 ) else (

@@ -82,6 +82,7 @@ endif()
 
 # External/NRIFramework
 set(NRI_SHADERS_PATH "${SHADER_OUTPUT_PATH}" CACHE STRING "")
+set(SHADERMAKE_FIND_SLANG ON)
 
 add_subdirectory("External/NRIFramework")
 
@@ -120,6 +121,7 @@ set(SHADERMAKE_GENERAL_ARGS
     --sRegShift 0 --bRegShift 32 --uRegShift 64 --tRegShift 128 # TODO: must be in sync with "VK_BINDING_OFFSETS"
     --sourceDir "Shaders"
     --ignoreConfigDir
+    --vulkanVersion 1.2 # only for WGPU
     -c "Shaders/Shaders.cfg"
     -o "${SHADER_OUTPUT_PATH}"
     -I "Shaders"
@@ -138,7 +140,7 @@ if(NRI_ENABLE_D3D12_SUPPORT)
 endif()
 
 if(NRI_ENABLE_VK_SUPPORT)
-    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p SPIRV --compiler "${SHADERMAKE_DXC_VK_PATH}" ${SHADERMAKE_GENERAL_ARGS})
+    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p SPIRV --compiler "${SHADERMAKE_DXC_VK_PATH}" ${SHADERMAKE_GENERAL_ARGS} --compilerAlias "SLANG=${SHADERMAKE_SLANG_PATH}")
 endif()
 
 add_custom_target(${PROJECT_NAME}Shaders ALL
@@ -175,19 +177,31 @@ add_sample(Buffers c)
 add_sample(BindlessSceneViewer cpp)
 add_sample(Clear cpp)
 add_sample(ClearStorage c)
+add_sample(CopyTests cpp)
+add_sample(DescriptorPoolIndexing cpp)
 add_sample(DescriptorHeapIndexing cpp)
+add_sample(DescriptorManagement cpp)
+add_sample(DedicatedQueues cpp)
 add_sample(DeviceInfo c)
+add_sample(GraphicsPipelineStates cpp)
 add_sample(InputAttachment cpp)
+add_sample(IndirectCommands cpp)
 add_sample(LowLatency cpp)
+add_sample(MemoryAliasing cpp)
+add_sample(MeshShader cpp)
 add_sample(Multisample cpp)
 add_sample(MultiThreading cpp)
 add_sample(Multiview cpp)
+add_sample(Queries cpp)
+add_sample(RayTracingAdvanced cpp)
 add_sample(RayTracingTriangle cpp)
 add_sample(RayTracingBoxes cpp)
 add_sample(Readback cpp)
 add_sample(Resize cpp)
 add_sample(Resources c)
 add_sample(SceneViewer cpp)
+add_sample(Streamer cpp)
+add_sample(TextureTypes cpp)
 add_sample(Triangle cpp)
 
 add_sample(VideoEncodeDecode cpp)

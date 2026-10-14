@@ -191,15 +191,6 @@ Sample::~Sample() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
-    uint32_t concurrentThreadMaxNum = std::thread::hardware_concurrency();
-    m_ThreadNum = std::min((concurrentThreadMaxNum * 3) / 4, (uint32_t)THREAD_MAX_NUM);
-
-    for (ThreadContext& threadContext : m_ThreadContexts)
-        threadContext.control.store(HALT, std::memory_order_relaxed);
-
-    m_Boxes.resize(std::max(BOX_NUM, m_ThreadNum));
-    m_BoxesPerThread = (uint32_t)m_Boxes.size() / (uint32_t)m_ThreadNum;
-
     // Adapters
     nri::AdapterDesc adapterDesc[2] = {};
     uint32_t adapterDescsNum = helper::GetCountOf(adapterDesc);
@@ -215,7 +206,20 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
+
+    if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & graphicsAPI))
+        exit(0);
+
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
+
+    uint32_t concurrentThreadMaxNum = std::thread::hardware_concurrency();
+    m_ThreadNum = std::min((concurrentThreadMaxNum * 3) / 4, (uint32_t)THREAD_MAX_NUM);
+
+    for (ThreadContext& threadContext : m_ThreadContexts)
+        threadContext.control.store(HALT, std::memory_order_relaxed);
+
+    m_Boxes.resize(std::max(BOX_NUM, m_ThreadNum));
+    m_BoxesPerThread = (uint32_t)m_Boxes.size() / (uint32_t)m_ThreadNum;
 
     // NRI
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), (nri::CoreInterface*)&NRI));
@@ -226,9 +230,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     // Create streamer
     nri::StreamerDesc streamerDesc = {};
     streamerDesc.dynamicBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
-    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER};
+    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX | nri::BufferUsageBits::INDEX};
     streamerDesc.constantBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
     streamerDesc.queuedFrameNum = GetQueuedFrameNum();
+    streamerDesc.hostDataCapacity = IMGUI_HOST_DATA_CAPACITY;
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
     NRI_ABORT_ON_FAILURE(NRI.GetQueue(*m_Device, nri::QueueType::GRAPHICS, 0, m_GraphicsQueue));
@@ -425,7 +430,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
 
     // Wait for completion
     if (m_MultiThreading) {
-        while (m_ReadyCount.load(std::memory_order_relaxed) != m_ThreadNum - 1)
+        while (m_ReadyCount.load(std::memory_order_acquire) != m_ThreadNum - 1)
             _mm_pause();
     }
 
@@ -442,11 +447,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             renderingDesc.colorNum = 1;
             renderingDesc.colors = &colorAttachmentDesc;
 
-            CmdCopyImguiData(commandBufferPost, *m_Streamer);
+            const nri::ImguiRenderData imguiRenderData = CmdCopyImguiData(commandBufferPost, *m_Streamer);
 
             NRI.CmdBeginRendering(commandBufferPost, renderingDesc);
             {
-                CmdDrawImgui(commandBufferPost, m_BackBuffer->attachmentFormat, 1.0f, true);
+                CmdDrawImgui(commandBufferPost, imguiRenderData, m_BackBuffer->attachmentFormat, 1.0f, true);
             }
             NRI.CmdEndRendering(commandBufferPost);
 
@@ -513,7 +518,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.EndStreamerFrame(*m_Streamer);
 
     // Present
-    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
+    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore, 0);
 
     { // Signaling after "Present" improves D3D11 performance a bit
         nri::FenceSubmitDesc signalFence = {};
@@ -723,6 +728,7 @@ void Sample::CreatePipeline(nri::Format swapChainFormat) {
 
     nri::VertexStreamDesc vertexStreamDesc = {};
     vertexStreamDesc.bindingSlot = 0;
+    vertexStreamDesc.stride = deviceDesc.features.extendedDynamicState ? 0 : sizeof(Vertex);
 
     nri::VertexAttributeDesc vertexAttributeDesc[2] = {
         {
@@ -857,11 +863,11 @@ void Sample::CreateVertexBuffer() {
 
     nri::BufferDesc bufferDesc = {};
     bufferDesc.size = helper::GetByteSizeOf(vertices);
-    bufferDesc.usage = nri::BufferUsageBits::VERTEX_BUFFER;
+    bufferDesc.usage = nri::BufferUsageBits::VERTEX;
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_VertexBuffer));
 
     bufferDesc.size = helper::GetByteSizeOf(indices);
-    bufferDesc.usage = nri::BufferUsageBits::INDEX_BUFFER;
+    bufferDesc.usage = nri::BufferUsageBits::INDEX;
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_IndexBuffer));
 
     nri::Buffer* const buffers[] = {m_VertexBuffer, m_IndexBuffer};
@@ -897,7 +903,7 @@ void Sample::CreateTransformConstantBuffer() {
 
     nri::BufferDesc bufferDesc = {};
     bufferDesc.size = m_Boxes.size() * alignedMatrixSize;
-    bufferDesc.usage = nri::BufferUsageBits::CONSTANT_BUFFER;
+    bufferDesc.usage = nri::BufferUsageBits::CONSTANT;
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_TransformConstantBuffer));
 
     nri::ResourceGroupDesc resourceGroupDesc = {};
@@ -1067,7 +1073,7 @@ void Sample::CreateFakeConstantBuffers() {
 
     nri::BufferDesc bufferDesc = {};
     bufferDesc.size = fakeConstantBufferRangeNum * constantRangeSize;
-    bufferDesc.usage = nri::BufferUsageBits::CONSTANT_BUFFER;
+    bufferDesc.usage = nri::BufferUsageBits::CONSTANT;
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_FakeConstantBuffer));
 
     nri::ResourceGroupDesc resourceGroupDesc = {};
@@ -1106,7 +1112,7 @@ void Sample::CreateViewConstantBuffer() {
 
     nri::BufferDesc bufferDesc = {};
     bufferDesc.size = constantRangeSize;
-    bufferDesc.usage = nri::BufferUsageBits::CONSTANT_BUFFER;
+    bufferDesc.usage = nri::BufferUsageBits::CONSTANT;
     NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_ViewConstantBuffer));
 
     nri::ResourceGroupDesc resourceGroupDesc = {};

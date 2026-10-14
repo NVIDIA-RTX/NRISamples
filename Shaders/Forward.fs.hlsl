@@ -3,7 +3,6 @@
 #include "NRI.hlsl"
 #include "ForwardResources.hlsli"
 
-[earlydepthstencil]
 float4 main( in Attributes input ) : SV_Target
 {
     PS_INPUT;

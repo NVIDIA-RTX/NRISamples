@@ -121,6 +121,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
+
+    if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & graphicsAPI))
+        exit(0);
+
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
     // NRI
@@ -134,9 +138,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     // Create streamer
     nri::StreamerDesc streamerDesc = {};
     streamerDesc.dynamicBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
-    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER};
+    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX | nri::BufferUsageBits::INDEX};
     streamerDesc.constantBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
     streamerDesc.queuedFrameNum = GetQueuedFrameNum();
+    streamerDesc.hostDataCapacity = IMGUI_HOST_DATA_CAPACITY;
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
     // Command queues
@@ -225,6 +230,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     { // Graphics pipeline
         nri::VertexStreamDesc vertexStreamDesc = {};
         vertexStreamDesc.bindingSlot = 0;
+        vertexStreamDesc.stride = deviceDesc.features.extendedDynamicState ? 0 : sizeof(Vertex);
 
         nri::VertexAttributeDesc vertexAttributeDesc[1] = {};
         {
@@ -279,11 +285,13 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         NRI_ABORT_ON_FAILURE(NRI.CreateComputePipeline(*m_Device, computePipelineDesc, m_ComputePipeline));
     }
 
-    { // Storage texture
+    // Storage texture
+    constexpr nri::Format storageTextureFormat = nri::Format::RGBA8_UNORM; // TODO: dictated by the shader and "SwapChainFormat"
+    {
         nri::TextureDesc textureDesc = {};
         textureDesc.type = nri::TextureType::TEXTURE_2D;
         textureDesc.usage = nri::TextureUsageBits::SHADER_RESOURCE_STORAGE;
-        textureDesc.format = swapChainFormat;
+        textureDesc.format = storageTextureFormat;
         textureDesc.width = (uint16_t)GetOutputResolution().x / 2;
         textureDesc.height = (uint16_t)GetOutputResolution().y;
         textureDesc.mipNum = 1;
@@ -294,7 +302,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     { // Geometry buffer
         nri::BufferDesc bufferDesc = {};
         bufferDesc.size = sizeof(Vertex) * VERTEX_NUM;
-        bufferDesc.usage = nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER;
+        bufferDesc.usage = nri::BufferUsageBits::VERTEX | nri::BufferUsageBits::INDEX;
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, m_GeometryBuffer));
     }
 
@@ -317,7 +325,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     }
 
     { // Storage descriptor
-        nri::TextureViewDesc textureViewDesc = {m_Texture, nri::TextureView::STORAGE_TEXTURE, swapChainFormat};
+        nri::TextureViewDesc textureViewDesc = {m_Texture, nri::TextureView::STORAGE_TEXTURE, storageTextureFormat};
 
         NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, m_Descriptor));
     }
@@ -462,7 +470,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         renderingDesc.colorNum = 1;
         renderingDesc.colors = &colorAttachmentDesc;
 
-        CmdCopyImguiData(commandBuffer1, *m_Streamer);
+        const nri::ImguiRenderData imguiRenderData = CmdCopyImguiData(commandBuffer1, *m_Streamer);
 
         NRI.CmdBeginRendering(commandBuffer1, renderingDesc);
         {
@@ -490,7 +498,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             NRI.CmdSetPipeline(commandBuffer1, *m_GraphicsPipeline);
             NRI.CmdDraw(commandBuffer1, {VERTEX_NUM, 1, 0, 0});
 
-            CmdDrawImgui(commandBuffer1, swapChainTexture.attachmentFormat, 1.0f, true);
+            CmdDrawImgui(commandBuffer1, imguiRenderData, swapChainTexture.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(commandBuffer1);
     }
@@ -604,7 +612,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.EndStreamerFrame(*m_Streamer);
 
     // Present
-    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
+    NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore, 0);
 
     { // Signaling after "Present" improves D3D11 performance a bit
         nri::FenceSubmitDesc signalFence = {};

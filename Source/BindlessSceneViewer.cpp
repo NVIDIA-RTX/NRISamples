@@ -163,6 +163,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
     deviceCreationDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceCreationDesc.adapterDesc = &adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
+
+    if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & graphicsAPI))
+        exit(0);
+
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
     // NRI
@@ -185,9 +189,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
     // Create streamer
     nri::StreamerDesc streamerDesc = {};
     streamerDesc.dynamicBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
-    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX_BUFFER | nri::BufferUsageBits::INDEX_BUFFER};
+    streamerDesc.dynamicBufferDesc = {0, 0, nri::BufferUsageBits::VERTEX | nri::BufferUsageBits::INDEX};
     streamerDesc.constantBufferMemoryLocation = nri::MemoryLocation::HOST_UPLOAD;
     streamerDesc.queuedFrameNum = GetQueuedFrameNum();
+    streamerDesc.hostDataCapacity = IMGUI_HOST_DATA_CAPACITY;
     NRI_ABORT_ON_FAILURE(NRI.CreateStreamer(*m_Device, streamerDesc, m_Streamer));
 
     // Command queue
@@ -279,6 +284,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
 
         nri::VertexStreamDesc vertexStreamDesc = {};
         vertexStreamDesc.bindingSlot = 0;
+        vertexStreamDesc.stride = deviceDesc.features.extendedDynamicState ? 0 : sizeof(utils::Vertex);
 
         nri::VertexAttributeDesc vertexAttributeDesc[4] = {};
         {
@@ -405,7 +411,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         // CONSTANT_BUFFER
         nri::BufferDesc bufferDesc = {};
         bufferDesc.size = constantBufferSize * GetQueuedFrameNum();
-        bufferDesc.usage = nri::BufferUsageBits::CONSTANT_BUFFER;
+        bufferDesc.usage = nri::BufferUsageBits::CONSTANT;
         nri::Buffer* buffer;
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, buffer));
         m_Buffers.push_back(buffer);
@@ -418,13 +424,13 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
 
         // INDEX_BUFFER
         bufferDesc.size = helper::GetByteSizeOf(m_Scene.indices);
-        bufferDesc.usage = nri::BufferUsageBits::INDEX_BUFFER;
+        bufferDesc.usage = nri::BufferUsageBits::INDEX;
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, buffer));
         m_Buffers.push_back(buffer);
 
         // VERTEX_BUFFER
         bufferDesc.size = helper::GetByteSizeOf(m_Scene.vertices);
-        bufferDesc.usage = nri::BufferUsageBits::VERTEX_BUFFER;
+        bufferDesc.usage = nri::BufferUsageBits::VERTEX;
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, buffer));
         m_Buffers.push_back(buffer);
 
@@ -452,13 +458,13 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool isFirstTime) {
         // INDIRECT_BUFFER
         bufferDesc.size = m_Scene.instances.size() * GetDrawIndexedCommandSize();
         bufferDesc.structureStride = 0;
-        bufferDesc.usage = nri::BufferUsageBits::SHADER_RESOURCE_STORAGE | nri::BufferUsageBits::ARGUMENT_BUFFER;
+        bufferDesc.usage = nri::BufferUsageBits::SHADER_RESOURCE_STORAGE | nri::BufferUsageBits::ARGUMENT;
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, buffer));
         m_Buffers.push_back(buffer);
 
         // INDIRECT_COUNT_BUFFER
         bufferDesc.size = sizeof(uint32_t);
-        bufferDesc.usage = nri::BufferUsageBits::SHADER_RESOURCE_STORAGE | nri::BufferUsageBits::ARGUMENT_BUFFER;
+        bufferDesc.usage = nri::BufferUsageBits::SHADER_RESOURCE_STORAGE | nri::BufferUsageBits::ARGUMENT;
         NRI_ABORT_ON_FAILURE(NRI.CreateBuffer(*m_Device, bufferDesc, buffer));
         m_Buffers.push_back(buffer);
     }
@@ -984,11 +990,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         // UI
         renderingDesc.depth.descriptor = nullptr;
 
-        CmdCopyImguiData(commandBuffer, *m_Streamer);
+        const nri::ImguiRenderData imguiRenderData = CmdCopyImguiData(commandBuffer, *m_Streamer);
 
         NRI.CmdBeginRendering(commandBuffer, renderingDesc);
         {
-            CmdDrawImgui(commandBuffer, swapChainTexture.attachmentFormat, 1.0f, true);
+            CmdDrawImgui(commandBuffer, imguiRenderData, swapChainTexture.attachmentFormat, 1.0f, true);
         }
         NRI.CmdEndRendering(commandBuffer);
 
@@ -1023,7 +1029,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     NRI.EndStreamerFrame(*m_Streamer);
 
     // Present
-    nri::Result result = NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore);
+    nri::Result result = NRI.QueuePresent(*m_SwapChain, *swapChainTexture.releaseSemaphore, 0);
 
     // Handle "DEVICE_LOST"
     if (result == nri::Result::DEVICE_LOST) {
