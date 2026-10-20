@@ -58,6 +58,7 @@ call :TestSample RayTracingBoxes
 call :TestSample RayTracingTriangle
 call :TestSample Readback
 call :TestSample Resize
+call :TestSample ResolveSampleZero
 call :TestSample Resources
 call :TestSample SceneViewer
 call :TestSample Streamer

@@ -20,7 +20,11 @@
 
 int main(int argc, char** argv) {
     // Settings
+#if (defined(__APPLE__) && NRI_ENABLE_METAL_SHADER_CONVERTER)
+    NriGraphicsAPI graphicsAPI = NriGraphicsAPI_METAL;
+#else
     NriGraphicsAPI graphicsAPI = NriGraphicsAPI_VK;
+#endif
     bool debugAPI = false;
     bool debugNRI = false;
     uint32_t adapterIndex = 0;
@@ -32,6 +36,8 @@ int main(int argc, char** argv) {
             graphicsAPI = NriGraphicsAPI_D3D12;
         else if (!strcmp(argv[i], "--api=VULKAN"))
             graphicsAPI = NriGraphicsAPI_VK;
+        else if (!strcmp(argv[i], "--api=METAL"))
+            graphicsAPI = NriGraphicsAPI_METAL;
         else if (!strcmp(argv[i], "--api=WGPU"))
             graphicsAPI = NriGraphicsAPI_WGPU;
         else if (!strcmp(argv[i], "--debugAPI"))

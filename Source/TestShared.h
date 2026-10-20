@@ -27,7 +27,11 @@
 namespace test {
 
 struct Settings {
+#if (defined(__APPLE__) && NRI_ENABLE_METAL_SHADER_CONVERTER)
+    nri::GraphicsAPI graphicsAPI = nri::GraphicsAPI::METAL;
+#else
     nri::GraphicsAPI graphicsAPI = nri::GraphicsAPI::VK;
+#endif
     uint32_t adapterIndex = 0;
     bool debugAPI = false;
     bool debugNRI = false;
@@ -43,6 +47,8 @@ inline Settings ParseSettings(int argc, char** argv) {
             settings.graphicsAPI = nri::GraphicsAPI::D3D12;
         else if (!strcmp(argv[i], "--api=VULKAN"))
             settings.graphicsAPI = nri::GraphicsAPI::VK;
+        else if (!strcmp(argv[i], "--api=METAL"))
+            settings.graphicsAPI = nri::GraphicsAPI::METAL;
         else if (!strcmp(argv[i], "--api=WGPU"))
             settings.graphicsAPI = nri::GraphicsAPI::WGPU;
         else if (!strcmp(argv[i], "--debugAPI"))
