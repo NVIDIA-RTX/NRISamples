@@ -48,6 +48,7 @@ bool Decoder::Initialize(const VideoContext& context, const VideoConfig& config,
     sessionDesc.width = m_Size.codedWidth;
     sessionDesc.height = m_Size.codedHeight;
     sessionDesc.maxReferenceNum = m_Config.referenceNum;
+    sessionDesc.av1FilmGrain = m_Config.av1FilmGrain;
 
     if (video.GetVideoCapabilities(*m_Context.device, sessionDesc, m_Capabilities) != nri::Result::SUCCESS || m_Config.referenceNum > m_Capabilities.maxReferenceNum) {
         m_Status = std::string(GetCodecName(m_Config.codec)) + " decode with " + std::to_string(m_Config.referenceNum) + " reference(s) is unsupported";
@@ -56,7 +57,12 @@ bool Decoder::Initialize(const VideoContext& context, const VideoConfig& config,
     }
 
     // Decode output and DPB setup picture: the same subresource (coincide) or separate pictures (distinct, "VIDEO_OUTPUT_ONLY" output)
-    if (m_Config.decodeDpb == DecodeDpbMode::COINCIDE)
+    // Film grain goes to a distinct output, the DPB keeps the picture without it. If distinct mode isn't advertised (VK), it's
+    // allowed only for pictures applying film grain: the DPB coincides with the output of the other pictures
+    m_IsFilmGrainOutputOnly = m_Config.av1FilmGrain && !m_Capabilities.decodeDpbAndOutputDistinct;
+    if (m_Config.av1FilmGrain)
+        m_IsDistinct = !m_IsFilmGrainOutputOnly;
+    else if (m_Config.decodeDpb == DecodeDpbMode::COINCIDE)
         m_IsDistinct = false;
     else if (m_Config.decodeDpb == DecodeDpbMode::DISTINCT)
         m_IsDistinct = true;
@@ -129,6 +135,7 @@ bool Decoder::Initialize(const VideoContext& context, const VideoConfig& config,
     textureDesc.mipNum = 1;
     textureDesc.layerNum = 1;
     textureDesc.videoCodec = GetNriCodec(m_Config.codec);
+    textureDesc.videoAV1FilmGrain = m_Config.av1FilmGrain;
 
     m_DpbSlotNum = std::max(m_Config.referenceNum + 1, useArray ? m_Capabilities.dpbTextureArrayMinLayerNum : 0u);
     m_DpbSlotNum = std::min(m_DpbSlotNum, MAX_DPB_SLOT_NUM);
@@ -142,8 +149,14 @@ bool Decoder::Initialize(const VideoContext& context, const VideoConfig& config,
 
         textureDesc.usage = nri::TextureUsageBits::VIDEO_DECODE | nri::TextureUsageBits::VIDEO_OUTPUT_ONLY;
         isCreated = isCreated && CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::DECODE_OUTPUT, false, 1, "VideoDecodeOutput", &m_Output, m_Textures, pictureWidth, pictureHeight);
-    } else
+    } else {
         isCreated = CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::DECODE_OUTPUT, useArray, m_DpbSlotNum, "VideoDecodeDpb", m_Dpb, m_Textures, pictureWidth, pictureHeight);
+
+        if (m_IsFilmGrainOutputOnly) {
+            textureDesc.usage = nri::TextureUsageBits::VIDEO_DECODE | nri::TextureUsageBits::VIDEO_OUTPUT_ONLY;
+            isCreated = isCreated && CreatePictureSlots(nri, video, *m_Context.device, textureDesc, nri::VideoPictureUsage::DECODE_OUTPUT, false, 1, "VideoDecodeOutput", &m_Output, m_Textures, pictureWidth, pictureHeight);
+        }
+    }
     if (!isCreated) {
         m_Status = "Failed to create NV12 decode pictures";
         return false;
@@ -269,8 +282,11 @@ bool Decoder::Decode(const DecodeRequest& request, DecodedFrame& decodedFrame) {
     if (!BuildDecodeBitstream(frame, decodeBitstreamRange, pictureOffset))
         return false;
 
+    // Distinct output: in distinct mode, or for pictures applying film grain
+    const bool appliesFilmGrain = av1DecodeInfo && (av1DecodeInfo->picture.flags & nri::VideoAV1PictureBits::APPLY_GRAIN);
+    const bool isDistinct = m_IsDistinct || (m_IsFilmGrainOutputOnly && appliesFilmGrain);
     PictureSlot& setup = m_Dpb[plan.setupSlot];
-    PictureSlot& output = m_IsDistinct ? m_Output : setup;
+    PictureSlot& output = isDistinct ? m_Output : setup;
     const uint32_t pictureOffsets[] = {pictureOffset};
 
     // References, in the order of the plan (reversed on odd H.265 pictures to test RPS ordering)
@@ -351,7 +367,7 @@ bool Decoder::Decode(const DecodeRequest& request, DecodedFrame& decodedFrame) {
     decodeDesc.bitstream.buffer = m_DecodeBitstreamBuffer;
     decodeDesc.bitstream.size = decodeBitstreamRange;
     decodeDesc.dstPicture = output.picture;
-    decodeDesc.setupPicture = m_IsDistinct ? setup.picture : nullptr;
+    decodeDesc.setupPicture = isDistinct ? setup.picture : nullptr;
     decodeDesc.references = plan.referenceNum ? references : nullptr;
     decodeDesc.referenceNum = plan.referenceNum;
     decodeDesc.dstSlot = plan.setupSlot;
@@ -368,7 +384,7 @@ bool Decoder::Decode(const DecodeRequest& request, DecodedFrame& decodedFrame) {
         statesOk = statesOk && video.GetVideoPictureState(*slot->picture, role, states[pictureNum]) == nri::Result::SUCCESS;
         pictures[pictureNum++] = slot;
     };
-    if (m_IsDistinct) {
+    if (isDistinct) {
         addPicture(&m_Output, nri::VideoPictureRole::DECODE_OUTPUT);
         addPicture(&setup, nri::VideoPictureRole::DECODE_SETUP);
     } else

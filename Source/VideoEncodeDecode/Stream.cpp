@@ -1134,6 +1134,7 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
     config.videoHeight = sequence.maxFrameHeightMinus1 + 1u;
     config.referenceNum = 8;
     config.decodePictureAtVideoSize = true; // the AV1 frame size is the picture extent (not the texture size)
+    config.av1FilmGrain = !!(sequence.flags & nri::VideoAV1SequenceBits::FILM_GRAIN_PARAMS_PRESENT);
 
     // Device
     nri::AdapterDesc adapters[8] = {};
@@ -1199,10 +1200,11 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
     sessionDesc.width = config.videoWidth;
     sessionDesc.height = config.videoHeight;
     sessionDesc.maxReferenceNum = config.referenceNum;
+    sessionDesc.av1FilmGrain = config.av1FilmGrain;
     nri::VideoCapabilities capabilities = {};
     Video.GetVideoCapabilities(device, sessionDesc, capabilities);
     if (!capabilities.pictureAccessGranularityWidth || !capabilities.pictureAccessGranularityHeight)
-        return finish(StreamStatus::UNSUPPORTED, "AV1 decode is unsupported");
+        return finish(StreamStatus::UNSUPPORTED, config.av1FilmGrain ? "AV1 film grain decode is unsupported" : "AV1 decode is unsupported");
     VideoSize size = {};
     size.videoWidth = config.videoWidth;
     size.videoHeight = config.videoHeight;

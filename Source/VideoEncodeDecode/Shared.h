@@ -113,6 +113,7 @@ struct VideoConfig {
     bool hasBFrames = false;
     uint32_t reorderNum = 0; // SPS max_num_reorder_pics, from the frame plan ("GetReorderNum")
     DecodeDpbMode decodeDpb = DecodeDpbMode::AUTO;
+    bool av1FilmGrain = false; // AV1 decode session that applies film grain (the output is distinct from the DPB picture)
     DpbLayout dpbLayout = DpbLayout::AUTO;
     bool encodeInputOutputOnly = true; // "VIDEO_OUTPUT_ONLY" encode source
     bool h265ListsModification = true; // PPS lists_modification_present_flag

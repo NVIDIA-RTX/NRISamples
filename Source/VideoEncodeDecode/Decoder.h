@@ -59,13 +59,14 @@ private:
     nri::VideoSessionParameters* m_Parameters = nullptr;
     std::vector<nri::Texture*> m_Textures;
     PictureSlot m_Dpb[MAX_DPB_SLOT_NUM] = {};
-    PictureSlot m_Output = {}; // distinct mode only
+    PictureSlot m_Output = {}; // distinct mode, or film grain without distinct mode
     uint32_t m_DpbSlotNum = 0;
     nri::Buffer* m_DecodeBitstreamBuffer = nullptr;
 
     bool m_Ready = false;
     bool m_Unsupported = false;
     bool m_IsDistinct = false;
+    bool m_IsFilmGrainOutputOnly = false; // only pictures applying film grain use the distinct "m_Output"
 };
 
 } // namespace video_sample
