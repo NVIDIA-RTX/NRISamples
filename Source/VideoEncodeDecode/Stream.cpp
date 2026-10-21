@@ -1253,6 +1253,7 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
         uint8_t saved[8] = {};
     };
     RefSlot refs[8] = {};
+    nri::VideoAV1SavedFrameState savedFrameStates[8] = {}; // state of the frames in the reference slots for headers that inherit it
 
     std::vector<uint8_t> decodedBytes;
     std::vector<std::string> frameLines;
@@ -1296,6 +1297,7 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
         infoDesc.encodedPayloadHeaderSize = frame.payload.size();
         infoDesc.references = hasReferences ? snapshot : nullptr;
         infoDesc.referenceNum = hasReferences ? 8 : 0;
+        infoDesc.savedFrameStates = savedFrameStates;
         const nri::Result infoResult = nri::video::av1::GetEncodeDecodeInfoFromHeader(infoDesc, frame.av1DecodeInfo);
         if (infoResult != nri::Result::SUCCESS) {
             failure = "Picture " + std::to_string(codingIndex) + ": the AV1 frame header is not supported by the NRI parser";
@@ -1430,6 +1432,7 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
                 refs[j].orderHint = picture.orderHint;
                 refs[j].frameId = picture.currentFrameId;
                 std::memcpy(refs[j].saved, savedOrderHints, sizeof(savedOrderHints));
+                savedFrameStates[j] = frame.av1DecodeInfo.savedFrameState;
             }
         }
         codingIndex++;
