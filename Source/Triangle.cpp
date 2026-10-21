@@ -502,7 +502,6 @@ void Sample::LatencySleep(uint32_t frameIndex) {
 }
 
 void Sample::PrepareFrame(uint32_t) {
-    const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
     const bool flexibleMultiview = m_PipelineMultiview != nullptr;
 
     if (IsHalfTimeLimitReached() && flexibleMultiview)

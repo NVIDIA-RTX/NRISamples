@@ -44,6 +44,7 @@ call :TestSample DescriptorHeapIndexing
 call :TestSample DescriptorManagement
 call :TestSample DedicatedQueues
 call :TestSample GraphicsPipelineStates
+call :TestSample GraphicsVertexInput
 call :TestSample InputAttachment
 call :TestSample IndirectCommands
 call :TestSample LowLatency

@@ -566,9 +566,9 @@ void Sample::RenderFrame(uint32_t frameIndex) {
         nri::AccessLayoutStage resolveDstState = {};
         if (m_RenderPassResolve) {
             // On-the-fly resolve
-            resolveDstState.access = nri::AccessBits::COLOR_ATTACHMENT;
+            resolveDstState.access = nri::AccessBits::RESOLVE_ATTACHMENT_DESTINATION;
             resolveDstState.layout = nri::Layout::COLOR_ATTACHMENT;
-            resolveDstState.stages = nri::StageBits::COLOR_ATTACHMENT;
+            resolveDstState.stages = nri::StageBits::RESOLVE_ATTACHMENT;
         } else {
             // Explicit resolve
             resolveDstState.access = nri::AccessBits::RESOLVE_DESTINATION;
@@ -585,6 +585,11 @@ void Sample::RenderFrame(uint32_t frameIndex) {
             textureBarriers[1].texture = m_TextureMsaa;
             textureBarriers[1].before = m_TextureMsaaLastState;
             textureBarriers[1].after = {nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT, nri::StageBits::COLOR_ATTACHMENT};
+
+            if (m_RenderPassResolve) {
+                textureBarriers[1].after.access |= nri::AccessBits::RESOLVE_ATTACHMENT_SOURCE;
+                textureBarriers[1].after.stages |= nri::StageBits::RESOLVE_ATTACHMENT;
+            }
 
             bool isAlreadyAttachment = m_TextureMsaaLastState.access == textureBarriers[1].after.access;
             m_TextureMsaaLastState = textureBarriers[1].after;
@@ -718,7 +723,7 @@ void Sample::RenderFrame(uint32_t frameIndex) {
     { // Submit
         nri::FenceSubmitDesc textureAcquiredFence = {};
         textureAcquiredFence.fence = swapChainAcquireSemaphore;
-        textureAcquiredFence.stages = m_RenderPassResolve ? nri::StageBits::COLOR_ATTACHMENT : nri::StageBits::RESOLVE;
+        textureAcquiredFence.stages = m_RenderPassResolve ? nri::StageBits::RESOLVE_ATTACHMENT : nri::StageBits::RESOLVE;
 
         nri::FenceSubmitDesc renderingFinishedFence = {};
         renderingFinishedFence.fence = swapChainTexture.releaseSemaphore;

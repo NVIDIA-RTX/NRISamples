@@ -70,6 +70,7 @@ private:
     bool TestBuffers();
     bool VerifyTextureReadback(nri::Buffer& buffer, uint32_t width, uint32_t height, const nri::TextureDataLayoutDesc& layout);
     bool TestTextures();
+    bool TestTextureBarrierAccess();
     bool TransitionHostTexture(nri::Texture& texture, uint16_t mipNum, const nri::AccessLayoutStage& before, const nri::AccessLayoutStage& after);
     bool TestHostCopyFormat(nri::Format format, uint32_t blockWidth, uint32_t blockHeight, uint32_t blockSize, bool& uploadPassed, bool& readbackPassed, bool& wholeCopyPassed);
     bool TestHostCopies();
@@ -141,6 +142,7 @@ bool CopyTests::Run() {
     bool result = true;
     result &= TestBuffers();
     result &= TestTextures();
+    result &= TestTextureBarrierAccess();
     result &= TestHostCopies();
 
     return result;
@@ -418,6 +420,74 @@ bool CopyTests::TestTextures() {
     return Report("CmdUploadBufferToTexture", uploadPassed)
         && Report("CmdReadbackTextureToBuffer", uploadPassed)
         && Report("CmdCopyTexture", copyPassed);
+}
+
+bool CopyTests::TestTextureBarrierAccess() {
+    nri::TextureDesc textureDesc = {};
+    textureDesc.type = nri::TextureType::TEXTURE_2D;
+    textureDesc.format = nri::Format::RGBA8_UNORM;
+    textureDesc.width = 16;
+    textureDesc.height = 16;
+    textureDesc.usage = nri::TextureUsageBits::SHADER_RESOURCE;
+
+    nri::Texture* texture = nullptr;
+    if (!CreateTexture(textureDesc, texture))
+        return false;
+
+    const nri::Layout layouts[] = {nri::Layout::GENERAL, nri::Layout::COPY_DESTINATION, nri::Layout::COPY_SOURCE, nri::Layout::SHADER_RESOURCE};
+    const nri::StageBits stages[] = {nri::StageBits::ALL, nri::StageBits::COPY, nri::StageBits::FRAGMENT_SHADER, nri::StageBits::NONE};
+
+    nri::TextureBarrierDesc textureBarrier = {};
+    textureBarrier.texture = texture;
+    textureBarrier.mipNum = 1;
+    textureBarrier.layerNum = 1;
+    textureBarrier.planes = nri::PlaneBits::COLOR;
+
+    nri::BarrierDesc barrierDesc = {};
+    barrierDesc.textures = &textureBarrier;
+    barrierDesc.textureNum = 1;
+
+    for (nri::Layout layout : layouts) {
+        nri::AccessBits access = nri::AccessBits::COPY_DESTINATION;
+        if (layout == nri::Layout::COPY_SOURCE)
+            access = nri::AccessBits::COPY_SOURCE;
+        else if (layout == nri::Layout::SHADER_RESOURCE)
+            access = nri::AccessBits::SHADER_RESOURCE;
+
+        for (nri::StageBits stage : stages) {
+            if (!BeginCommandBuffer())
+                return false;
+
+            // Keep the requested synchronization even for discarded contents and empty access masks.
+            textureBarrier.before = {nri::AccessBits::NONE, nri::Layout::UNDEFINED, stage};
+            textureBarrier.after = {nri::AccessBits::NONE, layout, stage};
+            m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
+
+            // NONE scopes cannot have another barrier on the same resource in the same QueueSubmit scope.
+            if (stage == nri::StageBits::NONE) {
+                if (!SubmitAndWait() || !BeginCommandBuffer())
+                    return false;
+            } else {
+                // Adjacent barriers expose the invalid scope restriction introduced by forcing SYNC_NONE.
+                textureBarrier.before = textureBarrier.after;
+                m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
+            }
+
+            textureBarrier.before = textureBarrier.after;
+            textureBarrier.after = {access, layout, nri::StageBits::ALL};
+            m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
+
+            // Preserve ordinary access conversion, and exercise empty access on the after side independently.
+            textureBarrier.before = textureBarrier.after;
+            textureBarrier.after = {nri::AccessBits::NONE, layout, stage};
+            m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
+
+            if (!SubmitAndWait())
+                return false;
+        }
+    }
+
+    return Report("Texture barriers with empty access and defined layouts", true);
 }
 
 bool CopyTests::TransitionHostTexture(nri::Texture& texture, uint16_t mipNum, const nri::AccessLayoutStage& before, const nri::AccessLayoutStage& after) {

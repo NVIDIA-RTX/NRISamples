@@ -35,6 +35,7 @@ struct Settings {
     uint32_t adapterIndex = 0;
     bool debugAPI = false;
     bool debugNRI = false;
+    bool legacyBarriers = false;
 };
 
 inline Settings ParseSettings(int argc, char** argv) {
@@ -55,6 +56,8 @@ inline Settings ParseSettings(int argc, char** argv) {
             settings.debugAPI = true;
         else if (!strcmp(argv[i], "--debugNRI"))
             settings.debugNRI = true;
+        else if (!strcmp(argv[i], "--legacyBarriers"))
+            settings.legacyBarriers = true;
         else if (!strncmp(argv[i], "--adapter=", 10))
             settings.adapterIndex = (uint32_t)strtoul(argv[i] + 10, nullptr, 10);
     }
@@ -98,6 +101,8 @@ public:
             core.DestroyDescriptor(descriptor);
         for (nri::Pipeline* pipeline : pipelines)
             core.DestroyPipeline(pipeline);
+        for (nri::PipelineCache* pipelineCache : pipelineCaches)
+            core.DestroyPipelineCache(pipelineCache);
         for (nri::PipelineLayout* pipelineLayout : pipelineLayouts)
             core.DestroyPipelineLayout(pipelineLayout);
         for (nri::DescriptorPool* descriptorPool : descriptorPools)
@@ -158,6 +163,7 @@ public:
         deviceCreationDesc.queueFamilyNum = queueFamilyNum;
         deviceCreationDesc.enableGraphicsAPIValidation = settings.debugAPI;
         deviceCreationDesc.enableNRIValidation = settings.debugNRI;
+        deviceCreationDesc.disableD3D12EnhancedBarriers = settings.legacyBarriers;
         deviceCreationDesc.vkBindingOffsets = {0, 128, 32, 64};
 
         TEST_CHECK(nri::nriCreateDevice(deviceCreationDesc, device));
@@ -223,6 +229,7 @@ public:
     std::vector<nri::DescriptorPool*> descriptorPools;
     std::vector<nri::PipelineLayout*> pipelineLayouts;
     std::vector<nri::Pipeline*> pipelines;
+    std::vector<nri::PipelineCache*> pipelineCaches;
     std::vector<nri::QueryPool*> queryPools;
     std::vector<nri::Buffer*> buffers;
     std::vector<nri::Texture*> textures;
@@ -248,6 +255,11 @@ inline void Context::Track(nri::PipelineLayout* object) {
 template <>
 inline void Context::Track(nri::Pipeline* object) {
     pipelines.push_back(object);
+}
+
+template <>
+inline void Context::Track(nri::PipelineCache* object) {
+    pipelineCaches.push_back(object);
 }
 
 template <>

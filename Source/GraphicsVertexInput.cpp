@@ -13,43 +13,42 @@ bool CreatePipeline(test::Context& context, const nri::GraphicsPipelineDesc& des
 }
 
 bool CreateCachedPipeline(test::Context& context, nri::GraphicsPipelineDesc desc, nri::Pipeline*& pipeline) {
-    struct Cache {
-        const nri::CoreInterface& core;
-        nri::PipelineCache* object = nullptr;
-
-        ~Cache() {
-            core.DestroyPipelineCache(object);
-        }
-    } cache{context.core};
-
+    nri::PipelineCache* cache = nullptr;
     if (context.deviceDesc->features.pipelineCache) {
-        const nri::PipelineCacheDesc empty = {};
-        TEST_CHECK(context.core.CreatePipelineCache(*context.device, empty, cache.object));
-        desc.cache = cache.object;
+        const nri::PipelineCacheDesc cacheDesc = {};
+        TEST_CHECK(context.core.CreatePipelineCache(*context.device, cacheDesc, cache));
+        context.Track(cache);
+        desc.cache = cache;
 
         if (context.deviceDesc->features.pipelineCacheControl) {
-            desc.flags = nri::GraphicsPipelineBits::FAIL_ON_CACHE_MISS;
-            TEST_CHECK(context.core.CreateGraphicsPipeline(*context.device, desc, pipeline) != nri::Result::SUCCESS && pipeline == nullptr);
-            desc.flags = nri::GraphicsPipelineBits::NONE;
+            desc.flags |= nri::GraphicsPipelineBits::FAIL_ON_CACHE_MISS;
+            const nri::Result result = context.core.CreateGraphicsPipeline(*context.device, desc, pipeline);
+            if (result == nri::Result::SUCCESS)
+                context.Track(pipeline);
+            else
+                TEST_CHECK(result == nri::Result::FAILURE && pipeline == nullptr);
+            desc.flags &= ~nri::GraphicsPipelineBits::FAIL_ON_CACHE_MISS;
         }
     }
 
-    TEST_CHECK(context.core.CreateGraphicsPipeline(*context.device, desc, pipeline));
-    context.Track(pipeline);
+    // An empty application cache can still hit the driver's internal cache.
+    if (!pipeline) {
+        TEST_CHECK(context.core.CreateGraphicsPipeline(*context.device, desc, pipeline));
+        context.Track(pipeline);
+    }
 
-    if (cache.object) {
+    if (cache) {
         uint64_t size = 0;
-        TEST_CHECK(context.core.GetPipelineCacheData(*cache.object, nullptr, size));
+        TEST_CHECK(context.core.GetPipelineCacheData(*cache, nullptr, size));
         std::vector<uint8_t> bytes(size);
-        TEST_CHECK(context.core.GetPipelineCacheData(*cache.object, bytes.data(), size));
-        context.core.DestroyPipelineCache(cache.object);
-        cache.object = nullptr;
-        const nri::PipelineCacheDesc saved = {bytes.data(), size};
-        TEST_CHECK(context.core.CreatePipelineCache(*context.device, saved, cache.object));
-        desc.cache = cache.object;
+        TEST_CHECK(context.core.GetPipelineCacheData(*cache, bytes.data(), size));
+        const nri::PipelineCacheDesc cacheDesc = {bytes.data(), size};
+        TEST_CHECK(context.core.CreatePipelineCache(*context.device, cacheDesc, cache));
+        context.Track(cache);
+        desc.cache = cache;
 
         if (context.deviceDesc->features.pipelineCacheControl)
-            desc.flags = nri::GraphicsPipelineBits::FAIL_ON_CACHE_MISS;
+            desc.flags |= nri::GraphicsPipelineBits::FAIL_ON_CACHE_MISS;
 
         TEST_CHECK(context.core.CreateGraphicsPipeline(*context.device, desc, pipeline));
         context.Track(pipeline);
