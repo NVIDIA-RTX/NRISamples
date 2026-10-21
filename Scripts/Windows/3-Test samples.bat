@@ -44,6 +44,7 @@ call :TestSample DescriptorHeapIndexing
 call :TestSample DescriptorManagement
 call :TestSample DedicatedQueues
 call :TestSample GraphicsPipelineStates
+call :TestSample GraphicsVertexInput
 call :TestSample InputAttachment
 call :TestSample IndirectCommands
 call :TestSample LowLatency
@@ -58,6 +59,7 @@ call :TestSample RayTracingBoxes
 call :TestSample RayTracingTriangle
 call :TestSample Readback
 call :TestSample Resize
+call :TestSample ResolveSampleZero
 call :TestSample Resources
 call :TestSample SceneViewer
 call :TestSample Streamer

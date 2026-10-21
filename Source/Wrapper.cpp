@@ -260,7 +260,7 @@ void Sample::CreateVulkanDevice() {
         VK_KHR_SURFACE_EXTENSION_NAME,
     };
 
-    const char* deviceExtensions[] = {
+    std::vector<const char*> deviceExtensions = {
         VK_KHR_SWAPCHAIN_EXTENSION_NAME,
         VK_EXT_EXTENDED_DYNAMIC_STATE_EXTENSION_NAME,
 #if (defined(__APPLE__) || VK_MINOR_VERSION < 4)
@@ -307,6 +307,22 @@ void Sample::CreateVulkanDevice() {
 
     VkPhysicalDevice physicalDevice = physicalDevices[0];
 
+#ifdef __APPLE__
+    // Must be enabled if supported (MoltenVK)
+    auto vkEnumerateDeviceExtensionProperties = (PFN_vkEnumerateDeviceExtensionProperties)vkGetInstanceProcAddr(m_VKInstance, "vkEnumerateDeviceExtensionProperties");
+
+    uint32_t extensionNum = 0;
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionNum, nullptr);
+
+    std::vector<VkExtensionProperties> extensions(extensionNum);
+    vkEnumerateDeviceExtensionProperties(physicalDevice, nullptr, &extensionNum, extensions.data());
+
+    for (const VkExtensionProperties& extension : extensions) {
+        if (!strcmp(extension.extensionName, "VK_KHR_portability_subset"))
+            deviceExtensions.push_back("VK_KHR_portability_subset");
+    }
+#endif
+
     VkPhysicalDeviceFeatures2 deviceFeatures2 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_FEATURES_2};
 
     VkPhysicalDeviceVulkan11Features featuresVulkan11 = {VK_STRUCTURE_TYPE_PHYSICAL_DEVICE_VULKAN_1_1_FEATURES};
@@ -349,8 +365,8 @@ void Sample::CreateVulkanDevice() {
     deviceCreateInfo.pNext = &deviceFeatures2;
     deviceCreateInfo.pQueueCreateInfos = &queueCreateInfo;
     deviceCreateInfo.queueCreateInfoCount = 1;
-    deviceCreateInfo.enabledExtensionCount = helper::GetCountOf(deviceExtensions);
-    deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions;
+    deviceCreateInfo.enabledExtensionCount = (uint32_t)deviceExtensions.size();
+    deviceCreateInfo.ppEnabledExtensionNames = deviceExtensions.data();
 
     result = vkCreateDevice(physicalDevice, &deviceCreateInfo, nullptr, &m_VKDevice);
     NRI_ABORT_ON_FALSE(result == VK_SUCCESS);
@@ -366,8 +382,8 @@ void Sample::CreateVulkanDevice() {
     deviceDesc.vkBindingOffsets = VK_BINDING_OFFSETS;
     deviceDesc.vkExtensions.instanceExtensions = instanceExtensions;
     deviceDesc.vkExtensions.instanceExtensionNum = helper::GetCountOf(instanceExtensions);
-    deviceDesc.vkExtensions.deviceExtensions = deviceExtensions;
-    deviceDesc.vkExtensions.deviceExtensionNum = helper::GetCountOf(deviceExtensions);
+    deviceDesc.vkExtensions.deviceExtensions = deviceExtensions.data();
+    deviceDesc.vkExtensions.deviceExtensionNum = (uint32_t)deviceExtensions.size();
     deviceDesc.vkInstance = (VKHandle)m_VKInstance;
     deviceDesc.vkDevice = (VKHandle)m_VKDevice;
     deviceDesc.vkPhysicalDevice = (VKHandle)physicalDevice;
@@ -388,6 +404,9 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
             break;
         case nri::GraphicsAPI::WGPU:
             printf("WGPU device wrapping is not supported!\n");
+            exit(0);
+        case nri::GraphicsAPI::METAL:
+            printf("Metal device wrapping is not demonstrated!\n");
             exit(0);
         default:
             CreateD3D11Device();

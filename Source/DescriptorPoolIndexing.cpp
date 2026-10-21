@@ -119,8 +119,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     NRI_ABORT_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::SwapChainInterface), (nri::SwapChainInterface*)&NRI));
 
     const nri::DeviceDesc& deviceDesc = NRI.GetDeviceDesc(*m_Device);
-    if (!deviceDesc.tiers.bindless) {
-        printf("Bindless is not supported!\n");
+    if (!deviceDesc.tiers.bindless || !deviceDesc.features.mutableDescriptorType) {
+        printf("Bindless or mutable descriptors are not supported!\n");
         exit(0);
     }
 

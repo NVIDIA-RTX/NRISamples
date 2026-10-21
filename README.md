@@ -6,6 +6,10 @@ This is the test bench for [*NRI (NVIDIA Rendering Interface)*](https://github.c
 
 ## Build instructions
 
+Scripts resolve the project root from their own location and can be launched from any working directory. Build output remains in `_Build` and `_Bin` at the project root.
+
+To clean generated files, run `Scripts/Windows/4-Clean.bat`, `bash Scripts/Linux/4-Clean.sh` or `bash Scripts/MacOS/4-Clean.sh`. Cleanup also removes downloaded `_Data` and runs the matching cleanup scripts in NRIFramework and NRI.
+
 ### Windows
 
 - Install **WindowsSDK** and **VulkanSDK**
@@ -29,13 +33,17 @@ Or by running scripts only:
 
 ### macOS
 
-- Install Xcode command line tools, CMake 3.30+, Ninja and the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#mac)
+- Install **Xcode** 26+ with command line tools and the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`)
+- Install **CMake** 3.30+ and **Ninja**
+- Install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#mac) (provides *DXC*, required to compile shaders, and *Vulkan* through *MoltenVK*)
 - Source the Vulkan SDK's `setup-env.sh`
-- Run `bash Scripts/MacOS/1-Deploy.sh`, then `bash Scripts/MacOS/2-Build.sh`
+- Install **Metal Shader Converter** to run the samples on *Metal* (HLSL → DXIL → Metal, enabled automatically if installed, *Metal* becomes the default API; otherwise *Vulkan* is used)
+- Clone project and init submodules
+- Generate and build project using **cmake**
 
-Scripts resolve the project root from their own location and can be launched from any working directory. Build output remains in `_Build` and `_Bin` at the project root.
-
-To clean generated files, run `Scripts/Windows/4-Clean.bat`, `bash Scripts/Linux/4-Clean.sh` or `bash Scripts/MacOS/4-Clean.sh`. Cleanup also removes downloaded `_Data` and runs the matching cleanup scripts in NRIFramework and NRI.
+Or by running scripts only:
+- Run `bash Scripts/MacOS/1-Deploy.sh`
+- Run `bash Scripts/MacOS/2-Build.sh`
 
 ### CMake options
 
@@ -44,7 +52,7 @@ To clean generated files, run `Scripts/Windows/4-Clean.bat`, `bash Scripts/Linux
 
 ## How to run
 
-The executables from `_Bin` directory load resources from `_Data`, therefore the samples need to be run with the working directory set to the project root folder. But the simplest way to run ALL samples sequentially is to click on `Scripts/Windows/3-Test samples.bat`, which sets the working directory to the project root.
+The executables from `_Bin` directory load resources from `_Data`, therefore the samples need to be run with the working directory set to the project root folder. To run all samples sequentially, use `Scripts/Windows/3-Test samples.bat`, `bash "Scripts/Linux/3-Test samples.sh"` or `bash "Scripts/MacOS/3-Test samples.sh"`. These scripts set the working directory to the project root. The Linux and macOS runners select backends enabled in `_Build/CMakeCache.txt`.
 
 ## Samples
 
@@ -60,6 +68,7 @@ The executables from `_Bin` directory load resources from `_Data`, therefore the
 - DescriptorManagement - descriptor copying, pool switching, update-after-set and pool recycling testing
 - DedicatedQueues - dedicated copy queue, synchronization and copy-queue timestamp testing
 - GraphicsPipelineStates - dynamic graphics state, geometry, tessellation and less common rasterization testing
+- GraphicsVertexInput - vertex input, geometry and tessellation draw testing
 - InputAttachment - "dynamic rendering local read" demonstration (reading on-chip rendering results)
 - IndirectCommands - indirect graphics and compute command testing
 - LowLatency - low latency demonstration
