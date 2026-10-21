@@ -403,7 +403,9 @@ bool Encoder::BuildAv1DecodeInfo(EncodedFrame& frame, const nri::VideoEncodePict
     }
 
     if (result != nri::Result::SUCCESS) {
-        m_Status = "Failed to prepare AV1 decode metadata";
+        // E.g. D3D12 without encode feedback: the payload has no frame header to parse
+        m_Unsupported = result == nri::Result::UNSUPPORTED;
+        m_Status = m_Unsupported ? "AV1 decode metadata is unsupported for this configuration" : "Failed to prepare AV1 decode metadata";
         return false;
     }
 

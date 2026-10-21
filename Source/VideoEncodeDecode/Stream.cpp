@@ -576,6 +576,7 @@ StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& o
     uint32_t feedbackNum = 0;
     uint64_t byteNum = 0;
     std::string failure;
+    bool isFailureUnsupported = false;
 
     for (const FramePlan& plan : plans) {
         // Source
@@ -608,6 +609,7 @@ StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& o
         EncodedFrame encodedFrame = {};
         if (!encoder->Encode(encodeRequest, encodedFrame)) {
             failure = "Frame " + std::to_string(plan.codingIndex) + ": " + encoder->GetStatus();
+            isFailureUnsupported = encoder->IsUnsupported();
             break;
         }
         byteNum += encodedFrame.payload.size();
@@ -705,7 +707,7 @@ StreamResult RunStream(const RunEnvironment& environment, const StreamOptions& o
     result.notes = notes;
 
     if (!failure.empty())
-        return finish(StreamStatus::FAIL, failure);
+        return finish(isFailureUnsupported ? StreamStatus::UNSUPPORTED : StreamStatus::FAIL, failure);
     if (result.psnrMin < options.minPsnr) {
         char message[128] = {};
         std::snprintf(message, sizeof(message), "PSNR %.2f dB is below %.2f dB", result.psnrMin, options.minPsnr);
