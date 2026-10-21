@@ -388,10 +388,13 @@ bool Encoder::BuildAv1DecodeInfo(EncodedFrame& frame, const nri::VideoEncodePict
     if (mode == Av1InfoMode::AUTO)
         mode = m_Context.graphicsAPI == nri::GraphicsAPI::VK ? Av1InfoMode::HEADER : Av1InfoMode::METADATA;
 
+    // The resolved metadata requires encode feedback
     nri::Result result = nri::Result::UNSUPPORTED;
-    if (mode == Av1InfoMode::METADATA) {
+    nri::Result metadataResult = nri::Result::UNSUPPORTED;
+    if (mode == Av1InfoMode::METADATA && m_UseFeedback) {
         // Submitted descriptions only, no payload header
-        result = video.GetVideoAV1EncodeDecodeInfo(*m_Session, *m_ResolvedMetadataReadbackBuffer, 0, av1InfoDesc, frame.av1DecodeInfo);
+        metadataResult = video.GetVideoAV1EncodeDecodeInfo(*m_Session, *m_ResolvedMetadataReadbackBuffer, 0, av1InfoDesc, frame.av1DecodeInfo);
+        result = metadataResult;
         if (result == nri::Result::UNSUPPORTED)
             frame.av1MetadataUnsupported = true;
     }
@@ -403,8 +406,9 @@ bool Encoder::BuildAv1DecodeInfo(EncodedFrame& frame, const nri::VideoEncodePict
     }
 
     if (result != nri::Result::SUCCESS) {
-        // E.g. D3D12 without encode feedback: the payload has no frame header to parse
-        m_Unsupported = result == nri::Result::UNSUPPORTED;
+        // Unsupported only if no path can work (e.g. D3D12 without encode feedback: the payload has no frame header to parse). A failing
+        // metadata path stays a failure, even if the payload header fallback is unsupported
+        m_Unsupported = result == nri::Result::UNSUPPORTED && metadataResult == nri::Result::UNSUPPORTED;
         m_Status = m_Unsupported ? "AV1 decode metadata is unsupported for this configuration" : "Failed to prepare AV1 decode metadata";
         return false;
     }
