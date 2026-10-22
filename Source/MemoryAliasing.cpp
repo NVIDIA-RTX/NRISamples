@@ -24,15 +24,12 @@ bool RecordCopy(test::Context& context, nri::Queue& queue, nri::CommandAllocator
     return true;
 }
 
-bool Run(const test::Settings& settings) {
-    test::Context context;
+bool Run(test::Context& context, const test::Settings& settings) {
     if (!context.Initialize(settings) || context.skipped)
         return context.skipped;
 
     if (!context.deviceDesc->features.resourceAliasing) {
-        printf("SKIP  Resource aliasing is unsupported\n");
-
-        return true;
+        return context.Skip("Resource aliasing is unsupported");
     }
 
     constexpr uint32_t dataSize = 4096;
@@ -112,5 +109,5 @@ bool Run(const test::Settings& settings) {
 } // namespace
 
 int main(int argc, char** argv) {
-    return Run(test::ParseSettings(argc, argv)) ? 0 : 1;
+    return test::RunSample(argc, argv, Run);
 }

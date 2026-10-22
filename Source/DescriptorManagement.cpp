@@ -4,8 +4,7 @@
 
 namespace {
 
-bool Run(const test::Settings& settings) {
-    test::Context context;
+bool Run(test::Context& context, const test::Settings& settings) {
     if (!context.Initialize(settings) || context.skipped)
         return context.skipped;
 
@@ -253,5 +252,5 @@ bool Run(const test::Settings& settings) {
 } // namespace
 
 int main(int argc, char** argv) {
-    return Run(test::ParseSettings(argc, argv)) ? 0 : 1;
+    return test::RunSample(argc, argv, Run);
 }

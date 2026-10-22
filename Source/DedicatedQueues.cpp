@@ -162,13 +162,12 @@ static inline bool TestTextureQueues(test::Context& context, nri::Queue& graphic
     return test::Report(sharingMode == nri::SharingMode::EXCLUSIVE ? "exclusive texture copy-queue hand-offs" : "concurrent texture copy-queue hand-offs", passed);
 }
 
-bool Run(const test::Settings& settings) {
+bool Run(test::Context& context, const test::Settings& settings) {
     const nri::QueueFamilyDesc queueFamilies[] = {
         {nullptr, 1, nri::QueueType::GRAPHICS},
         {nullptr, 1, nri::QueueType::COPY},
     };
 
-    test::Context context;
     if (!context.Initialize(settings, queueFamilies, 2) || context.skipped)
         return context.skipped;
 
@@ -282,6 +281,6 @@ bool Run(const test::Settings& settings) {
 } // namespace
 
 int main(int argc, char** argv) {
-    return Run(test::ParseSettings(argc, argv)) ? 0 : 1;
+    return test::RunSample(argc, argv, Run);
 }
 

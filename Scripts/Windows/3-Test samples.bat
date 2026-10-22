@@ -7,6 +7,7 @@ pushd "%ROOT%" || exit /B 1
 set DIR_DATA=_Data
 set DIR_BIN=_Bin\Release
 set ADAPTER=0
+set FAIL=0
 
 if not exist "%DIR_BIN%" (
     set DIR_BIN=_Bin\Debug
@@ -24,12 +25,7 @@ echo.
 :: API independent samples
 
 "%DIR_BIN%\DeviceInfo.exe"
-if %ERRORLEVEL% equ 0 (
-    echo =^> OK
-) else (
-    echo =^> FAILED!
-)
-echo.
+call :ReportResult %ERRORLEVEL%
 
 :: API dependent samples
 
@@ -65,50 +61,45 @@ call :TestSample SceneViewer
 call :TestSample Streamer
 call :TestSample TextureTypes
 call :TestSample Triangle
+call :TestSample VideoEncodeDecode "--stream --frames=2 --videoWidth=640 --videoHeight=360"
 call :TestSample Wrapper
 
 pause
 
 popd
-exit /b
+exit /b %FAIL%
 
 ::========================================================================================
 :TestSample
 
 echo %1 [D3D11]
-"%DIR_BIN%\%1.exe" --api=D3D11 --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER%
-if %ERRORLEVEL% equ 0 (
-    echo =^> OK
-) else (
-    echo =^> FAILED!
-)
-echo.
+"%DIR_BIN%\%1.exe" --api=D3D11 --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER% %~2
+call :ReportResult %ERRORLEVEL%
 
 echo %1 [D3D12]
-"%DIR_BIN%\%1.exe" --api=D3D12 --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER%
-if %ERRORLEVEL% equ 0 (
-    echo =^> OK
-) else (
-    echo =^> FAILED!
-)
-echo.
+"%DIR_BIN%\%1.exe" --api=D3D12 --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER% %~2
+call :ReportResult %ERRORLEVEL%
 
 echo %1 [VULKAN]
-"%DIR_BIN%\%1.exe" --api=VULKAN --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER%
-if %ERRORLEVEL% equ 0 (
-    echo =^> OK
-) else (
-    echo =^> FAILED!
-)
-echo.
+"%DIR_BIN%\%1.exe" --api=VULKAN --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER% %~2
+call :ReportResult %ERRORLEVEL%
 
 echo %1 [WGPU]
-"%DIR_BIN%\%1.exe" --api=WGPU --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER%
-if %ERRORLEVEL% equ 0 (
-    echo =^> OK
-) else (
-    echo =^> FAILED!
-)
-echo.
+"%DIR_BIN%\%1.exe" --api=WGPU --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER% %~2
+call :ReportResult %ERRORLEVEL%
 
 exit /b
+
+::========================================================================================
+:ReportResult
+
+if "%~1"=="0" (
+    echo =^> OK
+) else if "%~1"=="2" (
+    echo =^> SKIP
+) else (
+    echo =^> FAIL
+    set FAIL=1
+)
+echo.
+exit /b 0

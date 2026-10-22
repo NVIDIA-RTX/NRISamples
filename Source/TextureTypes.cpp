@@ -12,17 +12,14 @@ bool CreateView(test::Context& context, const nri::TextureViewDesc& desc) {
     return true;
 }
 
-bool Run(const test::Settings& settings) {
-    test::Context context;
+bool Run(test::Context& context, const test::Settings& settings) {
     if (!context.Initialize(settings) || context.skipped)
         return context.skipped;
 
     const nri::Format format = nri::Format::RGBA8_UNORM;
     const nri::FormatSupportBits formatSupport = context.core.GetFormatSupport(*context.device, format);
     if (!(formatSupport & nri::FormatSupportBits::TEXTURE)) {
-        printf("SKIP  RGBA8_UNORM textures are unsupported\n");
-
-        return true;
+        return context.Skip("RGBA8_UNORM textures are unsupported");
     }
 
     nri::TextureUsageBits usage = nri::TextureUsageBits::SHADER_RESOURCE;
@@ -155,5 +152,5 @@ bool Run(const test::Settings& settings) {
 } // namespace
 
 int main(int argc, char** argv) {
-    return Run(test::ParseSettings(argc, argv)) ? 0 : 1;
+    return test::RunSample(argc, argv, Run);
 }

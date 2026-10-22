@@ -406,14 +406,14 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
     if (!m_VideoWidth || !m_VideoHeight || (m_VideoWidth % 4) != 0 || (m_VideoHeight % 2) != 0 || m_VideoWidth > 65535 || m_VideoHeight > 65535) {
         m_VideoStatus = "Video size must be non-zero, width must be divisible by 4, height must be even, and both dimensions must fit 16-bit video descriptors";
         std::fprintf(stderr, "%s\n", m_VideoStatus.c_str());
-        std::exit(1);
+        std::exit(NRIF_FAIL);
     }
     const uint32_t minCodecQp = m_Codec == SampleCodec::AV1 ? 1 : 0;
     const uint32_t maxCodecQp = m_Codec == SampleCodec::AV1 ? 255 : 51;
     if (m_QpI < minCodecQp || m_QpI > maxCodecQp || m_QpP < minCodecQp || m_QpP > maxCodecQp || m_QpB < minCodecQp || m_QpB > maxCodecQp || m_AV1BaseQIndex < minCodecQp || m_AV1BaseQIndex > 255) {
         m_VideoStatus = m_Codec == SampleCodec::AV1 ? "AV1 quantizers must be in the 1..255 range on current hardware encode paths" : "H.264/H.265 QP values must be in the 0..51 range";
         std::fprintf(stderr, "%s\n", m_VideoStatus.c_str());
-        std::exit(1);
+        std::exit(NRIF_FAIL);
     }
 
     // Headless modes finish before SampleBase initializes GLFW or creates a window.
@@ -474,6 +474,8 @@ bool Sample::InitializeGraphics(nri::GraphicsAPI graphicsAPI) {
     NRI_ABORT_ON_FAILURE(nri::nriEnumerateAdapters(adapterDesc, adapterDescsNum));
 
     const nri::AdapterDesc& selectedAdapter = adapterDesc[std::min(m_AdapterIndex, adapterDescsNum - 1)];
+    if (!(selectedAdapter.supportedGraphicsAPIs & graphicsAPI))
+        exit(NRIF_SKIP);
     m_VideoQueuesRequested = graphicsAPI != nri::GraphicsAPI::D3D11 && selectedAdapter.queueNum[(uint32_t)nri::QueueType::VIDEO_ENCODE] && selectedAdapter.queueNum[(uint32_t)nri::QueueType::VIDEO_DECODE];
 
     nri::QueueFamilyDesc queueFamilies[3] = {};
@@ -982,7 +984,7 @@ int32_t Sample::RunHeadless(nri::GraphicsAPI graphicsAPI) {
             GetStreamStatusName(result.status), m_StreamOptions.name.c_str(), nri::nriGetGraphicsAPIString(graphicsAPI), result.adapterName.c_str(), result.frameNum, (unsigned long long)result.byteNum, result.psnrMin, result.psnrAvg, result.nriErrorNum, result.nriWarningNum,
             result.notes.c_str(), result.message.empty() ? "" : " | ", result.message.c_str());
         std::fflush(stdout);
-        return result.status == StreamStatus::PASS ? 0 : (result.status == StreamStatus::FAIL ? 1 : 2);
+        return result.status == StreamStatus::PASS ? NRIF_OK : (result.status == StreamStatus::FAIL ? NRIF_FAIL : NRIF_SKIP);
     }
 
     StreamOptions base = m_StreamOptions;
@@ -1018,7 +1020,7 @@ int32_t Sample::RunHeadless(nri::GraphicsAPI graphicsAPI) {
     if (m_StreamMode == "list") {
         for (const StreamOptions& options : cases)
             std::printf("%s\n", options.name.c_str());
-        return 0;
+        return NRIF_OK;
     }
 
     uint32_t passNum = 0;
@@ -1042,7 +1044,7 @@ int32_t Sample::RunHeadless(nri::GraphicsAPI graphicsAPI) {
 
     std::printf("SUMMARY: pass=%u fail=%u skip=%u\n", passNum, failNum, skipNum);
     std::fflush(stdout);
-    return failNum ? 1 : (passNum ? 0 : 2);
+    return failNum ? NRIF_FAIL : (passNum ? NRIF_OK : NRIF_SKIP);
 }
 
 bool Sample::CanRunRoundTrip() const {

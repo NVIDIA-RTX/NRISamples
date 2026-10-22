@@ -5,7 +5,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.." || exit 1
 
 DIR_BIN=""
 ADAPTER=0
-FAILED=0
+FAIL=0
 
 for directory in _Bin/Release _Bin/Debug _Bin; do
     if [[ -x "$directory/DeviceInfo" ]]; then
@@ -44,27 +44,30 @@ echo
 run_sample() {
     if "$@"; then
         echo "=> OK"
+    elif [[ $? -eq 2 ]]; then
+        echo "=> SKIP"
     else
-        echo "=> FAILED!"
-        FAILED=1
+        echo "=> FAIL"
+        FAIL=1
     fi
     echo
 }
 
 test_sample() {
     local sample="$1"
+    shift
     local api
 
     # Wrapper is built only when the Vulkan SDK is available.
     if [[ "$sample" == Wrapper && ! -x "$DIR_BIN/$sample" ]]; then
-        echo "Wrapper => SKIPPED (not built)"
+        echo "Wrapper => SKIP (not built)"
         echo
         return
     fi
 
     for api in "${APIS[@]}"; do
         echo "$sample [$api]"
-        run_sample "$DIR_BIN/$sample" "--api=$api" --timeLimit=3 --debugAPI --debugNRI "--adapter=$ADAPTER"
+        run_sample "$DIR_BIN/$sample" "--api=$api" --timeLimit=3 --debugAPI --debugNRI "--adapter=$ADAPTER" "$@"
     done
 }
 
@@ -104,6 +107,7 @@ test_sample SceneViewer
 test_sample Streamer
 test_sample TextureTypes
 test_sample Triangle
+test_sample VideoEncodeDecode --stream --frames=2 --videoWidth=640 --videoHeight=360
 test_sample Wrapper
 
-exit "$FAILED"
+exit "$FAIL"

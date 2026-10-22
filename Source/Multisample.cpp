@@ -128,7 +128,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     deviceCreationDesc.allocationCallbacks = m_AllocationCallbacks;
 
     if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & graphicsAPI))
-        exit(0);
+        exit(NRIF_SKIP);
 
     NRI_ABORT_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
@@ -207,7 +207,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
 
     if (sampleNum == 1) {
         printf("Multisampling is not supported\n");
-        return false;
+        exit(NRIF_SKIP);
     }
 
     // Queued frames

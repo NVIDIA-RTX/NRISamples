@@ -12,6 +12,7 @@
 #    include <alloca.h>
 #endif
 
+#include "NRIFramework.h"
 #include "NRI.h"
 
 #include "Extensions/NRIDeviceCreation.h"
@@ -34,7 +35,7 @@ static const char* architectures[] = {
 
 #define NRI_ABORT_ON_FAILURE(result) \
     if (result != NriResult_SUCCESS) \
-        exit(1);
+        exit(NRIF_FAIL);
 
 void SilencePlease(NriMessage messageType, const char* file, uint32_t line, const char* message, void* userArg) {
     (void)messageType;
@@ -179,5 +180,5 @@ int main(int argc, char** argv) {
         nriDestroyDevice(device);
     }
 
-    return 0;
+    return NRIF_OK;
 }

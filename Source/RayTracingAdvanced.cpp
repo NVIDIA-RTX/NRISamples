@@ -19,15 +19,12 @@ struct AccelerationStructureGuard {
     std::vector<nri::AccelerationStructure*> accelerationStructures;
 };
 
-bool Run(const test::Settings& settings) {
-    test::Context context;
+bool Run(test::Context& context, const test::Settings& settings) {
     if (!context.Initialize(settings) || context.skipped)
         return context.skipped;
 
     if (!context.deviceDesc->tiers.rayTracing) {
-        printf("SKIP  Ray tracing is unsupported\n");
-
-        return true;
+        return context.Skip("Ray tracing is unsupported");
     }
 
     AccelerationStructureGuard guard;
@@ -179,5 +176,5 @@ bool Run(const test::Settings& settings) {
 } // namespace
 
 int main(int argc, char** argv) {
-    return Run(test::ParseSettings(argc, argv)) ? 0 : 1;
+    return test::RunSample(argc, argv, Run);
 }

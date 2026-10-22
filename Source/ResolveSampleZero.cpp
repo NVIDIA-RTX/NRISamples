@@ -163,6 +163,8 @@ bool TestPlaneRoundTrip(test::Context& context, nri::Queue& queue, nri::Format d
     if (!HasSupport(context, depthFormat, nri::FormatSupportBits::DEPTH_STENCIL_ATTACHMENT))
         return true;
 
+    context.skipped = false;
+
     nri::Texture* texture = nullptr;
     nri::Descriptor* view = nullptr;
     TEST_CHECK(CreateTexture(context, depthFormat, 1, true, texture, view));
@@ -251,6 +253,8 @@ bool TestAttachmentResolve(test::Context& context, nri::Queue& queue, nri::Forma
         printf("SKIP  Attachment resolve scope test (%s): format does not support the required attachment, MSAA or resolve usage\n", nriGetFormatProps(format)->name);
         return true;
     }
+
+    context.skipped = false;
 
     // WGPU has no multisampled arrays; D3D11 currently resolves a single attachment layer.
     const nri::GraphicsAPI graphicsAPI = context.deviceDesc->graphicsAPI;
@@ -395,11 +399,11 @@ bool TestAttachmentResolve(test::Context& context, nri::Queue& queue, nri::Forma
     return passed;
 }
 
-bool Run(const test::Settings& settings, nri::Format depthFormat) {
-    test::Context context;
+bool Run(test::Context& context, const test::Settings& settings, nri::Format depthFormat) {
     if (!context.Initialize(settings) || context.skipped)
         return context.skipped;
 
+    context.skipped = true; // cleared when a supported subtest runs
     nri::Queue* queue = nullptr;
     TEST_CHECK(context.core.GetQueue(*context.device, nri::QueueType::GRAPHICS, 0, queue));
     TEST_CHECK(TestPlaneRoundTrip(context, *queue, depthFormat));
@@ -422,6 +426,8 @@ bool Run(const test::Settings& settings, nri::Format depthFormat) {
 
         return true;
     }
+
+    context.skipped = false;
 
     // Pipelines
     nri::RootConstantDesc rootConstant = {0, sizeof(RootConstants), nri::StageBits::VERTEX_SHADER | nri::StageBits::FRAGMENT_SHADER};
@@ -619,9 +625,12 @@ int main(int argc, char** argv) {
     const test::Settings settings = test::ParseSettings(argc, argv);
 
     bool passed = true;
+    bool skipped = true;
     for (nri::Format format : {nri::Format::D32_SFLOAT_S8_UINT, nri::Format::D24_UNORM_S8_UINT}) {
-        passed &= Run(settings, format);
+        test::Context context;
+        passed &= Run(context, settings, format);
+        skipped &= context.skipped;
     }
 
-    return passed ? 0 : 1;
+    return passed ? (skipped ? NRIF_SKIP : NRIF_OK) : NRIF_FAIL;
 }

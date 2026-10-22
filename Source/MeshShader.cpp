@@ -6,15 +6,12 @@
 
 namespace {
 
-bool Run(const test::Settings& settings) {
-    test::Context context;
+bool Run(test::Context& context, const test::Settings& settings) {
     if (!context.Initialize(settings) || context.skipped)
         return context.skipped;
 
     if (!context.deviceDesc->features.meshShader) {
-        printf("SKIP  Mesh shaders are unsupported\n");
-
-        return true;
+        return context.Skip("Mesh shaders are unsupported");
     }
 
     nri::MeshShaderInterface mesh = {};
@@ -122,5 +119,5 @@ bool Run(const test::Settings& settings) {
 } // namespace
 
 int main(int argc, char** argv) {
-    return Run(test::ParseSettings(argc, argv)) ? 0 : 1;
+    return test::RunSample(argc, argv, Run);
 }

@@ -8,7 +8,7 @@
 #include <cstring>
 #include <vector>
 
-#include "NRI.h"
+#include "NRIFramework.h"
 
 #include "Extensions/NRIDeviceCreation.h"
 #include "Extensions/NRIHelper.h"
@@ -106,9 +106,9 @@ bool CopyTests::Initialize(const Settings& settings) {
     uint32_t adapterNum = 0;
     RETURN_ON_FAILURE(nri::nriEnumerateAdapters(nullptr, adapterNum));
     if (!adapterNum) {
-        printf("FAIL  No adapters found\n");
+        printf("SKIP  No adapters found\n");
 
-        return false;
+        exit(NRIF_SKIP);
     }
 
     std::vector<nri::AdapterDesc> adapters(adapterNum);
@@ -123,7 +123,7 @@ bool CopyTests::Initialize(const Settings& settings) {
     deviceCreationDesc.enableNRIValidation = settings.debugNRI;
 
     if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & settings.graphicsAPI))
-        exit(0);
+        exit(NRIF_SKIP);
 
     RETURN_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
@@ -807,9 +807,9 @@ bool CopyTests::TestHostCopyFormat(nri::Format format, uint32_t blockWidth, uint
 
 bool CopyTests::TestHostCopies() {
     if (!(m_Core.GetFormatSupport(*m_Device, nri::Format::RGBA8_UNORM) & nri::FormatSupportBits::HOST_COPY)) {
-        printf("FAIL  RGBA8_UNORM does not support host copies\n");
+        printf("SKIP  RGBA8_UNORM host copies are unsupported\n");
 
-        return false;
+        return true;
     }
 
     bool uploadPassed = false;
@@ -884,7 +884,7 @@ Settings ParseSettings(int argc, char** argv) {
 int main(int argc, char** argv) {
     CopyTests copyTests;
     if (!copyTests.Initialize(ParseSettings(argc, argv)))
-        return 1;
+        return NRIF_FAIL;
 
-    return copyTests.Run() ? 0 : 1;
+    return copyTests.Run() ? NRIF_OK : NRIF_FAIL;
 }

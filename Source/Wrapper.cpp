@@ -404,10 +404,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
             break;
         case nri::GraphicsAPI::WGPU:
             printf("WGPU device wrapping is not supported!\n");
-            exit(0);
+            exit(NRIF_SKIP);
         case nri::GraphicsAPI::METAL:
             printf("Metal device wrapping is not demonstrated!\n");
-            exit(0);
+            exit(NRIF_SKIP);
         default:
             CreateD3D11Device();
             break;

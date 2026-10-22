@@ -10,10 +10,7 @@
 #include <string>
 #include <vector>
 
-#include "NRI.h"
-
-#include "Extensions/NRIDeviceCreation.h"
-#include "Extensions/NRIHelper.h"
+#include "NRIFramework.h"
 
 #include "ml.h"
 #include "ml.hlsli"
@@ -125,13 +122,17 @@ public:
         nri::nriDestroyDevice(device);
     }
 
+    bool Skip(const char* reason) {
+        printf("SKIP  %s\n", reason);
+        skipped = true;
+        return true;
+    }
+
     bool Initialize(const Settings& settings, const nri::QueueFamilyDesc* queueFamilies = nullptr, uint32_t queueFamilyNum = 0) {
         uint32_t adapterNum = 0;
         TEST_CHECK(nri::nriEnumerateAdapters(nullptr, adapterNum));
         if (!adapterNum) {
-            printf("FAIL  No adapters found\n");
-
-            return false;
+            return Skip("No adapters found");
         }
 
         std::vector<nri::AdapterDesc> adapters(adapterNum);
@@ -140,19 +141,13 @@ public:
         const uint32_t adapterIndex = std::min(settings.adapterIndex, adapterNum - 1);
         adapterDesc = adapters[adapterIndex];
         if (!(adapterDesc.supportedGraphicsAPIs & settings.graphicsAPI)) {
-            printf("SKIP  API is unsupported by the selected adapter\n");
-
-            skipped = true;
-            return true;
+            return Skip("API is unsupported by the selected adapter");
         }
 
         for (uint32_t i = 0; i < queueFamilyNum; i++) {
             const nri::QueueFamilyDesc& queueFamily = queueFamilies[i];
             if (adapterDesc.queueNum[(uint32_t)queueFamily.queueType] < queueFamily.queueNum) {
-                printf("SKIP  Requested queue family is unsupported\n");
-
-                skipped = true;
-                return true;
+                return Skip("Requested queue family is unsupported");
             }
         }
 
@@ -285,6 +280,12 @@ inline void Context::Track(nri::Descriptor* object) {
 template <>
 inline void Context::Track(nri::Memory* object) {
     memories.push_back(object);
+}
+
+static inline int RunSample(int argc, char** argv, bool (*run)(Context&, const Settings&)) {
+    Context context;
+    const bool passed = run(context, ParseSettings(argc, argv));
+    return passed ? (context.skipped ? NRIF_SKIP : NRIF_OK) : NRIF_FAIL;
 }
 
 inline bool VerifyBytes(nri::CoreInterface& core, nri::Buffer& buffer, const void* expected, uint64_t size) {

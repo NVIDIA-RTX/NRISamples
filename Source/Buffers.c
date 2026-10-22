@@ -6,6 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "NRIFramework.h"
 #include "NRI.h"
 
 #include "Extensions/NRIDeviceCreation.h"
@@ -17,7 +18,7 @@
 
 #define NRI_ABORT_ON_FAILURE(result) \
     if (result != NriResult_SUCCESS) \
-        exit(1);
+        exit(NRIF_FAIL);
 
 int main(int argc, char** argv) {
     // Settings
@@ -68,7 +69,7 @@ int main(int argc, char** argv) {
         };
 
         if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & graphicsAPI))
-            return 0;
+            return NRIF_SKIP;
 
         NRI_ABORT_ON_FAILURE(nriCreateDevice(&deviceCreationDesc, &device));
     }
@@ -273,5 +274,5 @@ int main(int argc, char** argv) {
         nriDestroyDevice(device);
     }
 
-    return 0;
+    return NRIF_OK;
 }

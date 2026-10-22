@@ -37,7 +37,7 @@ if "%NO_BUILD%"=="0" (
     type "%OUT_DIR%\build.tmp.err" >> "%LOG_PATH%" 2>nul
     del "%OUT_DIR%\build.tmp.log" "%OUT_DIR%\build.tmp.err" >nul 2>nul
     if not "!BUILD_EXIT!"=="0" (
-        call :WriteLog "BUILD FAILED: exit code !BUILD_EXIT!"
+        call :WriteLog "BUILD FAIL: exit code !BUILD_EXIT!"
         exit /b !BUILD_EXIT!
     )
 )
@@ -211,18 +211,18 @@ type "%CASE_OUT%" >> "%LOG_PATH%" 2>nul
 >> "%LOG_PATH%" echo ----- stderr: %CASE_NAME% -----
 type "%CASE_ERR%" >> "%LOG_PATH%" 2>nul
 
-set "CASE_FAILED=0"
-if not "%EXIT_CODE%"=="0" set "CASE_FAILED=1"
-findstr /R /C:"\<ERROR\>" /C:"\<FAILED\>" "%CASE_OUT%" "%CASE_ERR%" >nul 2>nul
-if not errorlevel 1 set "CASE_FAILED=1"
+set "CASE_FAIL=0"
+if not "%EXIT_CODE%"=="0" set "CASE_FAIL=1"
+findstr /R /C:"\<ERROR\>" /C:"\<FAIL\>" "%CASE_OUT%" "%CASE_ERR%" >nul 2>nul
+if not errorlevel 1 set "CASE_FAIL=1"
 findstr /C:"VIDEO_ROUND_TRIP_OK" "%CASE_OUT%" >nul 2>nul
-if errorlevel 1 set "CASE_FAILED=1"
+if errorlevel 1 set "CASE_FAIL=1"
 
 del "%CASE_OUT%" "%CASE_ERR%" >nul 2>nul
 
-if "%CASE_FAILED%"=="1" (
+if "%CASE_FAIL%"=="1" (
     set /a FAIL_COUNT+=1
-    call :WriteLog "FAILED %CASE_NAME%"
+    call :WriteLog "FAIL %CASE_NAME%"
 ) else (
     set /a PASS_COUNT+=1
     call :WriteLog "OK %CASE_NAME%"
