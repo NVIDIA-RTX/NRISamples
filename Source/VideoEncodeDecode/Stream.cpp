@@ -5,8 +5,10 @@
 #include "Decoder.h"
 #include "Encoder.h"
 
-// Header-only AV1 frame header parser of NRI (the public "GetVideoAV1EncodeDecodeInfo" needs an AV1 encode session)
-#include "SharedVideo.h"
+#if NRISAMPLES_ENABLE_AV1_FILE_DECODING
+// External file decoding is developer-only: the public AV1 helper requires an encode session.
+#    include "SharedVideo.h"
+#endif
 
 #include <cmath>
 #include <cstdlib>
@@ -888,6 +890,8 @@ std::vector<StreamOptions> MakeMatrixCases(const StreamOptions& base) {
 // Decode of an external AV1 stream (OBU file, e.g. "ffmpeg -c:v libaom-av1 -f obu")
 //==================================================================================================
 
+#if NRISAMPLES_ENABLE_AV1_FILE_DECODING
+
 namespace {
 
 struct BitReader {
@@ -1477,5 +1481,16 @@ StreamResult RunDecodeFile(const RunEnvironment& environment, const std::string&
 
     return finish(StreamStatus::PASS, "");
 }
+
+#else
+
+StreamResult RunDecodeFile(const RunEnvironment&, const std::string&, const std::string&, const std::string&, const std::string&, bool) {
+    StreamResult result = {};
+    result.status = StreamStatus::UNSUPPORTED;
+    result.message = "External AV1 file decoding is disabled; configure with -DNRISAMPLES_ENABLE_AV1_FILE_DECODING=ON to enable this developer feature";
+    return result;
+}
+
+#endif
 
 } // namespace video_sample

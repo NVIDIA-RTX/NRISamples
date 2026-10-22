@@ -98,3 +98,5 @@ The executables from `_Bin` directory load resources from `_Data`, therefore the
 The framework `--width` and `--height` arguments control the sample output window size only. Use `--videoWidth` and `--videoHeight` to select the NV12 encode/decode surface size. The default video size is 1920x1080.
 
 The sample uses CQP rate control by default. Use `--qpI`, `--qpP`, and `--qpB` to change the per-frame-type quantizers, and `--av1BaseQIndex` to change AV1's frame base quantizer. H.264/H.265 QP values must be in the 0..51 range; AV1 quantizer values use the 0..255 range. Lower values generally produce higher quality and larger bitstreams.
+
+External AV1 file decoding (`--decodeFile` and `--refYuv`) is an optional developer feature. Enable it with `-DNRISAMPLES_ENABLE_AV1_FILE_DECODING=ON` when configuring CMake. It uses NRI's private AV1 parser and requires a matching NRI source checkout. The feature is off by default; the visual sample, round-trip streams and test matrix use only public NRI APIs.
