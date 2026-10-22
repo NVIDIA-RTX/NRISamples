@@ -19,20 +19,7 @@ if [[ -z "$DIR_BIN" ]]; then
     exit 1
 fi
 
-API_NAMES=(VULKAN WGPU)
-API_OPTIONS=(VK WGPU)
-APIS=()
-for i in "${!API_NAMES[@]}"; do
-    if [[ -f _Build/CMakeCache.txt ]] && ! grep -Eq "^NRI_ENABLE_${API_OPTIONS[$i]}_SUPPORT:BOOL=(ON|TRUE|1)$" _Build/CMakeCache.txt; then
-        continue
-    fi
-    APIS+=("${API_NAMES[$i]}")
-done
-
-if [[ ${#APIS[@]} -eq 0 ]]; then
-    echo "No supported graphics APIs are enabled!"
-    exit 1
-fi
+APIS=(VULKAN WGPU)
 
 echo "Running samples from '$DIR_BIN'..."
 echo

@@ -395,6 +395,15 @@ void Sample::CreateVulkanDevice() {
 }
 
 bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
+    nri::AdapterDesc adapterDesc = {};
+    uint32_t adapterNum = 1;
+    const nri::Result result = nri::nriEnumerateAdapters(&adapterDesc, adapterNum, graphicsAPI);
+    if (result == nri::Result::UNSUPPORTED || (result == nri::Result::SUCCESS && !(adapterDesc.supportedGraphicsAPIs & graphicsAPI))) {
+        printf("The requested graphics API is unsupported!\n");
+        exit(NRIF_SKIP);
+    }
+    NRI_ABORT_ON_FAILURE(result);
+
     switch (graphicsAPI) {
         case nri::GraphicsAPI::VK:
             CreateVulkanDevice();

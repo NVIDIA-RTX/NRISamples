@@ -9,11 +9,15 @@ set DIR_BIN=_Bin\Release
 set ADAPTER=0
 set FAIL=0
 
-if not exist "%DIR_BIN%" (
+if not exist "%DIR_BIN%\DeviceInfo.exe" (
     set DIR_BIN=_Bin\Debug
 )
 
-if not exist "%DIR_BIN%" (
+if not exist "%DIR_BIN%\DeviceInfo.exe" (
+    set DIR_BIN=_Bin
+)
+
+if not exist "%DIR_BIN%\DeviceInfo.exe" (
     echo The project is not compiled!
     popd
     exit /b 1
@@ -63,12 +67,17 @@ call :TestSample Triangle
 call :TestSample VideoEncodeDecode "--stream --frames=2 --videoWidth=640 --videoHeight=360"
 call :TestSample Wrapper
 
-
 popd
 exit /b %FAIL%
 
 ::========================================================================================
 :TestSample
+
+if "%~1"=="Wrapper" if not exist "%DIR_BIN%\Wrapper.exe" (
+    echo Wrapper =^> SKIP ^(not built^)
+    echo.
+    exit /b 0
+)
 
 echo %1 [D3D11]
 "%DIR_BIN%\%1.exe" --api=D3D11 --timeLimit=3 --debugAPI --debugNRI --adapter=%ADAPTER% %~2
