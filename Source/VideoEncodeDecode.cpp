@@ -53,6 +53,17 @@ struct PatternConstants {
     uint32_t frameIndex = 0;
 };
 
+static inline void PrintStreamResult(nri::GraphicsAPI graphicsAPI, const std::string& name, const video_sample::StreamResult& result) {
+    std::printf("[%s] %s api=%s adapter=\"%s\" frames=%u bytes=%llu psnrY(min/avg)=%.2f/%.2f",
+        video_sample::GetStreamStatusName(result.status), name.c_str(), nri::nriGetGraphicsAPIString(graphicsAPI), result.adapterName.c_str(), result.frameNum, (unsigned long long)result.byteNum, result.psnrMin, result.psnrAvg);
+    if (result.nriErrorNum)
+        std::printf(" nriErrors=%u", result.nriErrorNum);
+    if (result.nriWarningNum)
+        std::printf(" nriWarnings=%u", result.nriWarningNum);
+    std::printf(" %s%s%s\n", result.notes.c_str(), result.message.empty() ? "" : " | ", result.message.c_str());
+    std::fflush(stdout);
+}
+
 } // namespace
 
 class Sample : public SampleBase {
@@ -980,10 +991,7 @@ int32_t Sample::RunHeadless(nri::GraphicsAPI graphicsAPI) {
 
     if (m_StreamMode == "decodeFile") {
         const StreamResult result = RunDecodeFile(environment, m_DecodeFile, m_RefYuv, m_StreamOptions.name, m_StreamOptions.dumpDir, m_StreamOptions.verbose);
-        std::printf("[%s] %s api=%s adapter=\"%s\" frames=%u bytes=%llu psnrY(min/avg)=%.2f/%.2f nriErrors=%u nriWarnings=%u %s%s%s\n",
-            GetStreamStatusName(result.status), m_StreamOptions.name.c_str(), nri::nriGetGraphicsAPIString(graphicsAPI), result.adapterName.c_str(), result.frameNum, (unsigned long long)result.byteNum, result.psnrMin, result.psnrAvg, result.nriErrorNum, result.nriWarningNum,
-            result.notes.c_str(), result.message.empty() ? "" : " | ", result.message.c_str());
-        std::fflush(stdout);
+        PrintStreamResult(graphicsAPI, m_StreamOptions.name, result);
         return result.status == StreamStatus::PASS ? NRIF_OK : (result.status == StreamStatus::FAIL ? NRIF_FAIL : NRIF_SKIP);
     }
 
@@ -1036,13 +1044,13 @@ int32_t Sample::RunHeadless(nri::GraphicsAPI graphicsAPI) {
         else
             skipNum++;
 
-        std::printf("[%s] %s api=%s adapter=\"%s\" frames=%u bytes=%llu psnrY(min/avg)=%.2f/%.2f nriErrors=%u nriWarnings=%u %s%s%s\n",
-            GetStreamStatusName(result.status), options.name.c_str(), nri::nriGetGraphicsAPIString(graphicsAPI), result.adapterName.c_str(), result.frameNum, (unsigned long long)result.byteNum, result.psnrMin, result.psnrAvg, result.nriErrorNum, result.nriWarningNum,
-            result.notes.c_str(), result.message.empty() ? "" : " | ", result.message.c_str());
-        std::fflush(stdout);
+        PrintStreamResult(graphicsAPI, options.name, result);
     }
 
-    std::printf("SUMMARY: pass=%u fail=%u skip=%u\n", passNum, failNum, skipNum);
+    std::printf("SUMMARY: pass=%u", passNum);
+    if (failNum)
+        std::printf(" fail=%u", failNum);
+    std::printf(" skip=%u\n", skipNum);
     std::fflush(stdout);
     return failNum ? NRIF_FAIL : (passNum ? NRIF_OK : NRIF_SKIP);
 }
