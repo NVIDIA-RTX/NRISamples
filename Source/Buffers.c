@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
     {
         NriAdapterDesc adapterDescs[2] = {0};
         uint32_t adapterDescsNum = 2;
-        NRI_ABORT_ON_FAILURE(nriEnumerateAdapters(adapterDescs, &adapterDescsNum));
+        NRI_ABORT_ON_FAILURE(nriEnumerateAdapters(adapterDescs, &adapterDescsNum, NriGraphicsAPI_ALL));
 
         const NriDeviceCreationDesc deviceCreationDesc = {
             .graphicsAPI = graphicsAPI,
