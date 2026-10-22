@@ -15,7 +15,6 @@ if not exist "%DIR_BIN%" (
 
 if not exist "%DIR_BIN%" (
     echo The project is not compiled!
-    pause
     popd
     exit /b 1
 )
@@ -64,7 +63,6 @@ call :TestSample Triangle
 call :TestSample VideoEncodeDecode "--stream --frames=2 --videoWidth=640 --videoHeight=360"
 call :TestSample Wrapper
 
-pause
 
 popd
 exit /b %FAIL%
