@@ -89,13 +89,13 @@ int main(int argc, char** argv) {
     // Query adapters number
     uint32_t adaptersNum = 0;
     NRI_ABORT_ON_FAILURE(nriEnumerateAdapters(
-        NULL, &adaptersNum));
+        NULL, &adaptersNum, NriGraphicsAPI_ALL));
 
     // Query adapters
     size_t bytes = adaptersNum * sizeof(NriAdapterDesc);
     NriAdapterDesc* adapterDescs = (NriAdapterDesc*)alloca(bytes);
     NRI_ABORT_ON_FAILURE(nriEnumerateAdapters(
-        adapterDescs, &adaptersNum));
+        adapterDescs, &adaptersNum, NriGraphicsAPI_ALL));
 
     // Print adapters info
     printf("nriEnumerateAdapters: %u adapters reported\n", adaptersNum);
