@@ -18,6 +18,7 @@ _Build/
 _Shaders/
 _Data/
 _Tmp/
+_Smoke/
 pso_cache.bin
 
 # can be a symbolic link

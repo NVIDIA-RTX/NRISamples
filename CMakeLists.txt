@@ -208,6 +208,23 @@ add_sample(Streamer cpp)
 add_sample(TextureTypes cpp)
 add_sample(Triangle cpp)
 
+add_sample(VideoEncodeDecode cpp)
+target_sources(VideoEncodeDecode PRIVATE
+    Source/VideoEncodeDecode/Decoder.cpp
+    Source/VideoEncodeDecode/Decoder.h
+    Source/VideoEncodeDecode/Encoder.cpp
+    Source/VideoEncodeDecode/Encoder.h
+    Source/VideoEncodeDecode/Shared.h
+    Source/VideoEncodeDecode/Stream.cpp
+    Source/VideoEncodeDecode/Stream.h
+)
+# "SharedVideo.h" of the NRI that is built (NRI_SOURCE_OVERRIDE_DIR aware)
+target_include_directories(VideoEncodeDecode PRIVATE "${NRI_SOURCE_DIR}/Source/Shared")
+
+if(WIN32)
+    target_link_libraries(VideoEncodeDecode PRIVATE d3d12)
+endif()
+
 # Wrapper depends on Vulkan SDK availability
 if(DEFINED ENV{VULKAN_SDK})
     add_sample(Wrapper cpp)
