@@ -402,25 +402,38 @@ void Sample::ReadCmdLine(cmdline::parser& cmdLine) {
             options.rateControlB.maxBitrateKbps = parsed >= 4 ? maxKbps : 0;
         }
     }
-}
 
-bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     if (!m_VideoWidth || !m_VideoHeight || (m_VideoWidth % 4) != 0 || (m_VideoHeight % 2) != 0 || m_VideoWidth > 65535 || m_VideoHeight > 65535) {
         m_VideoStatus = "Video size must be non-zero, width must be divisible by 4, height must be even, and both dimensions must fit 16-bit video descriptors";
         std::fprintf(stderr, "%s\n", m_VideoStatus.c_str());
-        return false;
+        std::exit(1);
     }
     const uint32_t minCodecQp = m_Codec == SampleCodec::AV1 ? 1 : 0;
     const uint32_t maxCodecQp = m_Codec == SampleCodec::AV1 ? 255 : 51;
     if (m_QpI < minCodecQp || m_QpI > maxCodecQp || m_QpP < minCodecQp || m_QpP > maxCodecQp || m_QpB < minCodecQp || m_QpB > maxCodecQp || m_AV1BaseQIndex < minCodecQp || m_AV1BaseQIndex > 255) {
         m_VideoStatus = m_Codec == SampleCodec::AV1 ? "AV1 quantizers must be in the 1..255 range on current hardware encode paths" : "H.264/H.265 QP values must be in the 0..51 range";
         std::fprintf(stderr, "%s\n", m_VideoStatus.c_str());
-        return false;
+        std::exit(1);
     }
 
-    if (!m_StreamMode.empty())
-        std::exit(RunHeadless(graphicsAPI));
+    // Headless modes finish before SampleBase initializes GLFW or creates a window.
+    if (!m_StreamMode.empty()) {
+        const std::string& api = cmdLine.get<std::string>("api");
+        nri::GraphicsAPI graphicsAPI = nri::GraphicsAPI::VK;
+        if (api == "D3D11")
+            graphicsAPI = nri::GraphicsAPI::D3D11;
+        else if (api == "D3D12")
+            graphicsAPI = nri::GraphicsAPI::D3D12;
+        else if (api == "METAL")
+            graphicsAPI = nri::GraphicsAPI::METAL;
+        else if (api == "WGPU")
+            graphicsAPI = nri::GraphicsAPI::WGPU;
 
+        std::exit(RunHeadless(graphicsAPI));
+    }
+}
+
+bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     m_GraphicsAPI = graphicsAPI;
     m_VideoConfig.codec = m_Codec;
     m_VideoConfig.videoWidth = m_VideoWidth;
