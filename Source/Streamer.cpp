@@ -84,37 +84,56 @@ bool Run(test::Context& context, const test::Settings& settings) {
 
     constexpr uint32_t textureWidth = 4;
     constexpr uint32_t textureHeight = 4;
-    std::array<uint8_t, textureWidth * textureHeight * 4> textureData = {};
+    constexpr uint32_t textureDepth = 2;
+    constexpr uint32_t pitchCaseNum = 4;
+    std::array<uint8_t, textureWidth * textureHeight * textureDepth * pitchCaseNum * 4> textureData = {};
     for (uint32_t i = 0; i < textureData.size(); i++)
         textureData[i] = uint8_t(i * 11 + 7);
 
     nri::TextureDesc textureDesc = {};
-    textureDesc.type = nri::TextureType::TEXTURE_2D;
+    textureDesc.type = nri::TextureType::TEXTURE_3D;
     textureDesc.usage = nri::TextureUsageBits::SHADER_RESOURCE;
     textureDesc.format = nri::Format::RGBA8_UNORM;
     textureDesc.width = textureWidth;
     textureDesc.height = textureHeight;
+    textureDesc.depth = textureDepth * pitchCaseNum;
     nri::Texture* destinationTexture = nullptr;
     TEST_CHECK(context.CreateTexture(textureDesc, nri::MemoryLocation::DEVICE, destinationTexture));
 
     nri::StreamTextureDataDesc streamTextureDesc = {};
-    streamTextureDesc.data = textureData.data();
-    streamTextureDesc.dataRowPitch = textureWidth * 4;
-    streamTextureDesc.dataSlicePitch = (uint32_t)textureData.size();
     streamTextureDesc.copyBatch = copyBatch;
     streamTextureDesc.dstTexture = destinationTexture;
-    streamTextureDesc.dstRegion = {0, 0, 0, textureWidth, textureHeight, 1, 0, 0, nri::PlaneBits::ALL};
-    const nri::BufferOffset streamedTexture = streamerGuard.interface.StreamTextureData(*streamerGuard.streamer, streamTextureDesc);
-    if (!streamedTexture.buffer) {
-        printf("FAIL  StreamTextureData failed\n");
 
-        return false;
+    // Exercise both defaults, each default independently, and explicit padded pitches.
+    std::array<uint8_t, (textureWidth * 4 + 4) * (textureHeight + 1) * textureDepth> sourceData = {};
+    for (uint32_t i = 0; i < pitchCaseNum; i++) {
+        const uint32_t sourceRowPitch = textureWidth * 4 + ((i & 1) ? 4 : 0);
+        const uint32_t sourceSlicePitch = sourceRowPitch * (textureHeight + ((i & 2) ? 1 : 0));
+        for (uint32_t z = 0; z < textureDepth; z++) {
+            for (uint32_t y = 0; y < textureHeight; y++) {
+                const uint32_t expectedOffset = ((i * textureDepth + z) * textureHeight + y) * textureWidth * 4;
+                memcpy(sourceData.data() + z * sourceSlicePitch + y * sourceRowPitch, textureData.data() + expectedOffset, textureWidth * 4);
+            }
+        }
+
+        streamTextureDesc.data = sourceData.data();
+        streamTextureDesc.dataRowPitch = (i & 1) ? sourceRowPitch : 0;
+        streamTextureDesc.dataSlicePitch = (i & 2) ? sourceSlicePitch : 0;
+        streamTextureDesc.dstRegion = {0, 0, nri::Dim_t(i * textureDepth), textureWidth, textureHeight, textureDepth, 0, 0, nri::PlaneBits::ALL};
+        const nri::BufferOffset streamedTexture = streamerGuard.interface.StreamTextureData(*streamerGuard.streamer, streamTextureDesc);
+        if (!streamedTexture.buffer) {
+            printf("FAIL  StreamTextureData failed for pitch case %u\n", i);
+
+            return false;
+        }
     }
+    streamTextureDesc.dstRegion.z = 0;
+    streamTextureDesc.dstRegion.depth = textureDesc.depth;
 
     const uint32_t rowPitch = Align(textureWidth * 4, context.deviceDesc->memoryAlignment.uploadBufferTextureRow);
     const uint32_t slicePitch = Align(rowPitch * textureHeight, context.deviceDesc->memoryAlignment.uploadBufferTextureSlice);
     nri::BufferDesc textureReadbackDesc = {};
-    textureReadbackDesc.size = slicePitch;
+    textureReadbackDesc.size = slicePitch * textureDesc.depth;
     nri::Buffer* textureReadback = nullptr;
     TEST_CHECK(context.CreateBuffer(textureReadbackDesc, nri::MemoryLocation::HOST_READBACK, textureReadback));
 
@@ -127,7 +146,7 @@ bool Run(test::Context& context, const test::Settings& settings) {
     textureBarrier.texture = destinationTexture;
     textureBarrier.after = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
     textureBarrier.mipNum = 1;
-    textureBarrier.layerNum = 1;
+    textureBarrier.layerNum = nri::REMAINING;
     nri::BarrierDesc barrierDesc = {};
     barrierDesc.textures = &textureBarrier;
     barrierDesc.textureNum = 1;
@@ -153,10 +172,12 @@ bool Run(test::Context& context, const test::Settings& settings) {
 
     bool passed = test::VerifyBytes(context.core, *readbackBuffer, expected.data(), bufferSize);
 
-    const uint8_t* readback = (const uint8_t*)context.core.MapBuffer(*textureReadback, 0, slicePitch);
+    const uint8_t* readback = (const uint8_t*)context.core.MapBuffer(*textureReadback, 0, textureReadbackDesc.size);
     passed &= readback != nullptr;
-    for (uint32_t y = 0; readback && y < textureHeight; y++)
-        passed &= memcmp(readback + y * rowPitch, textureData.data() + y * textureWidth * 4, textureWidth * 4) == 0;
+    for (uint32_t z = 0; readback && z < textureDesc.depth; z++) {
+        for (uint32_t y = 0; y < textureHeight; y++)
+            passed &= memcmp(readback + z * slicePitch + y * rowPitch, textureData.data() + (z * textureHeight + y) * textureWidth * 4, textureWidth * 4) == 0;
+    }
     context.core.UnmapBuffer(*textureReadback);
 
     return test::Report("streamed buffer and texture data", passed);

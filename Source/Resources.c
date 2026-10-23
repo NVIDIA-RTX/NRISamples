@@ -193,7 +193,6 @@ int main(int argc, char** argv) {
             &(NriTextureViewDesc){
                 .texture = depthStencilTexture,
                 .type = NriTextureView_DEPTH_STENCIL_ATTACHMENT,
-                .format = NriFormat_D32_SFLOAT_S8_UINT,
                 .planes = NriPlaneBits_ALL,
             },
             &depthStencilView_Attachment));
@@ -203,7 +202,6 @@ int main(int argc, char** argv) {
             &(NriTextureViewDesc){
                 .texture = depthStencilTexture,
                 .type = NriTextureView_DEPTH_STENCIL_ATTACHMENT,
-                .format = NriFormat_D32_SFLOAT_S8_UINT,
                 .planes = NriPlaneBits_STENCIL,
             },
             &depthStencilView_Attachment_DepthReadOnly));
@@ -213,7 +211,6 @@ int main(int argc, char** argv) {
             &(NriTextureViewDesc){
                 .texture = depthStencilTexture,
                 .type = NriTextureView_DEPTH_STENCIL_ATTACHMENT,
-                .format = NriFormat_D32_SFLOAT_S8_UINT,
                 .planes = NriPlaneBits_DEPTH,
             },
             &depthStencilView_Attachment_StencilReadOnly));
@@ -223,7 +220,6 @@ int main(int argc, char** argv) {
             &(NriTextureViewDesc){
                 .texture = depthStencilTexture,
                 .type = NriTextureView_TEXTURE,
-                .format = NriFormat_D32_SFLOAT_S8_UINT,
                 .planes = NriPlaneBits_DEPTH,
             },
             &depthStencilView_Resource_Depth));
@@ -233,7 +229,6 @@ int main(int argc, char** argv) {
             &(NriTextureViewDesc){
                 .texture = depthStencilTexture,
                 .type = NriTextureView_TEXTURE,
-                .format = NriFormat_D32_SFLOAT_S8_UINT,
                 .planes = NriPlaneBits_STENCIL,
             },
             &depthStencilView_Resource_Stencil));

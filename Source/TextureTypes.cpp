@@ -9,6 +9,11 @@ bool CreateView(test::Context& context, const nri::TextureViewDesc& desc) {
     TEST_CHECK(context.core.CreateTextureView(desc, descriptor));
     context.Track(descriptor);
 
+    nri::TextureViewDesc inheritedDesc = desc;
+    inheritedDesc.format = nri::Format::UNKNOWN;
+    TEST_CHECK(context.core.CreateTextureView(inheritedDesc, descriptor));
+    context.Track(descriptor);
+
     return true;
 }
 

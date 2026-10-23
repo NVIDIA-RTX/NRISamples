@@ -63,11 +63,9 @@ bool Run(test::Context& context, const test::Settings& settings) {
     nri::DescriptorSetDesc setDesc = {};
     setDesc.ranges = &rangeDesc;
     setDesc.rangeNum = 1;
-    setDesc.flags = nri::DescriptorSetBits::ALLOW_UPDATE_AFTER_SET;
 
     nri::DescriptorSetDesc copySetDesc = setDesc;
     copySetDesc.ranges = &copyRangeDesc;
-    copySetDesc.flags = nri::DescriptorSetBits::NONE;
 
     nri::PipelineLayoutDesc pipelineLayoutDesc = {};
     pipelineLayoutDesc.descriptorSets = &setDesc;
