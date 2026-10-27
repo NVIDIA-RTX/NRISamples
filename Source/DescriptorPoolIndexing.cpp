@@ -151,10 +151,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
             NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, colorAttachment));
 
             nri::Fence* acquireSemaphore = nullptr;
-            NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, acquireSemaphore));
+            NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, {nri::SWAPCHAIN_SEMAPHORE}, acquireSemaphore));
 
             nri::Fence* releaseSemaphore = nullptr;
-            NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, releaseSemaphore));
+            NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, {nri::SWAPCHAIN_SEMAPHORE}, releaseSemaphore));
 
             SwapChainTexture& swapChainTexture = m_SwapChainTextures.emplace_back();
 
@@ -174,7 +174,7 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
         NRI_ABORT_ON_FAILURE(NRI.CreateCommandBuffer(*queuedFrame.commandAllocator, queuedFrame.commandBuffer));
     }
 
-    NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_FrameFence));
+    NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, {}, m_FrameFence));
 
     { // Output
         nri::TextureDesc textureDesc = {};

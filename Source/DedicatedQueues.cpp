@@ -101,7 +101,7 @@ static inline bool TestTextureQueues(test::Context& context, nri::Queue& graphic
     const nri::AccessLayoutStage shaderRead = {nri::AccessBits::SHADER_RESOURCE, nri::Layout::SHADER_RESOURCE, nri::StageBits::FRAGMENT_SHADER};
     const nri::AccessLayoutStage firstHandoff = sharingMode == nri::SharingMode::EXCLUSIVE ? copyDst : copySrc;
     nri::Fence* fence = nullptr;
-    TEST_CHECK(context.core.CreateFence(*context.device, 0, fence));
+    TEST_CHECK(context.core.CreateFence(*context.device, {}, fence));
     context.Track(fence);
 
     // COPY first use and COPY_DESTINATION hand-off to GRAPHICS.
@@ -226,7 +226,7 @@ bool Run(test::Context& context, const test::Settings& settings) {
     TEST_CHECK(context.core.EndCommandBuffer(*copyCommandBuffer));
 
     nri::Fence* fence = nullptr;
-    TEST_CHECK(context.core.CreateFence(*context.device, 0, fence));
+    TEST_CHECK(context.core.CreateFence(*context.device, {}, fence));
     context.Track(fence);
 
     nri::FenceSubmitDesc signalFence = {};

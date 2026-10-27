@@ -156,8 +156,8 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
     m_IsAsyncMode = m_HasComputeQueue;
 
     // Fences
-    NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_ComputeFence));
-    NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, 0, m_FrameFence));
+    NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, {}, m_ComputeFence));
+    NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, {}, m_FrameFence));
 
     // Swap chain
     nri::Format swapChainFormat;
@@ -185,10 +185,10 @@ bool Sample::Initialize(nri::GraphicsAPI graphicsAPI, bool) {
             NRI_ABORT_ON_FAILURE(NRI.CreateTextureView(textureViewDesc, colorAttachment));
 
             nri::Fence* acquireSemaphore = nullptr;
-            NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, acquireSemaphore));
+            NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, {nri::SWAPCHAIN_SEMAPHORE}, acquireSemaphore));
 
             nri::Fence* releaseSemaphore = nullptr;
-            NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, nri::SWAPCHAIN_SEMAPHORE, releaseSemaphore));
+            NRI_ABORT_ON_FAILURE(NRI.CreateFence(*m_Device, {nri::SWAPCHAIN_SEMAPHORE}, releaseSemaphore));
 
             SwapChainTexture& swapChainTexture = m_SwapChainTextures.emplace_back();
 
