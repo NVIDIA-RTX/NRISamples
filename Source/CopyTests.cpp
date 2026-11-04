@@ -26,22 +26,39 @@ struct Settings {
     nri::GraphicsAPI graphicsAPI = nri::GraphicsAPI::VK;
 #endif
     uint32_t adapterIndex = 0;
+    nri::QueueType queueType = nri::QueueType::GRAPHICS;
     bool debugAPI = false;
     bool debugNRI = false;
+    bool legacyBarriers = false;
 };
 
-uint32_t Align(uint32_t value, uint32_t alignment) {
+static inline uint32_t Align(uint32_t value, uint32_t alignment) {
     alignment = std::max(alignment, 1u);
 
     return (value + alignment - 1) / alignment * alignment;
 }
 
-uint8_t GetBufferValue(uint32_t i) {
+static inline uint8_t GetBufferValue(uint32_t i) {
     return uint8_t(i * 29 + 17);
 }
 
-uint8_t GetTextureValue(uint32_t x, uint32_t y, uint32_t channel) {
+static inline uint8_t GetTextureValue(uint32_t x, uint32_t y, uint32_t channel) {
     return uint8_t(x * 17 + y * 31 + channel * 53 + 11);
+}
+
+static inline bool Report(const char* name, bool passed) {
+    printf("%s  %s\n", passed ? "PASS" : "FAIL", name);
+    return passed;
+}
+
+static inline bool IsInsideRects(uint32_t x, uint32_t y, const nri::Rect* rects, uint32_t rectNum) {
+    for (uint32_t i = 0; i < rectNum; i++) {
+        const uint32_t left = uint32_t(rects[i].x);
+        const uint32_t top = uint32_t(rects[i].y);
+        if (x >= left && x < left + rects[i].width && y >= top && y < top + rects[i].height)
+            return true;
+    }
+    return false;
 }
 
 #define RETURN_ON_FAILURE(expression) \
@@ -66,8 +83,11 @@ private:
     bool CreateTexture(const nri::TextureDesc& textureDesc, nri::Texture*& texture);
     bool BeginCommandBuffer();
     bool SubmitAndWait();
-    bool Report(const char* name, bool passed);
+    void TransitionBuffer(nri::Buffer& buffer, const nri::AccessStage& before, const nri::AccessStage& after);
+    bool VerifyBufferReadback(nri::Buffer& buffer, uint32_t size, uint32_t zeroOffset, uint32_t zeroSize);
+    bool VerifyAttachmentReadback(nri::Buffer& buffer, const nri::TextureDesc& textureDesc, uint32_t attachmentIndex, const nri::TextureDataLayoutDesc& layout, const nri::Rect* rects, uint32_t rectNum);
     bool TestBuffers();
+    bool TestAttachmentClears(nri::Format format);
     bool VerifyTextureReadback(nri::Buffer& buffer, uint32_t width, uint32_t height, const nri::TextureDataLayoutDesc& layout);
     bool TestTextures();
     bool TestTextureBarrierAccess();
@@ -79,10 +99,12 @@ private:
     nri::CoreInterface m_Core = {};
     const nri::DeviceDesc* m_DeviceDesc = nullptr;
     nri::Queue* m_Queue = nullptr;
+    nri::QueueType m_QueueType = nri::QueueType::GRAPHICS;
     nri::CommandAllocator* m_CommandAllocator = nullptr;
     nri::CommandBuffer* m_CommandBuffer = nullptr;
     std::vector<nri::Buffer*> m_Buffers;
     std::vector<nri::Texture*> m_Textures;
+    std::vector<nri::Descriptor*> m_Descriptors;
 };
 
 CopyTests::~CopyTests() {
@@ -94,6 +116,8 @@ CopyTests::~CopyTests() {
     if (m_CommandAllocator)
         m_Core.DestroyCommandAllocator(m_CommandAllocator);
 
+    for (nri::Descriptor* descriptor : m_Descriptors)
+        m_Core.DestroyDescriptor(descriptor);
     for (nri::Buffer* buffer : m_Buffers)
         m_Core.DestroyBuffer(buffer);
     for (nri::Texture* texture : m_Textures)
@@ -103,44 +127,60 @@ CopyTests::~CopyTests() {
 }
 
 bool CopyTests::Initialize(const Settings& settings) {
+    m_QueueType = settings.queueType;
+
     uint32_t adapterNum = 0;
-    RETURN_ON_FAILURE(nri::nriEnumerateAdapters(nullptr, adapterNum));
+    RETURN_ON_FAILURE(nri::nriEnumerateAdapters(nullptr, adapterNum, settings.graphicsAPI));
     if (!adapterNum) {
         printf("SKIP  No adapters found\n");
-
         exit(NRIF_SKIP);
     }
 
     std::vector<nri::AdapterDesc> adapters(adapterNum);
-    RETURN_ON_FAILURE(nri::nriEnumerateAdapters(adapters.data(), adapterNum));
+    RETURN_ON_FAILURE(nri::nriEnumerateAdapters(adapters.data(), adapterNum, settings.graphicsAPI));
+    const uint32_t adapterIndex = std::min(settings.adapterIndex, adapterNum - 1);
+    const nri::AdapterDesc& adapter = adapters[adapterIndex];
+    if (!(adapter.supportedGraphicsAPIs & settings.graphicsAPI))
+        exit(NRIF_SKIP);
+    if (!adapter.queueNum[size_t(m_QueueType)]) {
+        printf("SKIP  Requested queue type is unsupported\n");
+        exit(NRIF_SKIP);
+    }
 
-    uint32_t adapterIndex = std::min(settings.adapterIndex, adapterNum - 1);
+    nri::QueueFamilyDesc queueFamily = {};
+    queueFamily.queueType = m_QueueType;
+    queueFamily.queueNum = 1;
 
     nri::DeviceCreationDesc deviceCreationDesc = {};
     deviceCreationDesc.graphicsAPI = settings.graphicsAPI;
-    deviceCreationDesc.adapterDesc = &adapters[adapterIndex];
+    deviceCreationDesc.adapterDesc = &adapter;
     deviceCreationDesc.enableGraphicsAPIValidation = settings.debugAPI;
     deviceCreationDesc.enableNRIValidation = settings.debugNRI;
-
-    if (!(deviceCreationDesc.adapterDesc->supportedGraphicsAPIs & settings.graphicsAPI))
-        exit(NRIF_SKIP);
-
+    deviceCreationDesc.disableD3D12EnhancedBarriers = settings.legacyBarriers;
+    deviceCreationDesc.queueFamilies = &queueFamily;
+    deviceCreationDesc.queueFamilyNum = 1;
     RETURN_ON_FAILURE(nri::nriCreateDevice(deviceCreationDesc, m_Device));
 
     RETURN_ON_FAILURE(nri::nriGetInterface(*m_Device, NRI_INTERFACE(nri::CoreInterface), &m_Core));
-    RETURN_ON_FAILURE(m_Core.GetQueue(*m_Device, nri::QueueType::GRAPHICS, 0, m_Queue));
+    m_DeviceDesc = &m_Core.GetDeviceDesc(*m_Device);
+
+    RETURN_ON_FAILURE(m_Core.GetQueue(*m_Device, m_QueueType, 0, m_Queue));
     RETURN_ON_FAILURE(m_Core.CreateCommandAllocator(*m_Queue, m_CommandAllocator));
     RETURN_ON_FAILURE(m_Core.CreateCommandBuffer(*m_CommandAllocator, m_CommandBuffer));
 
-    m_DeviceDesc = &m_Core.GetDeviceDesc(*m_Device);
     printf("CopyTests: %s, %s\n", nri::nriGetGraphicsAPIString(m_DeviceDesc->graphicsAPI), m_DeviceDesc->adapterDesc.name);
-
     return true;
 }
 
 bool CopyTests::Run() {
     bool result = true;
     result &= TestBuffers();
+    if (m_QueueType != nri::QueueType::GRAPHICS)
+        return result;
+
+    result &= TestAttachmentClears(nri::Format::RGBA8_UNORM);
+    result &= TestAttachmentClears(nri::Format::RGBA8_UINT);
+    result &= TestAttachmentClears(nri::Format::D32_SFLOAT);
     result &= TestTextures();
     result &= TestTextureBarrierAccess();
     result &= TestHostCopies();
@@ -187,109 +227,321 @@ bool CopyTests::SubmitAndWait() {
     return true;
 }
 
-bool CopyTests::Report(const char* name, bool passed) {
-    printf("%s  %s\n", passed ? "PASS" : "FAIL", name);
+void CopyTests::TransitionBuffer(nri::Buffer& buffer, const nri::AccessStage& before, const nri::AccessStage& after) {
+    nri::BufferBarrierDesc bufferBarrier = {};
+    bufferBarrier.buffer = &buffer;
+    bufferBarrier.before = before;
+    bufferBarrier.after = after;
 
+    nri::BarrierDesc barriers = {};
+    barriers.buffers = &bufferBarrier;
+    barriers.bufferNum = 1;
+    m_Core.CmdBarrier(*m_CommandBuffer, barriers);
+}
+
+bool CopyTests::VerifyBufferReadback(nri::Buffer& buffer, uint32_t size, uint32_t zeroOffset, uint32_t zeroSize) {
+    const uint8_t* data = (const uint8_t*)m_Core.MapBuffer(buffer, 0, size);
+    if (!data) {
+        printf("FAIL  MapBuffer(readback) returned NULL\n");
+        return false;
+    }
+
+    bool passed = true;
+    for (uint32_t i = 0; i < size; i++) {
+        const bool isZeroed = i >= zeroOffset && i - zeroOffset < zeroSize;
+        const uint8_t expected = isZeroed ? 0 : GetBufferValue(i);
+        if (data[i] != expected) {
+            printf("Buffer mismatch byte=%u value=%u expected=%u\n", i, data[i], expected);
+            passed = false;
+            break;
+        }
+    }
+
+    m_Core.UnmapBuffer(buffer);
     return passed;
 }
 
 bool CopyTests::TestBuffers() {
     constexpr uint32_t bufferSize = 4096;
-    constexpr uint32_t zeroOffset = 512;
-    constexpr uint32_t zeroSize = 1536;
+    const struct {
+        const char* name;
+        bool zeroBuffer;
+        uint32_t offset;
+        uint32_t size;
+    } cases[] = {
+        {"CmdCopyBuffer", false, 0, 0},
+        {"CmdZeroBuffer (4-byte aligned)", true, 516, 1532},
+        {"CmdZeroBuffer (16-byte aligned)", true, 512, 1536},
+        {"CmdZeroBuffer (WHOLE_SIZE)", true, 0, nri::WHOLE_SIZE},
+    };
 
     nri::Buffer* uploadBuffer = nullptr;
-    nri::Buffer* copyBuffer = nullptr;
-    nri::Buffer* zeroBuffer = nullptr;
-    nri::Buffer* copyReadbackBuffer = nullptr;
-    nri::Buffer* zeroReadbackBuffer = nullptr;
+    nri::Buffer* deviceBuffer = nullptr;
+    nri::Buffer* readbackBuffer = nullptr;
     if (!CreateBuffer(bufferSize, nri::MemoryLocation::HOST_UPLOAD, uploadBuffer)
-        || !CreateBuffer(bufferSize, nri::MemoryLocation::DEVICE, copyBuffer)
-        || !CreateBuffer(bufferSize, nri::MemoryLocation::DEVICE, zeroBuffer)
-        || !CreateBuffer(bufferSize, nri::MemoryLocation::HOST_READBACK, copyReadbackBuffer)
-        || !CreateBuffer(bufferSize, nri::MemoryLocation::HOST_READBACK, zeroReadbackBuffer))
+        || !CreateBuffer(bufferSize, nri::MemoryLocation::DEVICE, deviceBuffer)
+        || !CreateBuffer(bufferSize, nri::MemoryLocation::HOST_READBACK, readbackBuffer))
         return false;
 
     uint8_t* uploadData = (uint8_t*)m_Core.MapBuffer(*uploadBuffer, 0, bufferSize);
     if (!uploadData) {
-        printf("FAIL  MapBuffer(uploadBuffer) returned NULL\n");
-
+        printf("FAIL  MapBuffer(upload) returned NULL\n");
         return false;
     }
-
     for (uint32_t i = 0; i < bufferSize; i++)
         uploadData[i] = GetBufferValue(i);
     m_Core.UnmapBuffer(*uploadBuffer);
 
+    const nri::AccessStage copySource = {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY};
+    const nri::AccessStage copyDestination = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
+    nri::AccessStage currentState = {};
+    bool passed = true;
+    for (const auto& test : cases) {
+        if (!BeginCommandBuffer())
+            return false;
+
+        TransitionBuffer(*deviceBuffer, currentState, copyDestination);
+        m_Core.CmdCopyBuffer(*m_CommandBuffer, *deviceBuffer, 0, *uploadBuffer, 0, nri::WHOLE_SIZE);
+
+        uint32_t zeroSize = 0;
+        if (test.zeroBuffer) {
+            TransitionBuffer(*deviceBuffer, copyDestination, copyDestination);
+            m_Core.CmdZeroBuffer(*m_CommandBuffer, *deviceBuffer, test.offset, test.size);
+            zeroSize = test.size == nri::WHOLE_SIZE ? bufferSize : test.size;
+        }
+
+        TransitionBuffer(*deviceBuffer, copyDestination, copySource);
+        m_Core.CmdCopyBuffer(*m_CommandBuffer, *readbackBuffer, 0, *deviceBuffer, 0, nri::WHOLE_SIZE);
+        if (!SubmitAndWait())
+            return false;
+
+        passed &= Report(test.name, VerifyBufferReadback(*readbackBuffer, bufferSize, test.offset, zeroSize));
+        currentState = copySource;
+    }
+    return passed;
+}
+
+bool CopyTests::TestAttachmentClears(nri::Format format) {
+    const bool isDepth = format == nri::Format::D32_SFLOAT;
+    const bool isInteger = format == nri::Format::RGBA8_UINT;
+    const char* testName = "CmdClearAttachments (MRT array)";
+    if (isDepth)
+        testName = "CmdClearAttachments (depth array)";
+    else if (isInteger)
+        testName = "CmdClearAttachments (integer MRT array)";
+    const nri::FormatSupportBits requiredSupport = isDepth ? nri::FormatSupportBits::DEPTH_STENCIL_ATTACHMENT : nri::FormatSupportBits::COLOR_ATTACHMENT;
+    if (!(m_Core.GetFormatSupport(*m_Device, format) & requiredSupport)) {
+        printf("SKIP  %s: attachment format is unsupported\n", testName);
+        return true;
+    }
+
+    constexpr uint16_t width = 8;
+    constexpr uint16_t height = 6;
+    const uint16_t layerNum = std::min<uint16_t>(2, m_DeviceDesc->dimensions.attachmentLayerMaxNum);
+    const uint32_t attachmentNum = isDepth ? 1 : std::min<uint32_t>(2, m_DeviceDesc->shaderStage.fragment.attachmentMaxNum);
+    if (!layerNum || !attachmentNum) {
+        printf("SKIP  %s: attachment layers or color attachments are unsupported\n", testName);
+        return true;
+    }
+    const bool hasRectClears = isDepth ? m_DeviceDesc->features.rectDepthStencilClears : m_DeviceDesc->features.rectColorClears;
+    if (!hasRectClears) {
+        printf("SKIP  %s: rectangle clears are unsupported\n", testName);
+        return true;
+    }
+    const nri::PlaneBits planes = isDepth ? nri::PlaneBits::DEPTH : nri::PlaneBits::COLOR;
+    const nri::AccessLayoutStage attachmentState = isDepth
+        ? nri::AccessLayoutStage{nri::AccessBits::DEPTH_STENCIL_ATTACHMENT_WRITE, nri::Layout::DEPTH_STENCIL_ATTACHMENT, nri::StageBits::DEPTH_STENCIL_ATTACHMENT}
+        : nri::AccessLayoutStage{nri::AccessBits::COLOR_ATTACHMENT, nri::Layout::COLOR_ATTACHMENT, nri::StageBits::COLOR_ATTACHMENT};
+    const nri::AccessLayoutStage uploadState = {nri::AccessBits::COPY_DESTINATION, nri::Layout::COPY_DESTINATION, nri::StageBits::COPY};
+
+    nri::TextureDataLayoutDesc dataLayout = {};
+    dataLayout.rowPitch = Align(width * 4, m_DeviceDesc->memoryAlignment.uploadBufferTextureRow);
+    dataLayout.slicePitch = dataLayout.rowPitch * height;
+    while (dataLayout.slicePitch % std::max(m_DeviceDesc->memoryAlignment.uploadBufferTextureSlice, 1u))
+        dataLayout.slicePitch += dataLayout.rowPitch;
+
+    // Seed integer attachments through a copy so typed zero clears have nonzero guard pixels.
+    nri::Buffer* uploadBuffer = nullptr;
+    if (isInteger) {
+        if (!CreateBuffer(dataLayout.slicePitch, nri::MemoryLocation::HOST_UPLOAD, uploadBuffer))
+            return false;
+        void* data = m_Core.MapBuffer(*uploadBuffer, 0, dataLayout.slicePitch);
+        if (!data)
+            return false;
+        memset(data, 1, dataLayout.slicePitch);
+        m_Core.UnmapBuffer(*uploadBuffer);
+    }
+
+    nri::TextureDesc textureDesc = {};
+    textureDesc.type = nri::TextureType::TEXTURE_2D;
+    textureDesc.format = format;
+    textureDesc.width = width;
+    textureDesc.height = height;
+    textureDesc.layerNum = layerNum;
+    textureDesc.usage = isDepth ? nri::TextureUsageBits::DEPTH_STENCIL_ATTACHMENT : nri::TextureUsageBits::COLOR_ATTACHMENT;
+
+    nri::Texture* textures[2] = {};
+    nri::Buffer* readbacks[2] = {};
+    nri::AttachmentDesc attachments[2][2] = {};
+    nri::TextureBarrierDesc textureBarriers[2] = {};
+    for (uint32_t i = 0; i < attachmentNum; i++) {
+        if (!CreateTexture(textureDesc, textures[i]) || !CreateBuffer(uint64_t(dataLayout.slicePitch) * layerNum, nri::MemoryLocation::HOST_READBACK, readbacks[i]))
+            return false;
+
+        for (uint16_t layer = 0; layer < layerNum; layer++) {
+            nri::TextureViewDesc viewDesc = {};
+            viewDesc.texture = textures[i];
+            viewDesc.type = isDepth ? nri::TextureView::DEPTH_STENCIL_ATTACHMENT : nri::TextureView::COLOR_ATTACHMENT;
+            viewDesc.layerOffset = layer;
+            viewDesc.layerNum = 1;
+            viewDesc.planes = planes;
+            nri::AttachmentDesc& attachment = attachments[layer][i];
+            RETURN_ON_FAILURE(m_Core.CreateTextureView(viewDesc, attachment.descriptor));
+            m_Descriptors.push_back(attachment.descriptor);
+            attachment.loadOp = isInteger ? nri::LoadOp::LOAD : nri::LoadOp::CLEAR;
+            attachment.storeOp = nri::StoreOp::STORE;
+            if (isDepth)
+                attachment.clearValue.depthStencil.depth = 1.0f;
+            else if (!isInteger)
+                attachment.clearValue.color.f = {1.0f, 1.0f, 1.0f, 1.0f};
+        }
+
+        textureBarriers[i].texture = textures[i];
+        textureBarriers[i].before.layout = nri::Layout::UNDEFINED;
+        textureBarriers[i].after = isInteger ? uploadState : attachmentState;
+        textureBarriers[i].mipNum = 1;
+        textureBarriers[i].layerNum = layerNum;
+        textureBarriers[i].planes = planes;
+    }
+
     if (!BeginCommandBuffer())
         return false;
-
-    std::array<nri::BufferBarrierDesc, 2> initialBarriers = {};
-    initialBarriers[0].buffer = copyBuffer;
-    initialBarriers[0].after = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-    initialBarriers[1].buffer = zeroBuffer;
-    initialBarriers[1].after = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-
     nri::BarrierDesc barrierDesc = {};
-    barrierDesc.buffers = initialBarriers.data();
-    barrierDesc.bufferNum = (uint32_t)initialBarriers.size();
+    barrierDesc.textures = textureBarriers;
+    barrierDesc.textureNum = attachmentNum;
     m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
 
-    m_Core.CmdCopyBuffer(*m_CommandBuffer, *copyBuffer, 0, *uploadBuffer, 0, nri::WHOLE_SIZE);
-    m_Core.CmdCopyBuffer(*m_CommandBuffer, *zeroBuffer, 0, *uploadBuffer, 0, nri::WHOLE_SIZE);
+    if (isInteger) {
+        for (uint32_t i = 0; i < attachmentNum; i++) {
+            for (uint16_t layer = 0; layer < layerNum; layer++) {
+                nri::TextureRegionDesc region = {};
+                region.width = width;
+                region.height = height;
+                region.depth = 1;
+                region.layerOffset = layer;
+                m_Core.CmdUploadBufferToTexture(*m_CommandBuffer, *textures[i], region, *uploadBuffer, dataLayout);
+            }
+            textureBarriers[i].before = uploadState;
+            textureBarriers[i].after = attachmentState;
+        }
+        m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
+    }
 
-    nri::BufferBarrierDesc zeroBefore = {};
-    zeroBefore.buffer = zeroBuffer;
-    zeroBefore.before = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-    zeroBefore.after = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-    barrierDesc.buffers = &zeroBefore;
-    barrierDesc.bufferNum = 1;
+    const nri::Rect rects[] = {{1, 1, 3, 2}, {2, 4, 4, 1}};
+    const uint32_t rectNum = uint32_t(std::size(rects));
+    for (uint16_t layer = 0; layer < layerNum; layer++) {
+        nri::RenderingDesc renderingDesc = {};
+        if (isDepth)
+            renderingDesc.depth = attachments[layer][0];
+        else {
+            renderingDesc.colors = attachments[layer];
+            renderingDesc.colorNum = attachmentNum;
+        }
+        m_Core.CmdBeginRendering(*m_CommandBuffer, renderingDesc);
+
+        nri::ClearAttachmentDesc clears[2] = {};
+        for (uint32_t i = 0; i < attachmentNum; i++) {
+            clears[i].planes = planes;
+            clears[i].colorAttachmentIndex = uint8_t(i);
+            if (isDepth)
+                clears[i].value.depthStencil.depth = 1.0f;
+            else if (isInteger)
+                clears[i].value.color.ui = {0, 0, 0, 0};
+            else
+                clears[i].value.color.f = {1.0f, 1.0f, 1.0f, 1.0f};
+        }
+        if (!isInteger) {
+            // Clear slot 0 again, then overwrite its rectangles; slot 1 keeps its load clear outside them.
+            nri::ClearAttachmentDesc repeatClear = {};
+            repeatClear.planes = planes;
+            m_Core.CmdClearAttachments(*m_CommandBuffer, &repeatClear, 1, nullptr, 0);
+        }
+
+        // Both rectangles are wholly inside the attachment; every array layer uses its own view.
+        if (attachmentNum > 1)
+            clears[1].value = {};
+        m_Core.CmdClearAttachments(*m_CommandBuffer, clears, attachmentNum, rects, rectNum);
+        m_Core.CmdEndRendering(*m_CommandBuffer);
+    }
+
+    for (uint32_t i = 0; i < attachmentNum; i++) {
+        textureBarriers[i].before = attachmentState;
+        textureBarriers[i].after = {nri::AccessBits::COPY_SOURCE, nri::Layout::COPY_SOURCE, nri::StageBits::COPY};
+    }
     m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
-
-    m_Core.CmdZeroBuffer(*m_CommandBuffer, *zeroBuffer, zeroOffset, zeroSize);
-
-    std::array<nri::BufferBarrierDesc, 2> readbackBarriers = {};
-    readbackBarriers[0].buffer = copyBuffer;
-    readbackBarriers[0].before = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-    readbackBarriers[0].after = {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY};
-    readbackBarriers[1].buffer = zeroBuffer;
-    readbackBarriers[1].before = {nri::AccessBits::COPY_DESTINATION, nri::StageBits::COPY};
-    readbackBarriers[1].after = {nri::AccessBits::COPY_SOURCE, nri::StageBits::COPY};
-    barrierDesc.buffers = readbackBarriers.data();
-    barrierDesc.bufferNum = (uint32_t)readbackBarriers.size();
-    m_Core.CmdBarrier(*m_CommandBuffer, barrierDesc);
-
-    m_Core.CmdCopyBuffer(*m_CommandBuffer, *copyReadbackBuffer, 0, *copyBuffer, 0, nri::WHOLE_SIZE);
-    m_Core.CmdCopyBuffer(*m_CommandBuffer, *zeroReadbackBuffer, 0, *zeroBuffer, 0, nri::WHOLE_SIZE);
-
+    for (uint32_t i = 0; i < attachmentNum; i++) {
+        for (uint16_t layer = 0; layer < layerNum; layer++) {
+            nri::TextureRegionDesc region = {};
+            region.width = width;
+            region.height = height;
+            region.depth = 1;
+            region.layerOffset = layer;
+            region.planes = planes;
+            dataLayout.offset = uint64_t(dataLayout.slicePitch) * layer;
+            m_Core.CmdReadbackTextureToBuffer(*m_CommandBuffer, *readbacks[i], dataLayout, *textures[i], region);
+        }
+    }
     if (!SubmitAndWait())
         return false;
 
-    const uint8_t* copyData = (const uint8_t*)m_Core.MapBuffer(*copyReadbackBuffer, 0, bufferSize);
-    const uint8_t* zeroData = (const uint8_t*)m_Core.MapBuffer(*zeroReadbackBuffer, 0, bufferSize);
-    if (!copyData || !zeroData) {
-        printf("FAIL  MapBuffer(readbackBuffer) returned NULL\n");
-        if (copyData)
-            m_Core.UnmapBuffer(*copyReadbackBuffer);
-        if (zeroData)
-            m_Core.UnmapBuffer(*zeroReadbackBuffer);
+    bool passed = true;
+    for (uint32_t i = 0; i < attachmentNum; i++)
+        passed &= VerifyAttachmentReadback(*readbacks[i], textureDesc, i, dataLayout, rects, rectNum);
+    return Report(testName, passed);
+}
 
+bool CopyTests::VerifyAttachmentReadback(nri::Buffer& buffer, const nri::TextureDesc& textureDesc, uint32_t attachmentIndex,
+    const nri::TextureDataLayoutDesc& layout, const nri::Rect* rects, uint32_t rectNum) {
+    const uint8_t* data = (const uint8_t*)m_Core.MapBuffer(buffer, 0, uint64_t(layout.slicePitch) * textureDesc.layerNum);
+    if (!data) {
+        printf("FAIL  MapBuffer(attachment readback) returned NULL\n");
         return false;
     }
 
-    bool copyPassed = true;
-    bool zeroPassed = true;
-    for (uint32_t i = 0; i < bufferSize; i++) {
-        copyPassed &= copyData[i] == GetBufferValue(i);
-
-        uint8_t expected = i >= zeroOffset && i < zeroOffset + zeroSize ? 0 : GetBufferValue(i);
-        zeroPassed &= zeroData[i] == expected;
+    const bool isDepth = textureDesc.format == nri::Format::D32_SFLOAT;
+    const bool isInteger = textureDesc.format == nri::Format::RGBA8_UINT;
+    bool passed = true;
+    for (uint32_t layer = 0; layer < textureDesc.layerNum; layer++) {
+        for (uint32_t y = 0; y < textureDesc.height; y++) {
+            for (uint32_t x = 0; x < textureDesc.width; x++) {
+                const bool inside = IsInsideRects(x, y, rects, rectNum);
+                bool expectedOne = !inside;
+                if (!isInteger && attachmentIndex == 0)
+                    expectedOne = inside;
+                const uint8_t* texel = data + layer * layout.slicePitch + y * layout.rowPitch + x * 4;
+                if (isDepth) {
+                    float actualDepth = 0.0f;
+                    memcpy(&actualDepth, texel, sizeof(actualDepth));
+                    const float expectedDepth = expectedOne ? 1.0f : 0.0f;
+                    if (passed && actualDepth != expectedDepth)
+                        printf("Clear mismatch layer=%u x=%u y=%u depth=%g expected=%g\n", layer, x, y, actualDepth, expectedDepth);
+                    passed &= actualDepth == expectedDepth;
+                } else {
+                    uint8_t expected = 0;
+                    if (expectedOne)
+                        expected = isInteger ? 1 : 255;
+                    for (uint32_t channel = 0; channel < 4; channel++) {
+                        if (passed && texel[channel] != expected)
+                            printf("Clear mismatch attachment=%u layer=%u x=%u y=%u channel=%u value=%u expected=%u\n", attachmentIndex, layer, x, y, channel, texel[channel], expected);
+                        passed &= texel[channel] == expected;
+                    }
+                }
+            }
+        }
     }
 
-    m_Core.UnmapBuffer(*copyReadbackBuffer);
-    m_Core.UnmapBuffer(*zeroReadbackBuffer);
-
-    return Report("CmdCopyBuffer", copyPassed) && Report("CmdZeroBuffer", zeroPassed);
+    m_Core.UnmapBuffer(buffer);
+    return passed;
 }
 
 bool CopyTests::VerifyTextureReadback(nri::Buffer& buffer, uint32_t width, uint32_t height, const nri::TextureDataLayoutDesc& layout) {
@@ -872,6 +1124,12 @@ Settings ParseSettings(int argc, char** argv) {
             settings.debugAPI = true;
         else if (!strcmp(argv[i], "--debugNRI"))
             settings.debugNRI = true;
+        else if (!strcmp(argv[i], "--legacyBarriers"))
+            settings.legacyBarriers = true;
+        else if (!strcmp(argv[i], "--queue=COMPUTE"))
+            settings.queueType = nri::QueueType::COMPUTE;
+        else if (!strcmp(argv[i], "--queue=COPY"))
+            settings.queueType = nri::QueueType::COPY;
         else if (!strncmp(argv[i], "--adapter=", 10))
             settings.adapterIndex = (uint32_t)strtoul(argv[i] + 10, nullptr, 10);
     }
