@@ -112,49 +112,49 @@ get_target_property(ML_SOURCE_DIR MathLib SOURCE_DIR)
 get_target_property(NRI_SOURCE_DIR NRI SOURCE_DIR)
 
 if(NOT IOS) # iOS: shaders come from a macOS build
-set(SHADERMAKE_GENERAL_ARGS
-    --project "NRISamples"
-    --compactProgress
-    --binary
-    --flatten
-    --stripReflection
-    --WX
-    --sRegShift 0 --bRegShift 32 --uRegShift 64 --tRegShift 128 # TODO: must be in sync with "VK_BINDING_OFFSETS"
-    --sourceDir "Shaders"
-    --ignoreConfigDir
-    --vulkanVersion 1.2 # only for WGPU
-    -c "Shaders/Shaders.cfg"
-    -o "${SHADER_OUTPUT_PATH}"
-    -I "Shaders"
-    -I "${ML_SOURCE_DIR}"
-    -I "${NRI_SOURCE_DIR}/Include"
-)
+    set(SHADERMAKE_GENERAL_ARGS
+        --project "NRISamples"
+        --compactProgress
+        --binary
+        --flatten
+        --stripReflection
+        --WX
+        --sRegShift 0 --bRegShift 32 --uRegShift 64 --tRegShift 128 # TODO: must be in sync with "VK_BINDING_OFFSETS"
+        --sourceDir "Shaders"
+        --ignoreConfigDir
+        --vulkanVersion 1.2 # only for WGPU
+        -c "Shaders/Shaders.cfg"
+        -o "${SHADER_OUTPUT_PATH}"
+        -I "Shaders"
+        -I "${ML_SOURCE_DIR}"
+        -I "${NRI_SOURCE_DIR}/Include"
+    )
 
-set(SHADERMAKE_COMMANDS "")
+    set(SHADERMAKE_COMMANDS "")
 
-if(NRI_ENABLE_D3D11_SUPPORT)
-    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p DXBC --compiler "${SHADERMAKE_FXC_PATH}" ${SHADERMAKE_GENERAL_ARGS})
-endif()
+    if(NRI_ENABLE_D3D11_SUPPORT)
+        set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p DXBC --compiler "${SHADERMAKE_FXC_PATH}" ${SHADERMAKE_GENERAL_ARGS})
+    endif()
 
-if(NRI_ENABLE_D3D12_SUPPORT)
-    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p DXIL --compiler "${SHADERMAKE_DXC_PATH}" ${SHADERMAKE_GENERAL_ARGS})
-elseif(NRI_ENABLE_METAL_SHADER_CONVERTER)
-    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p DXIL --compiler "${SHADERMAKE_DXC_PATH}" ${SHADERMAKE_GENERAL_ARGS} -D NRI_METAL_DXIL)
-endif()
+    if(NRI_ENABLE_D3D12_SUPPORT)
+        set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p DXIL --compiler "${SHADERMAKE_DXC_PATH}" ${SHADERMAKE_GENERAL_ARGS})
+    elseif(NRI_ENABLE_METAL_SHADER_CONVERTER)
+        set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p DXIL --compiler "${SHADERMAKE_DXC_PATH}" ${SHADERMAKE_GENERAL_ARGS} -D NRI_METAL_DXIL)
+    endif()
 
-if(NRI_ENABLE_VK_SUPPORT)
-    set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p SPIRV --compiler "${SHADERMAKE_DXC_VK_PATH}" ${SHADERMAKE_GENERAL_ARGS} --compilerAlias "SLANG=${SHADERMAKE_SLANG_PATH}")
-endif()
+    if(NRI_ENABLE_VK_SUPPORT)
+        set(SHADERMAKE_COMMANDS ${SHADERMAKE_COMMANDS} COMMAND ${SHADERMAKE_PATH} -p SPIRV --compiler "${SHADERMAKE_DXC_VK_PATH}" ${SHADERMAKE_GENERAL_ARGS} --compilerAlias "SLANG=${SHADERMAKE_SLANG_PATH}")
+    endif()
 
-add_custom_target(${PROJECT_NAME}Shaders ALL
-    ${SHADERMAKE_COMMANDS}
-    DEPENDS ShaderMake
-    WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
-    VERBATIM
-    SOURCES ${SHADERS}
-)
+    add_custom_target(${PROJECT_NAME}Shaders ALL
+        ${SHADERMAKE_COMMANDS}
+        DEPENDS ShaderMake
+        WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
+        VERBATIM
+        SOURCES ${SHADERS}
+    )
 
-set_target_properties(${PROJECT_NAME}Shaders PROPERTIES FOLDER ${PROJECT_NAME})
+    set_target_properties(${PROJECT_NAME}Shaders PROPERTIES FOLDER ${PROJECT_NAME})
 endif()
 
 # Samples
@@ -270,25 +270,25 @@ add_sample(TextureTypes cpp)
 add_sample(Triangle cpp)
 
 if(NOT IOS)
-add_sample(VideoEncodeDecode cpp)
-target_sources(VideoEncodeDecode PRIVATE
-    Source/VideoEncodeDecode/Decoder.cpp
-    Source/VideoEncodeDecode/Decoder.h
-    Source/VideoEncodeDecode/Encoder.cpp
-    Source/VideoEncodeDecode/Encoder.h
-    Source/VideoEncodeDecode/Shared.h
-    Source/VideoEncodeDecode/Stream.cpp
-    Source/VideoEncodeDecode/Stream.h
-)
-option(NRISAMPLES_ENABLE_AV1_FILE_DECODING "Enable developer AV1 file decoding using NRI's private parser" OFF)
-target_compile_definitions(VideoEncodeDecode PRIVATE NRISAMPLES_ENABLE_AV1_FILE_DECODING=$<BOOL:${NRISAMPLES_ENABLE_AV1_FILE_DECODING}>)
-if(NRISAMPLES_ENABLE_AV1_FILE_DECODING)
-    target_include_directories(VideoEncodeDecode PRIVATE "${NRI_SOURCE_DIR}/Source/Shared")
-endif()
+    add_sample(VideoEncodeDecode cpp)
+    target_sources(VideoEncodeDecode PRIVATE
+        Source/VideoEncodeDecode/Decoder.cpp
+        Source/VideoEncodeDecode/Decoder.h
+        Source/VideoEncodeDecode/Encoder.cpp
+        Source/VideoEncodeDecode/Encoder.h
+        Source/VideoEncodeDecode/Shared.h
+        Source/VideoEncodeDecode/Stream.cpp
+        Source/VideoEncodeDecode/Stream.h
+    )
+    option(NRISAMPLES_ENABLE_AV1_FILE_DECODING "Enable developer AV1 file decoding using NRI's private parser" OFF)
+    target_compile_definitions(VideoEncodeDecode PRIVATE NRISAMPLES_ENABLE_AV1_FILE_DECODING=$<BOOL:${NRISAMPLES_ENABLE_AV1_FILE_DECODING}>)
+    if(NRISAMPLES_ENABLE_AV1_FILE_DECODING)
+        target_include_directories(VideoEncodeDecode PRIVATE "${NRI_SOURCE_DIR}/Source/Shared")
+    endif()
 
-if(WIN32)
-    target_link_libraries(VideoEncodeDecode PRIVATE d3d12)
-endif()
+    if(WIN32)
+        target_link_libraries(VideoEncodeDecode PRIVATE d3d12)
+    endif()
 
 endif()
 
