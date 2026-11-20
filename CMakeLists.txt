@@ -59,7 +59,7 @@ if(DEPS)
 endif()
 
 # Compile options
-if(NOT((CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64") OR(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")))
+if(NOT IOS AND NOT((CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64") OR(CMAKE_SYSTEM_PROCESSOR MATCHES "arm64")))
     set(SIMD -mssse3)
 endif()
 
@@ -111,6 +111,7 @@ set_source_files_properties(${SHADERS} PROPERTIES VS_TOOL_OVERRIDE "None")
 get_target_property(ML_SOURCE_DIR MathLib SOURCE_DIR)
 get_target_property(NRI_SOURCE_DIR NRI SOURCE_DIR)
 
+if(NOT IOS) # iOS: shaders come from a macOS build
 set(SHADERMAKE_GENERAL_ARGS
     --project "NRISamples"
     --compactProgress
@@ -154,12 +155,28 @@ add_custom_target(${PROJECT_NAME}Shaders ALL
 )
 
 set_target_properties(${PROJECT_NAME}Shaders PROPERTIES FOLDER ${PROJECT_NAME})
+endif()
 
 # Samples
+set(NRISAMPLES_IOS_BUNDLE_ID_PREFIX "com.example.nrisamples" CACHE STRING "iOS: bundle identifier prefix, must be unique for your Apple ID")
+set(NRISAMPLES_IOS_DEVELOPMENT_TEAM "" CACHE STRING "iOS: Apple team ID used for signing")
+set(NRISAMPLES_IOS_MSC_DYLIB "/usr/local/lib_iOS/libmetalirconverter.dylib" CACHE FILEPATH "iOS: Metal Shader Converter library to embed into the app")
+set(IOS_SAMPLES Clear) # samples built as iOS apps
+
 function(add_sample NAME EXT)
-    add_executable(${NAME} "Source/${NAME}.${EXT}")
+    if(IOS AND NOT "${NAME}" IN_LIST IOS_SAMPLES)
+        return()
+    endif()
+
+    if(IOS)
+        add_executable(${NAME} MACOSX_BUNDLE "Source/${NAME}.${EXT}")
+    else()
+        add_executable(${NAME} "Source/${NAME}.${EXT}")
+    endif()
     source_group("" FILES "Source/${NAME}.${EXT}")
-    add_dependencies(${NAME} ${PROJECT_NAME}Shaders)
+    if(NOT IOS)
+        add_dependencies(${NAME} ${PROJECT_NAME}Shaders)
+    endif()
 
     target_compile_definitions(${NAME} PRIVATE ${COMPILE_DEFINITIONS} PROJECT_NAME=${NAME})
     target_compile_options(${NAME} PRIVATE ${COMPILE_OPTIONS})
@@ -167,6 +184,26 @@ function(add_sample NAME EXT)
 
     set_target_properties(${NAME} PROPERTIES FOLDER ${PROJECT_NAME})
     set_target_properties(${NAME} PROPERTIES VS_DEBUGGER_WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
+
+    # iOS: an app bundle
+    if(IOS)
+        set_target_properties(${NAME} PROPERTIES
+            MACOSX_BUNDLE_INFO_PLIST "${CMAKE_CURRENT_SOURCE_DIR}/iOS/Info.plist"
+            XCODE_ATTRIBUTE_PRODUCT_BUNDLE_IDENTIFIER "${NRISAMPLES_IOS_BUNDLE_ID_PREFIX}.${NAME}"
+            XCODE_ATTRIBUTE_DEVELOPMENT_TEAM "${NRISAMPLES_IOS_DEVELOPMENT_TEAM}"
+            XCODE_ATTRIBUTE_CODE_SIGN_STYLE "Automatic"
+            XCODE_ATTRIBUTE_TARGETED_DEVICE_FAMILY "1,2"
+            XCODE_ATTRIBUTE_LD_RUNPATH_SEARCH_PATHS "@executable_path/Frameworks"
+        )
+
+        # NRI links the Metal Shader Converter dynamically, so the library must travel with the app
+        if(NRI_ENABLE_METAL_SHADER_CONVERTER)
+            set_target_properties(${NAME} PROPERTIES
+                XCODE_EMBED_FRAMEWORKS "${NRISAMPLES_IOS_MSC_DYLIB}"
+                XCODE_EMBED_FRAMEWORKS_CODE_SIGN_ON_COPY ON
+            )
+        endif()
+    endif()
 
     # Copy arguments for Visual Studio Smart Command Line Arguments extension
     if(WIN32 AND MSVC)
@@ -208,6 +245,7 @@ add_sample(Streamer cpp)
 add_sample(TextureTypes cpp)
 add_sample(Triangle cpp)
 
+if(NOT IOS)
 add_sample(VideoEncodeDecode cpp)
 target_sources(VideoEncodeDecode PRIVATE
     Source/VideoEncodeDecode/Decoder.cpp
@@ -228,8 +266,10 @@ if(WIN32)
     target_link_libraries(VideoEncodeDecode PRIVATE d3d12)
 endif()
 
+endif()
+
 # Wrapper depends on Vulkan SDK availability
-if(DEFINED ENV{VULKAN_SDK})
+if(DEFINED ENV{VULKAN_SDK} AND NOT IOS)
     add_sample(Wrapper cpp)
     target_include_directories(Wrapper PRIVATE "$ENV{VULKAN_SDK}/include")
 
