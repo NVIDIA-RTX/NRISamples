@@ -1,102 +1,76 @@
-# NRI Samples
+# NRI SAMPLES
 
 [![Status](https://github.com/NVIDIA-RTX/NRISamples/actions/workflows/build.yml/badge.svg)](https://github.com/NVIDIA-RTX/NRISamples/actions/workflows/build.yml)
 
-This is the test bench for [*NRI (NVIDIA Rendering Interface)*](https://github.com/NVIDIA-RTX/NRI).
+Samples demonstrating [NVIDIA Render Interface (NRI)](https://github.com/NVIDIA-RTX/NRI), a cross-platform rendering hardware interface (RHI), covering graphics, compute, ray tracing, resource copies, streaming, low latency, video encoding/decoding, and other features.
 
-## Build instructions
+## HOW TO BUILD
 
-Scripts resolve the project root from their own location and can be launched from any working directory. Build output remains in `_Build` and `_Bin` at the project root.
+Prerequisites:
 
-To clean generated files, run `Scripts/Windows/4-Clean.bat`, `bash Scripts/Linux/4-Clean.sh` or `bash Scripts/MacOS/4-Clean.sh`. Cleanup also removes downloaded `_Data` and runs the matching cleanup scripts in NRIFramework and NRI.
+- *CMake* 3.30+ and a C/C++ compiler
+- *Windows:* *Windows SDK* and [*Vulkan SDK*](https://vulkan.lunarg.com/sdk/home)
+- *Linux:* *Vulkan SDK* and *xorg-dev*
+- *macOS:* *Xcode* 26+ with command line tools, *Ninja*, and the *Vulkan SDK* (provides *DXC* for shader compilation and *Vulkan* through *MoltenVK*). Install the Metal toolchain with `xcodebuild -downloadComponent MetalToolchain`. Install *Metal Shader Converter* to run the samples on *Metal*
 
-### Windows
+Notes:
 
-- Install **WindowsSDK** and **VulkanSDK**
-- Clone project and init submodules
-- Generate and build project using **cmake**
-  - To build the binary with static MSVC runtime, add `-DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>"` parameter
+- Run `Scripts/<platform>/1-Deploy.<ext>`, then `Scripts/<platform>/2-Build.<ext>` for your platform
+- Scripts resolve the project root from their own location and can be launched from any working directory. Build output is placed in `_Build` and `_Bin` at the project root
+- To clean generated files, run `Scripts/<platform>/4-Clean.<ext>`. Cleanup also removes downloaded `_Data`
+- To use the static MSVC runtime, pass `-DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>"` when configuring CMake
+- On macOS, source the Vulkan SDK's `setup-env.sh` before building. *Metal Shader Converter* enables the *HLSL to DXIL to Metal shader* workflow automatically when installed and makes *Metal* the default API; otherwise, *Vulkan* is used
 
-Or by running scripts only:
-- Run `Scripts/Windows/1-Deploy.bat`
-- Run `Scripts/Windows/2-Build.bat`
+*CMake* options:
 
-### Linux
-
-- Install **VulkanSDK**, **xorg-dev**,
-- Clone project and init submodules
-- Generate and build project using **cmake**
-
-Or by running scripts only:
-- Run `bash Scripts/Linux/1-Deploy.sh`
-- Run `bash Scripts/Linux/2-Build.sh`
-
-### macOS
-
-- Install **Xcode** 26+ with command line tools and the Metal toolchain (`xcodebuild -downloadComponent MetalToolchain`)
-- Install **CMake** 3.30+ and **Ninja**
-- Install the [Vulkan SDK](https://vulkan.lunarg.com/sdk/home#mac) (provides *DXC*, required to compile shaders, and *Vulkan* through *MoltenVK*)
-- Source the Vulkan SDK's `setup-env.sh`
-- Install **Metal Shader Converter** to run the samples on *Metal* (HLSL → DXIL → Metal, enabled automatically if installed, *Metal* becomes the default API; otherwise *Vulkan* is used)
-- Clone project and init submodules
-- Generate and build project using **cmake**
-
-Or by running scripts only:
-- Run `bash Scripts/MacOS/1-Deploy.sh`
-- Run `bash Scripts/MacOS/2-Build.sh`
-
-### CMake options
-
-- `DISABLE_SHADER_COMPILATION` - disable compilation of shaders (shaders can be built on other platform)
 - `NRIF_USE_WAYLAND` - use Wayland instead of X11 on Linux
 
-## How to run
+## HOW TO RUN
 
-The executables from `_Bin` directory load resources from `_Data`, therefore the samples need to be run with the working directory set to the project root folder. To run all samples sequentially, use `Scripts/Windows/3-Test samples.bat`, `bash "Scripts/Linux/3-Test samples.sh"` or `bash "Scripts/MacOS/3-Test samples.sh"`. These scripts set the working directory to the project root. The Linux and macOS runners select backends enabled in `_Build/CMakeCache.txt`.
+Run executables from `_Bin` with the working directory set to the project root so they can load resources from `_Data` and shaders from `_Shaders`. To run all samples sequentially, use `Scripts/Windows/3-Test samples.bat`, `bash "Scripts/Linux/3-Test samples.sh"`, or `bash "Scripts/MacOS/3-Test samples.sh"`. These scripts set the working directory automatically. The Linux runner uses Vulkan and WebGPU; the macOS runner also uses Metal.
 
-## Samples
+## SAMPLES
 
-- AsyncCompute - demonstrates parallel execution of graphic and compute workloads
-- BindlessSceneViewer - bindless GPU-driven rendering test
-- Buffers - various buffer-related stuff
-- Clear - minimal example of rendering using framebuffer clears only
-- ClearStorage - clear storage testing
-- CopyTests - validates core copy commands and synchronous host texture copies
-- DeviceInfo - queries and prints out information about device groups in the system
-- DescriptorPoolIndexing - HLSL dynamic resources through a directly indexed descriptor pool
-- DescriptorHeapIndexing - HLSL dynamic resources through a directly indexed descriptor heap
-- DescriptorManagement - descriptor copying, pool switching, update-after-set and pool recycling testing
-- DedicatedQueues - dedicated copy queue, synchronization and copy-queue timestamp testing
-- GraphicsPipelineStates - dynamic graphics state, geometry, tessellation and less common rasterization testing
-- GraphicsVertexInput - vertex input, geometry and tessellation draw testing
-- InputAttachment - "dynamic rendering local read" demonstration (reading on-chip rendering results)
-- IndirectCommands - indirect graphics and compute command testing
-- LowLatency - low latency demonstration
-- MemoryAliasing - overlapping resource memory testing
-- MeshShader - direct and indirect mesh shader dispatch testing
-- Multisample - multisample rendering testing
-- MultiThreading - shows advantages of multi-threaded command buffer recording
-- Multiview - multiview demonstration in _LAYER_BASED_ mode (VK and D3D12 compatible)
-- Queries - timestamp, occlusion and calibrated timestamp testing
-- RayTracingAdvanced - procedural geometry, update, clone and compaction testing
-- RayTracingBoxes - a more advanced ray tracing example with many BLASes in TLAS
-- RayTracingTriangle - simple triangle rendering through ray tracing
-- Readback - getting data from the GPU back to the CPU
-- Resize - demonstrates window resize
-- Resources - various resources allocation related stuff
-- SceneViewer - loading & rendering of meshes with materials (also tests programmable sample locations, shading rate and pipeline statistics)
-- Streamer - buffer and texture streaming testing
-- TextureTypes - 1D, 2D array, cube and 3D texture/view testing
-- Triangle - simple textured triangle rendering (also multiview demonstration in _FLEXIBLE_ mode)
-- VideoEncodeDecode - H.264/H.265/AV1 NV12 video encode/decode round trip; built only when the selected NRI source provides the NRIVideo extension
-- Wrapper - shows how to wrap native D3D11/D3D12/VK objects into *NRI* entities
+- [AsyncCompute](Source/AsyncCompute.cpp) - demonstrates parallel execution of graphics and compute workloads
+- [BindlessSceneViewer](Source/BindlessSceneViewer.cpp) - bindless GPU-driven rendering test
+- [Buffers](Source/Buffers.c) - buffer creation, copying and readback
+- [Clear](Source/Clear.cpp) - minimal example of rendering using framebuffer clears only
+- [ClearStorage](Source/ClearStorage.c) - clear storage testing
+- [CopyTests](Source/CopyTests.cpp) - validates core copy commands and synchronous host texture copies
+- [DeviceInfo](Source/DeviceInfo.c) - queries and prints information about GPU adapters in the system
+- [DescriptorPoolIndexing](Source/DescriptorPoolIndexing.cpp) - HLSL dynamic resources through a directly indexed descriptor pool
+- [DescriptorHeapIndexing](Source/DescriptorHeapIndexing.cpp) - HLSL dynamic resources through a directly indexed descriptor heap
+- [DescriptorManagement](Source/DescriptorManagement.cpp) - descriptor copying, pool switching, update-after-set and pool recycling testing
+- [DedicatedQueues](Source/DedicatedQueues.cpp) - dedicated copy queue, synchronization and copy-queue timestamp testing
+- [GraphicsPipelineStates](Source/GraphicsPipelineStates.cpp) - dynamic graphics state, geometry, tessellation and less common rasterization testing
+- [GraphicsVertexInput](Source/GraphicsVertexInput.cpp) - vertex input, geometry and tessellation draw testing
+- [InputAttachment](Source/InputAttachment.cpp) - "dynamic rendering local read" demonstration (reading on-chip rendering results)
+- [IndirectCommands](Source/IndirectCommands.cpp) - indirect graphics and compute command testing
+- [LowLatency](Source/LowLatency.cpp) - low latency demonstration
+- [MemoryAliasing](Source/MemoryAliasing.cpp) - overlapping resource memory testing
+- [MeshShader](Source/MeshShader.cpp) - direct and indirect mesh shader dispatch testing
+- [Multisample](Source/Multisample.cpp) - multisample rendering testing
+- [MultiThreading](Source/MultiThreading.cpp) - shows advantages of multi-threaded command buffer recording
+- [Multiview](Source/Multiview.cpp) - multiview demonstration in _LAYER_BASED_ mode (VK and D3D12 compatible)
+- [Queries](Source/Queries.cpp) - timestamp, occlusion and calibrated timestamp testing
+- [RayTracingAdvanced](Source/RayTracingAdvanced.cpp) - procedural geometry, update, clone and compaction testing
+- [RayTracingBoxes](Source/RayTracingBoxes.cpp) - a more advanced ray tracing example with many BLASes in TLAS
+- [RayTracingTriangle](Source/RayTracingTriangle.cpp) - simple triangle rendering through ray tracing
+- [Readback](Source/Readback.cpp) - getting data from the GPU back to the CPU
+- [Resize](Source/Resize.cpp) - demonstrates window resize
+- [ResolveSampleZero](Source/ResolveSampleZero.cpp) - sample-zero resolve testing for color and depth-stencil textures
+- [Resources](Source/Resources.c) - resource allocation testing
+- [SceneViewer](Source/SceneViewer.cpp) - loading & rendering of meshes with materials (also tests programmable sample locations, shading rate and pipeline statistics)
+- [Streamer](Source/Streamer.cpp) - buffer and texture streaming testing
+- [TextureTypes](Source/TextureTypes.cpp) - 1D, 2D array, cube and 3D texture/view testing
+- [Triangle](Source/Triangle.cpp) - simple textured triangle rendering (also multiview demonstration in _FLEXIBLE_ mode)
+- [VideoEncodeDecode](Source/VideoEncodeDecode.cpp) - H.264/H.265/AV1 NV12 video encode/decode round trip
+- [Wrapper](Source/Wrapper.cpp) - shows how to wrap native D3D11/D3D12/VK objects into *NRI* entities
 
-### VideoEncodeDecode AV1 notes
+VideoEncodeDecode notes:
 
-`VideoEncodeDecode --codec=AV1 --av1Frame=P` encodes a static generated source image as an IDR reference followed by a P frame. The source is intentionally frozen for this permutation so the left generated image and right decoded image can be compared directly while validating AV1 reference/DPB handling. It is not intended to demonstrate animated AV1 P-frame motion.
-
-The framework `--width` and `--height` arguments control the sample output window size only. Use `--videoWidth` and `--videoHeight` to select the NV12 encode/decode surface size. The default video size is 1920x1080.
-
-The sample uses CQP rate control by default. Use `--qpI`, `--qpP`, and `--qpB` to change the per-frame-type quantizers, and `--av1BaseQIndex` to change AV1's frame base quantizer. H.264/H.265 QP values must be in the 0..51 range; AV1 quantizer values use the 0..255 range. Lower values generally produce higher quality and larger bitstreams.
-
-External AV1 file decoding (`--decodeFile` and `--refYuv`) is an optional developer feature. Enable it with `-DNRISAMPLES_ENABLE_AV1_FILE_DECODING=ON` when configuring CMake. It uses NRI's private AV1 parser and requires a matching NRI source checkout. The feature is off by default; the visual sample, round-trip streams and test matrix use only public NRI APIs.
+- Select `--codec=H264`, `H265`, or `AV1` (default: `H264`). The animated preview supports `--h26Frame=IDR|P|B` for H.264/H.265 and `--av1Frame=IDR|P` for AV1; both default to `IDR`.
+- Use `--videoWidth` and `--videoHeight` for the NV12 video size (default: 1920x1080). Each dimension falls back to `--width` or `--height` if supplied; explicit video dimensions take precedence. Width must be divisible by 4 and height must be even.
+- CQP is the default rate control mode. Set `--qpI`, `--qpP`, and `--qpB` for frame quantizers, and `--av1BaseQIndex` for AV1's base quantizer. The sample accepts 0..51 for H.264/H.265 and 1..255 for AV1. Lower values favor quality. `--lossless` uses zero quantizers for H.264/H.265 and near-lossless quantizer 1 for AV1.
+- Use `--stream` for a headless encode/decode sequence, `--matrix` for the built-in cases, or `--listCases` to list them. Stream options include `--frames`, `--gop`, `--rc=cqp|cbr|vbr`, and `--dump` for output files.
+- External AV1 OBU decoding with `--decodeFile` requires `-DNRISAMPLES_ENABLE_AV1_FILE_DECODING=ON` and matching NRI sources for its private parser. Optional `--refYuv` checks decoded output against an NV12 reference. This developer feature is off by default; previews, round-trip streams, and matrix cases use public NRI APIs.
