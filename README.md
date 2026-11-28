@@ -21,9 +21,24 @@ Notes:
 - To use the static MSVC runtime, pass `-DCMAKE_MSVC_RUNTIME_LIBRARY="MultiThreaded$<$<CONFIG:Debug>:Debug>"` when configuring CMake
 - On macOS, source the Vulkan SDK's `setup-env.sh` before building. *Metal Shader Converter* enables the *HLSL to DXIL to Metal shader* workflow automatically when installed and makes *Metal* the default API; otherwise, *Vulkan* is used
 
+*iOS* (*Clear* and *Triangle*, on devices only):
+
+- Build the samples for macOS first: the iOS apps reuse the shaders generated there (`_Shaders`) and the downloaded assets (`_Data`)
+- Install *Xcode* 26+ and *Metal Shader Converter*, its iOS library is expected in `/usr/local/lib_iOS`. *Metal Shader Converter* has no simulator build, so use an iPhone or iPad with iOS 26+, enable *Developer Mode* on it and sign in to *Xcode* with an Apple ID
+- Generate the *Xcode* project:
+  ```
+  cmake -S . -B _BuildIOS -G Xcode -DCMAKE_SYSTEM_NAME=iOS -DCMAKE_OSX_SYSROOT=iphoneos -DCMAKE_OSX_DEPLOYMENT_TARGET=26.0 -DCMAKE_OSX_ARCHITECTURES=arm64 -DCMAKE_TRY_COMPILE_TARGET_TYPE=STATIC_LIBRARY -DNRISAMPLES_IOS_DEVELOPMENT_TEAM=<team ID> -DNRISAMPLES_IOS_BUNDLE_ID_PREFIX=<unique prefix>
+  ```
+  Add `-DFETCHCONTENT_SOURCE_DIR_ASSETS=$PWD/_Data` to reuse the assets already downloaded by the macOS build
+- Open `_BuildIOS/NRISamples.xcodeproj`, select a sample and the device, set the scheme's build configuration to *Release* (only *Release* was tested) and run
+- The apps run in portrait from their own bundle (`_Shaders` and `_Data` are copied into it), and a touch acts as the left mouse button. There is no command line: the defaults are used
+
 *CMake* options:
 
 - `NRIF_USE_WAYLAND` - use Wayland instead of X11 on Linux
+- `NRISAMPLES_IOS_DEVELOPMENT_TEAM` - iOS: Apple team ID used for signing
+- `NRISAMPLES_IOS_BUNDLE_ID_PREFIX` - iOS: bundle identifier prefix, must be unique for your Apple ID
+- `NRISAMPLES_IOS_MSC_DYLIB` - iOS: *Metal Shader Converter* library embedded into the apps (default: `/usr/local/lib_iOS/libmetalirconverter.dylib`)
 
 ## HOW TO RUN
 
