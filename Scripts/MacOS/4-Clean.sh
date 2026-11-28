@@ -6,6 +6,7 @@ cd "$(dirname "${BASH_SOURCE[0]}")/../.."
 rm -rf "build"
 rm -rf "_Bin"
 rm -rf "_Build"
+rm -rf "_BuildIOS"
 rm -rf "_Data"
 rm -rf "_Shaders"
 

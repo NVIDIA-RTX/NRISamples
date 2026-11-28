@@ -15,6 +15,7 @@ compile_commands.json
 # generated data
 _Bin/
 _Build/
+_BuildIOS/
 _Shaders/
 _Data/
 _Tmp/
